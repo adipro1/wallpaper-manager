@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Builds / packaging
+build/
+dist/
+*.spec
+*.egg-info/
+
+# Local app data (normally stored in %LOCALAPPDATA%\WallpaperManager,
+# ignored here in case WPM_DATA_DIR points inside the project)
+data/
+logs/
+*.log
+thumbnails/
+cache/
+*.db
+*.sqlite3
+
+# Media files - never commit wallpapers or videos
+*.mp4
+*.webm
+*.mkv
+*.mov
+*.gif
+*.jpg
+*.jpeg
+*.webp
+media/
+
+# Secrets / editor / OS
+.env
+.vscode/
+.idea/
+.claude/
+Thumbs.db
+desktop.ini
