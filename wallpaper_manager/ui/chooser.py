@@ -45,7 +45,7 @@ class MediaChooser(ctk.CTkFrame):
         self.app = app
         self.on_pick = on_pick
         self.allow_video = allow_video
-        self.current_id: int | None = None
+        self.marked_ids: set[int] = set()  # highlighted tiles (current wallpaper, playlist members)
         self.items: list[MediaItem] = []
         self.tiles: list[Tile] = []
         self.columns = 0
@@ -102,7 +102,7 @@ class MediaChooser(ctk.CTkFrame):
         while len(self.tiles) < len(self.items):
             self.tiles.append(Tile(self.grid_area, self.on_pick))
         for tile, item in zip(self.tiles, self.items):
-            tile.set_item(item, self.app.thumbs.get(item, TILE_IMAGE), item.id == self.current_id)
+            tile.set_item(item, self.app.thumbs.get(item, TILE_IMAGE), item.id in self.marked_ids)
         for tile in self.tiles[len(self.items):]:
             tile.grid_remove()
             tile.item = None
@@ -118,10 +118,13 @@ class MediaChooser(ctk.CTkFrame):
         self._reflow()
 
     def set_current(self, media_id: int | None) -> None:
-        self.current_id = media_id
+        self.set_marked({media_id} if media_id else set())
+
+    def set_marked(self, media_ids: set[int]) -> None:
+        self.marked_ids = set(media_ids)
         for tile in self.tiles:
             if tile.item is not None:
-                tile.set_current(tile.item.id == media_id)
+                tile.set_current(tile.item.id in self.marked_ids)
 
     def _reflow(self) -> None:
         scale = ScalingTracker.get_widget_scaling(self)

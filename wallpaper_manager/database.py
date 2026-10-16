@@ -38,6 +38,22 @@ MIGRATIONS = [
     CREATE INDEX idx_media_type ON media(media_type);
     CREATE INDEX idx_media_favorite ON media(favorite);
     """,
+    # 2: playlists
+    """
+    CREATE TABLE playlists (
+        id                INTEGER PRIMARY KEY,
+        name              TEXT NOT NULL,
+        mode              TEXT NOT NULL DEFAULT 'sequential' CHECK (mode IN ('sequential', 'random')),
+        interval_seconds  INTEGER NOT NULL DEFAULT 1800,
+        created           TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE TABLE playlist_items (
+        playlist_id  INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+        media_id     INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+        position     INTEGER NOT NULL,
+        PRIMARY KEY (playlist_id, media_id)
+    );
+    """,
 ]
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -50,6 +66,23 @@ SORT_ORDERS = {
     "name": "filename COLLATE NOCASE ASC",
     "name_desc": "filename COLLATE NOCASE DESC",
 }
+
+
+@dataclass
+class Playlist:
+    id: int
+    name: str
+    mode: str  # 'sequential' or 'random'
+    interval_seconds: int
+    created: str
+    item_count: int = 0
+
+    @property
+    def interval_text(self) -> str:
+        minutes = self.interval_seconds // 60
+        if minutes >= 60 and minutes % 60 == 0:
+            return f"every {minutes // 60} h"
+        return f"every {minutes} min" if minutes else f"every {self.interval_seconds} s"
 
 
 @dataclass
@@ -217,6 +250,61 @@ class Database:
     def remove_media(self, media_id: int) -> None:
         """Remove the library entry only. The media file itself is not touched."""
         self.execute("DELETE FROM media WHERE id = ?", (media_id,))
+
+    # -- playlists -----------------------------------------------------------
+
+    def create_playlist(self, name: str, mode: str = "sequential", interval_seconds: int = 1800) -> int:
+        return self.execute("INSERT INTO playlists (name, mode, interval_seconds) VALUES (?, ?, ?)",
+                            (name, mode, interval_seconds)).lastrowid
+
+    _PLAYLIST_SELECT = ("SELECT p.*, (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id) AS item_count "
+                        "FROM playlists p")
+
+    def list_playlists(self) -> list[Playlist]:
+        return [Playlist(**dict(r)) for r in self.query(self._PLAYLIST_SELECT + " ORDER BY p.name COLLATE NOCASE")]
+
+    def get_playlist(self, playlist_id: int) -> Playlist | None:
+        rows = self.query(self._PLAYLIST_SELECT + " WHERE p.id = ?", (playlist_id,))
+        return Playlist(**dict(rows[0])) if rows else None
+
+    def update_playlist(self, playlist_id: int, **fields) -> None:
+        allowed = {k: v for k, v in fields.items() if k in ("name", "mode", "interval_seconds")}
+        if allowed:
+            assignments = ", ".join(f"{k} = ?" for k in allowed)
+            self.execute(f"UPDATE playlists SET {assignments} WHERE id = ?", (*allowed.values(), playlist_id))
+
+    def delete_playlist(self, playlist_id: int) -> None:
+        self.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+
+    def playlist_items(self, playlist_id: int) -> list[MediaItem]:
+        rows = self.query("SELECT m.* FROM playlist_items i JOIN media m ON m.id = i.media_id "
+                          "WHERE i.playlist_id = ? ORDER BY i.position", (playlist_id,))
+        return [MediaItem.from_row(r) for r in rows]
+
+    def add_to_playlist(self, playlist_id: int, media_ids: list[int]) -> None:
+        """Append items; items already in the playlist are skipped."""
+        with self._lock, self._conn:
+            position = self._conn.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_items "
+                                          "WHERE playlist_id = ?", (playlist_id,)).fetchone()[0]
+            for media_id in media_ids:
+                cursor = self._conn.execute("INSERT OR IGNORE INTO playlist_items (playlist_id, media_id, position) "
+                                            "VALUES (?, ?, ?)", (playlist_id, media_id, position))
+                position += cursor.rowcount
+
+    def remove_from_playlist(self, playlist_id: int, media_id: int) -> None:
+        self.execute("DELETE FROM playlist_items WHERE playlist_id = ? AND media_id = ?", (playlist_id, media_id))
+
+    def move_in_playlist(self, playlist_id: int, media_id: int, delta: int) -> None:
+        """Move an item up (delta=-1) or down (delta=+1) by swapping it with its neighbour."""
+        ids = [m.id for m in self.playlist_items(playlist_id)]
+        if media_id not in ids:
+            return
+        old = ids.index(media_id)
+        new = max(0, min(len(ids) - 1, old + delta))
+        ids.insert(new, ids.pop(old))
+        with self._lock, self._conn:
+            self._conn.executemany("UPDATE playlist_items SET position = ? WHERE playlist_id = ? AND media_id = ?",
+                                   [(pos, playlist_id, mid) for pos, mid in enumerate(ids)])
 
     def media_stats(self) -> dict[str, int]:
         row = self.query(

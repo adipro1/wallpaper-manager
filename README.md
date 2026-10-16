@@ -31,6 +31,10 @@ built with Python, CustomTkinter, Pillow and SQLite.
   the official WinRT `LockScreen` API - no admin rights or registry hacks.
   The previous lock screen (including whether Windows Spotlight was on) is
   backed up and can be restored
+- **Playlists** of images and videos: sequential or random order (random shows
+  every item once before repeating), custom change interval in minutes or
+  hours, reorder / remove items; the running playlist and its position survive
+  a restart. Picking a wallpaper by hand stops the playlist
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
@@ -125,6 +129,7 @@ wallpaper_manager/
   live_wallpaper.py         libmpv video player for live wallpapers
   desktop_host.py           Win32 window behind the desktop icons (WorkerW)
   lockscreen.py             Lock screen via WinRT, frame extraction, backup / restore
+  playlists.py              Playlist playback (timer, sequential / random)
   imaging.py                Pillow resize helpers
   winapi.py                 Windows API helpers (ctypes)
   app.py                    Main window and sidebar navigation
@@ -148,7 +153,7 @@ tests/                      pytest tests
 3. ✅ Static desktop wallpapers
 4. ✅ Live video wallpapers behind the desktop icons
 5. ✅ Lock screen images, including frames extracted from videos
-6. Playlists (random / sequential, custom intervals)
+6. ✅ Playlists (random / sequential, custom intervals)
 7. Time-based scheduling
 8. Tray icon, start with Windows, pause on fullscreen apps / battery
 9. Polish, tests, packaging

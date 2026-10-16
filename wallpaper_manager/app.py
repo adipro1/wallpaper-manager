@@ -11,6 +11,7 @@ from . import APP_NAME, __version__, winapi
 from .config import AppPaths
 from .database import Database
 from .lockscreen import LockScreenService
+from .playlists import PlaylistPlayer
 from .wallpaper import WallpaperService
 from .ui import icons, theme
 from .ui.thumbs import ThumbnailCache
@@ -26,7 +27,8 @@ from .ui.pages.settings import SettingsPage
 log = logging.getLogger(__name__)
 
 DEFAULT_SIZE = (1240, 800)
-LIVE_CHECK_MS = 3000  # how often to check that the live wallpaper window is still alive
+LIVE_CHECK_MS = 3000
+PLAYLIST_CHECK_MS = 5000  # how often to check whether the playlist should change the wallpaper  # how often to check that the live wallpaper window is still alive
 
 # (key, label, icon, page class) in sidebar order
 NAV_ITEMS = [
@@ -49,6 +51,8 @@ class WallpaperManagerApp(ctk.CTk):
         self.thumbs = ThumbnailCache(db, paths.thumb_dir)
         self.wallpapers = WallpaperService(db, paths)
         self.lockscreen = LockScreenService(db, paths)
+        self.playlists = PlaylistPlayer(db, self.wallpapers)
+        self._advancing = False
 
         self.title(APP_NAME)
         self.minsize(980, 620)
@@ -70,6 +74,7 @@ class WallpaperManagerApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(500, self._restore_live_wallpaper)
         self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
+        self.after(PLAYLIST_CHECK_MS, self._check_playlist)
         log.info("Main window ready")
 
     # -- live wallpaper lifecycle --------------------------------------------------
@@ -91,6 +96,26 @@ class WallpaperManagerApp(ctk.CTk):
         except Exception:  # noqa: BLE001 - keep the watchdog running
             log.exception("Live wallpaper check failed")
         self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
+
+    def _check_playlist(self) -> None:
+        """Advance the running playlist when its interval is up (on a worker thread)."""
+        self.after(PLAYLIST_CHECK_MS, self._check_playlist)
+        if self._advancing or not self.playlists.is_due():
+            return
+        self._advancing = True
+
+        def finished(_result=None):
+            self._advancing = False
+            if self.current_page == "desktop":
+                self.pages["desktop"].refresh_current()
+            elif self.current_page == "playlists":
+                self.pages["playlists"].refresh()
+
+        def failed(exc):
+            log.warning("Playlist could not change the wallpaper: %s", exc)
+            finished()
+
+        run_in_thread(self, self.playlists.advance, on_done=finished, on_error=failed)
 
     def on_close(self) -> None:
         log.info("Closing")

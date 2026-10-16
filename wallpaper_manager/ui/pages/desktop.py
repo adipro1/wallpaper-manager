@@ -128,7 +128,7 @@ class DesktopPage(BasePage):
         state = self.service.state
         if state.kind != "video":
             self.heading.configure(text="Current wallpaper")
-            self.status.configure(text="", text_color=theme.TEXT_MUTED)
+            self.status.configure(text=self._playlist_text(), text_color=theme.TEXT_MUTED)
             return
         if not self.service.video_active:
             self.heading.configure(text="Live wallpaper")
@@ -141,7 +141,14 @@ class DesktopPage(BasePage):
                 text=f"{', '.join(others)} is also showing a live wallpaper and may cover this one. "
                      "Close or pause it to see your video.", text_color=theme.DANGER)
         else:
-            self.status.configure(text="", text_color=theme.TEXT_MUTED)
+            self.status.configure(text=self._playlist_text(), text_color=theme.TEXT_MUTED)
+
+    def _playlist_text(self) -> str:
+        playlist = self.app.playlists.active_playlist()
+        if not playlist:
+            return ""
+        minutes = round((self.app.playlists.seconds_until_change() or 0) / 60)
+        return f"Playlist “{playlist.name}” is running  ·  next change in about {minutes} min"
 
     def _show_preview(self, path: str | None, video: bool = False) -> None:
         if not path or not os.path.exists(path):
@@ -193,7 +200,9 @@ class DesktopPage(BasePage):
         self.apply(item)
 
     def apply(self, item: MediaItem) -> None:
-        """Set a library item (image or video) as the desktop wallpaper. Used by other pages too."""
+        """Set a library item (image or video) as the desktop wallpaper. Used by other pages too.
+        Choosing a wallpaper by hand stops a running playlist, like Windows' own slideshow."""
+        self.app.playlists.stop()
         self._run(f"Applying {item.filename}…", lambda: self.service.set(item))
 
     def _change_image_style(self, label: str) -> None:
