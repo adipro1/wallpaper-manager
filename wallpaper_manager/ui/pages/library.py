@@ -1,8 +1,617 @@
-from ..widgets import PlaceholderPage
+"""Library page: import, browse, search, favourite and preview wallpapers."""
+
+import logging
+import os
+from datetime import datetime
+from tkinter import filedialog, messagebox
+
+import customtkinter as ctk
+from customtkinter.windows.widgets.scaling import ScalingTracker
+from PIL import Image, ImageDraw, ImageFont
+
+from ... import imaging, media, winapi
+from ...database import MediaItem
+from .. import icons, theme
+from ..preview import MediaPreview, PreviewWindow
+from ..widgets import BasePage, Card, PageHeader, button, run_in_thread, segmented
+
+log = logging.getLogger(__name__)
+
+PAGE_SIZE = 40
+CARD_IMAGE = (192, 108)  # 16:9
+CARD_GAP = 12
+SEARCH_PLACEHOLDER = "Search by file name"
+PREVIEW_MAX_HEIGHT, PREVIEW_MIN_HEIGHT = 176, 90
+TYPE_FILTERS = {"All": None, "Images": "image", "Videos": "video"}
+SORTS = {"Newest first": "newest", "Oldest first": "oldest", "Name A–Z": "name", "Name Z–A": "name_desc"}
 
 
-class LibraryPage(PlaceholderPage):
+# --- card thumbnails ---------------------------------------------------------
+
+_badge_font: ImageFont.FreeTypeFont | None = None
+
+
+def _draw_badge(img: Image.Image, text: str, play_icon: bool = False) -> None:
+    """Draw a small rounded label (e.g. video duration) in the bottom-right corner."""
+    global _badge_font
+    if _badge_font is None:
+        try:
+            _badge_font = ImageFont.truetype(os.path.join(os.environ.get("WINDIR", r"C:\Windows"),
+                                                          "Fonts", "segoeuib.ttf"), 22)
+        except OSError:
+            _badge_font = ImageFont.load_default()
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=_badge_font)
+    icon_w = 20 if play_icon else 0
+    w, h = right - left + 20 + icon_w, bottom - top + 12
+    x0, y0 = img.width - w - 10, img.height - h - 10
+    draw.rounded_rectangle((x0, y0, x0 + w, y0 + h), radius=8, fill=(0, 0, 0, 170))
+    if play_icon:
+        cy = y0 + h / 2
+        draw.polygon([(x0 + 11, cy - 7), (x0 + 11, cy + 7), (x0 + 23, cy)], fill=(255, 255, 255, 255))
+    draw.text((x0 + 10 + icon_w - left, y0 + 6 - top), text, font=_badge_font, fill=(255, 255, 255, 255))
+    img.alpha_composite(overlay)
+
+
+def card_image(thumb_path, item: MediaItem) -> Image.Image:
+    """Card thumbnail at 2x resolution (for sharpness on scaled displays) with a type badge."""
+    size = (CARD_IMAGE[0] * 2, CARD_IMAGE[1] * 2)
+    if thumb_path is None:
+        img = Image.new("RGBA", size, (40, 40, 40, 255))
+        _draw_badge(img, "Missing")
+    else:
+        with Image.open(thumb_path) as thumb:
+            img = imaging.cover(thumb.convert("RGB"), size).convert("RGBA")
+        if item.is_video:
+            _draw_badge(img, item.duration_text or "Video", play_icon=True)
+        elif item.filename.lower().endswith(".gif"):
+            _draw_badge(img, "GIF")
+    return imaging.rounded(img, 14)
+
+
+class LibraryCard(Card):
+    """One tile in the grid. Cards are reused when the page changes, so content is set via set_item()."""
+
+    def __init__(self, master, on_select, on_open, on_favorite):
+        super().__init__(master, corner_radius=12, width=CARD_IMAGE[0] + 16)
+        self.item: MediaItem | None = None
+        self._on_select, self._on_open, self._on_favorite = on_select, on_open, on_favorite
+
+        self.thumb = ctk.CTkLabel(self, text="", width=CARD_IMAGE[0], height=CARD_IMAGE[1])
+        self.thumb.grid(row=0, column=0, columnspan=2, padx=8, pady=(8, 6))
+        self.name = ctk.CTkLabel(self, text="", font=theme.font(13, "bold"), text_color=theme.TEXT, anchor="w")
+        self.name.grid(row=1, column=0, sticky="w", padx=(12, 0))
+        self.meta = ctk.CTkLabel(self, text="", font=theme.font(11), text_color=theme.TEXT_MUTED, anchor="w")
+        self.meta.grid(row=2, column=0, sticky="w", padx=(12, 0), pady=(0, 10))
+        self.star = ctk.CTkButton(self, text="", width=30, height=30, corner_radius=15, fg_color="transparent",
+                                  hover_color=theme.NAV_HOVER, command=self._toggle_favorite)
+        self.star.grid(row=1, column=1, rowspan=2, padx=(0, 8), pady=(0, 6))
+        self.grid_columnconfigure(0, weight=1)
+
+        for widget in (self, self.thumb, self.name, self.meta):
+            widget.bind("<Button-1>", lambda _e: self.item and self._on_select(self.item))
+            widget.bind("<Double-Button-1>", lambda _e: self.item and self._on_open(self.item))
+            widget.configure(cursor="hand2")
+
+    def set_item(self, item: MediaItem, image: ctk.CTkImage, selected: bool) -> None:
+        self.item = item
+        self.thumb.configure(image=image)
+        name = item.filename if len(item.filename) <= 24 else item.filename[:22] + "…"
+        self.name.configure(text=name)
+        kind = "Video" if item.is_video else "Image"
+        self.meta.configure(text=f"{kind}  ·  {item.resolution_text}")
+        self.set_favorite(item.favorite)
+        self.set_selected(selected)
+
+    def set_favorite(self, favorite: bool) -> None:
+        self.star.configure(image=icons.icon("star_filled", 16, theme.STAR) if favorite
+                            else icons.icon("star", 16, theme.TEXT_MUTED))
+
+    def set_selected(self, selected: bool) -> None:
+        self.configure(border_width=2 if selected else 1,
+                       border_color=theme.ACCENT if selected else theme.CARD_BORDER)
+
+    def _toggle_favorite(self) -> None:
+        if self.item:
+            self._on_favorite(self.item)
+
+
+# --- details panel -------------------------------------------------------------
+
+class DetailsPanel(Card):
+    """Right-hand panel with a live preview, metadata and actions for the selected item."""
+
+    FIELDS = ("Type", "Resolution", "Duration", "File size", "Added", "Location")
+
+    def __init__(self, master, page: "LibraryPage"):
+        super().__init__(master, width=340)
+        self.page = page
+        self.item: MediaItem | None = None
+        self.grid_propagate(False)
+        self.grid_columnconfigure(0, weight=1)
+
+        self._preview_height = PREVIEW_MAX_HEIGHT
+        self.preview = MediaPreview(self, height=PREVIEW_MAX_HEIGHT)
+        self.preview.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 10))
+
+        self.title = ctk.CTkLabel(self, text="", font=theme.font(16, "bold"), text_color=theme.TEXT,
+                                  anchor="w", justify="left", wraplength=300)
+        self.title.grid(row=1, column=0, sticky="ew", padx=16)
+
+        info = self.info = ctk.CTkFrame(self, fg_color="transparent")
+        info.grid(row=2, column=0, sticky="ew", padx=16, pady=(8, 8))
+        info.grid_columnconfigure(1, weight=1)
+        self.values: dict[str, ctk.CTkLabel] = {}
+        self.labels: dict[str, ctk.CTkLabel] = {}
+        for row, name in enumerate(self.FIELDS):
+            self.labels[name] = ctk.CTkLabel(info, text=name, font=theme.font(12), text_color=theme.TEXT_MUTED,
+                                             anchor="w", height=20)
+            self.labels[name].grid(row=row, column=0, sticky="w", padx=(0, 12))
+            self.values[name] = ctk.CTkLabel(info, text="", font=theme.font(12), text_color=theme.TEXT,
+                                             anchor="w", height=20)
+            self.values[name].grid(row=row, column=1, sticky="w")
+
+        actions = ctk.CTkFrame(self, fg_color="transparent")
+        actions.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 8))
+        actions.grid_columnconfigure((0, 1), weight=1, uniform="actions")
+        self.fav_button = button(actions, "Favorite", self._toggle_favorite, icon="star")
+        self.fav_button.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        button(actions, "Preview", self._open_preview, icon="open").grid(row=0, column=1, sticky="ew", padx=4, pady=4)
+        button(actions, "Show in folder", self._show_in_explorer, icon="folder_open").grid(
+            row=1, column=0, sticky="ew", padx=4, pady=4)
+        button(actions, "Remove", self._remove, icon="delete").grid(row=1, column=1, sticky="ew", padx=4, pady=4)
+        ctk.CTkButton(actions, text="Delete file from disk…", command=self._delete_file, height=26,
+                      fg_color="transparent", hover_color=theme.NAV_HOVER, text_color=theme.DANGER,
+                      font=theme.font(12)).grid(row=2, column=0, columnspan=2, pady=(2, 0))
+        self.actions = actions
+
+        self.empty = ctk.CTkLabel(self, text="Select a wallpaper\nto see its details", font=theme.font(13),
+                                  text_color=theme.TEXT_MUTED, image=icons.icon("image", 40, theme.TEXT_SUBTLE),
+                                  compound="top")
+        self.bind("<Configure>", lambda _e: self.after_idle(self._fit_preview))
+        self.show(None)
+
+    def show(self, item: MediaItem | None) -> None:
+        self.item = item
+        widgets = [self.preview, self.title, self.actions, *self.labels.values(), *self.values.values()]
+        if item is None:
+            self.preview.stop()
+            for widget in widgets:
+                widget.grid_remove()
+            self.empty.grid(row=0, column=0, rowspan=4, pady=180)
+            return
+        self.empty.grid_remove()
+        for widget in widgets:
+            widget.grid()
+
+        self.preview.show(item)
+        self.title.configure(text=item.filename)
+        missing = not os.path.exists(item.path)
+        values = {
+            "Type": ("Video" if item.is_video else "Image") + (f" ({os.path.splitext(item.filename)[1][1:].upper()})"),
+            "Resolution": item.resolution_text,
+            "Duration": item.duration_text,
+            "File size": "File missing" if missing else item.size_text,
+            "Added": self._format_date(item.date_added),
+            "Location": imaging.shorten_middle(os.path.dirname(item.path), 34),
+        }
+        for name, value in values.items():
+            self.values[name].configure(text=value, text_color=theme.DANGER if missing and name == "File size"
+                                        else theme.TEXT)
+        if not item.is_video:
+            self.labels["Duration"].grid_remove()
+            self.values["Duration"].grid_remove()
+        self.update_favorite()
+        self.after_idle(self._fit_preview)
+
+    def _fit_preview(self) -> None:
+        """Shrink the preview on short windows so the buttons below it stay visible."""
+        if self.item is None or not self.winfo_exists():
+            return
+        scale = ScalingTracker.get_widget_scaling(self)
+        others_px = sum(w.winfo_reqheight() for w in (self.title, self.info, self.actions))
+        spare = (self.winfo_height() - others_px) / scale - 50  # 50 = vertical padding
+        height = int(max(PREVIEW_MIN_HEIGHT, min(PREVIEW_MAX_HEIGHT, spare)))
+        if height != self._preview_height:
+            self._preview_height = height
+            self.preview.configure(height=height)
+
+    def update_favorite(self) -> None:
+        if self.item:
+            fav = self.item.favorite
+            self.fav_button.configure(
+                text="Favorited" if fav else "Favorite",
+                image=icons.icon("star_filled", 16, theme.STAR) if fav else icons.icon("star", 16, theme.TEXT))
+
+    @staticmethod
+    def _format_date(value: str) -> str:
+        try:
+            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").strftime("%d %b %Y, %H:%M")
+        except ValueError:
+            return value
+
+    def _toggle_favorite(self) -> None:
+        if self.item:
+            self.page.toggle_favorite(self.item)
+
+    def _open_preview(self) -> None:
+        if self.item:
+            self.page.open_preview(self.item)
+
+    def _show_in_explorer(self) -> None:
+        if self.item and os.path.exists(self.item.path):
+            winapi.show_in_explorer(self.item.path)
+        elif self.item:
+            messagebox.showwarning("File not found", f"This file no longer exists:\n{self.item.path}")
+
+    def _remove(self) -> None:
+        if self.item:
+            self.page.remove_item(self.item, delete_file=False)
+
+    def _delete_file(self) -> None:
+        if self.item:
+            self.page.remove_item(self.item, delete_file=True)
+
+
+# --- the page --------------------------------------------------------------------
+
+class LibraryPage(BasePage):
     title = "Library"
-    icon_name = "library"
-    subtitle = "All your imported wallpapers."
-    planned = ["Import images and videos", "Thumbnails, favorites, search and previews"]
+
+    def __init__(self, master, app):
+        super().__init__(master, app)
+        self.db = app.db
+        self.thumb_dir = app.paths.thumb_dir
+        self.page_index = 0
+        self.selected_id: int | None = None
+        self.items: list[MediaItem] = []
+        self.cards: list[LibraryCard] = []
+        self.columns = 0
+        self._image_cache: dict[tuple, ctk.CTkImage] = {}
+        self._search_job: str | None = None
+        self.importing = False
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(3, weight=1)
+
+        # Header + import buttons
+        self.header = PageHeader(self, "Library", "")
+        self.header.grid(row=0, column=0, sticky="ew", padx=32, pady=(28, 16))
+        self.import_folder_btn = button(self.header.actions, "Import folder", self.import_folder, icon="folder")
+        self.import_folder_btn.pack(side="left", padx=(0, 8))
+        self.import_files_btn = button(self.header.actions, "Import files", self.import_files, icon="add",
+                                       style="primary")
+        self.import_files_btn.pack(side="left")
+
+        self._build_toolbar()
+
+        # Import progress (only visible while importing)
+        self.progress_row = ctk.CTkFrame(self, fg_color="transparent")
+        self.progress_label = ctk.CTkLabel(self.progress_row, text="", font=theme.font(12),
+                                           text_color=theme.TEXT_MUTED, anchor="w")
+        self.progress_label.pack(fill="x")
+        self.progress_bar = ctk.CTkProgressBar(self.progress_row, height=6, progress_color=theme.ACCENT)
+        self.progress_bar.pack(fill="x", pady=(2, 0))
+
+        # Grid of cards + details panel
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.grid(row=3, column=0, sticky="nsew", padx=(20, 24), pady=(0, 8))
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(0, weight=1)
+        # The scrollable frame's own size follows its content, so the available
+        # width is measured on this holder frame instead.
+        self.grid_holder = ctk.CTkFrame(body, fg_color="transparent")
+        self.grid_holder.grid(row=0, column=0, sticky="nsew")
+        self.grid_holder.bind("<Configure>", lambda _e: self._reflow())
+        self.grid_area = ctk.CTkScrollableFrame(self.grid_holder, fg_color="transparent")
+        self.grid_area.pack(fill="both", expand=True)
+        self.details = DetailsPanel(body, self)
+        self.details.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+
+        self.empty_state = ctk.CTkFrame(self.grid_area, fg_color="transparent")
+        self.empty_icon = ctk.CTkLabel(self.empty_state, text="", image=icons.icon("library", 48, theme.TEXT_SUBTLE))
+        self.empty_icon.pack(pady=(80, 10))
+        self.empty_title = ctk.CTkLabel(self.empty_state, text="", font=theme.font(17, "bold"), text_color=theme.TEXT)
+        self.empty_title.pack()
+        self.empty_text = ctk.CTkLabel(self.empty_state, text="", font=theme.font(13), text_color=theme.TEXT_MUTED)
+        self.empty_text.pack(pady=(2, 14))
+        self.empty_button = button(self.empty_state, "Import files", self.import_files, icon="add", style="primary")
+
+        # Pagination
+        pager = ctk.CTkFrame(self, fg_color="transparent")
+        pager.grid(row=4, column=0, sticky="ew", padx=32, pady=(0, 16))
+        self.page_label = ctk.CTkLabel(pager, text="", font=theme.font(12), text_color=theme.TEXT_MUTED)
+        self.page_label.pack(side="left")
+        self.next_btn = button(pager, "Next", lambda: self._change_page(1), width=80, height=30)
+        self.next_btn.pack(side="right")
+        self.prev_btn = button(pager, "Previous", lambda: self._change_page(-1), width=80, height=30)
+        self.prev_btn.pack(side="right", padx=(0, 8))
+
+    def _build_toolbar(self) -> None:
+        bar = ctk.CTkFrame(self, fg_color="transparent")
+        bar.grid(row=1, column=0, sticky="ew", padx=32, pady=(0, 12))
+
+        search = ctk.CTkEntry(bar, placeholder_text=SEARCH_PLACEHOLDER,
+                              width=240, height=34, corner_radius=8, font=theme.font(13),
+                              fg_color=theme.INPUT_BG, border_color=theme.CARD_BORDER, border_width=1)
+        search.pack(side="left")
+        search.bind("<KeyRelease>", lambda _e: self._schedule_search())
+        search.bind("<Escape>", lambda _e: self.clear_search())
+        self.search_entry = search
+
+        self.type_filter = segmented(bar, list(TYPE_FILTERS), lambda _v: self.refresh(reset_page=True))
+        self.type_filter.set("All")
+        self.type_filter.pack(side="left", padx=12)
+
+        self.favorites_only = ctk.CTkSwitch(bar, text="Favorites only", font=theme.font(13),
+                                            progress_color=theme.ACCENT,
+                                            command=lambda: self.refresh(reset_page=True))
+        self.favorites_only.pack(side="left", padx=(4, 0))
+
+        self.sort = ctk.CTkOptionMenu(bar, values=list(SORTS), command=lambda _v: self.refresh(reset_page=True),
+                                      width=140, height=34, font=theme.font(13), fg_color=theme.SECONDARY_BTN,
+                                      button_color=theme.SECONDARY_BTN, button_hover_color=theme.SECONDARY_BTN_HOVER,
+                                      text_color=theme.TEXT, dropdown_font=theme.font(13))
+        self.sort.set("Newest first")
+        self.sort.pack(side="right")
+
+    # -- page lifecycle -----------------------------------------------------------
+
+    def on_show(self) -> None:
+        self.refresh()
+
+    def on_hide(self) -> None:
+        self.details.preview.stop()  # don't keep decoding video in the background
+
+    def _filters(self) -> dict:
+        return dict(search=self.search_entry.get(), media_type=TYPE_FILTERS[self.type_filter.get()],
+                    favorites_only=bool(self.favorites_only.get()))
+
+    def clear_search(self, refresh: bool = True) -> None:
+        self.search_entry.delete(0, "end")
+        self.focus()
+        # Re-setting the placeholder makes CTkEntry show it again after a programmatic clear.
+        self.search_entry.configure(placeholder_text=SEARCH_PLACEHOLDER)
+        if refresh:
+            self.refresh(reset_page=True)
+
+    def _schedule_search(self) -> None:
+        if self._search_job:
+            self.after_cancel(self._search_job)
+        self._search_job = self.after(250, lambda: self.refresh(reset_page=True))
+
+    def refresh(self, reset_page: bool = False) -> None:
+        """Reload the current page of results from the database."""
+        if reset_page:
+            self.page_index = 0
+        filters = self._filters()
+        total = self.db.count_media(**filters)
+        pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+        self.page_index = min(self.page_index, pages - 1)
+        self.items = self.db.list_media(**filters, sort=SORTS[self.sort.get()], limit=PAGE_SIZE,
+                                        offset=self.page_index * PAGE_SIZE)
+
+        library_total = self.db.count_media()
+        self.header.subtitle.configure(
+            text=f"{library_total} wallpaper{'s' if library_total != 1 else ''} in your library")
+        if total:
+            first = self.page_index * PAGE_SIZE + 1
+            self.page_label.configure(text=f"Showing {first}–{first + len(self.items) - 1} of {total}")
+        else:
+            self.page_label.configure(text="")
+        self.prev_btn.configure(state="normal" if self.page_index > 0 else "disabled")
+        self.next_btn.configure(state="normal" if self.page_index < pages - 1 else "disabled")
+
+        self._render_cards()
+        self._update_empty_state(library_total, total)
+
+        # Keep the details panel in sync (the selected item may have been filtered out or removed).
+        selected = next((m for m in self.items if m.id == self.selected_id), None)
+        if selected is None:
+            self.selected_id = None
+        shown = self.details.item
+        if selected is None or shown is None or selected.id != shown.id:
+            self.details.show(selected)
+        else:  # same item: just refresh its data without restarting the preview
+            self.details.item = selected
+            self.details.update_favorite()
+
+    def _change_page(self, delta: int) -> None:
+        self.page_index += delta
+        self.refresh()
+        self.grid_area._parent_canvas.yview_moveto(0)
+
+    # -- grid -------------------------------------------------------------------------
+
+    def _thumbnail(self, item: MediaItem) -> ctk.CTkImage:
+        cached = self._image_cache.get((item.id, item.thumbnail))
+        if cached:
+            return cached
+        thumb_path = media.ensure_thumbnail(self.db, item, self.thumb_dir)  # may update item.thumbnail
+        img = card_image(thumb_path, item)
+        image = ctk.CTkImage(img, img, CARD_IMAGE)
+        if thumb_path is not None:  # don't cache "missing" placeholders; the file may come back
+            self._image_cache[(item.id, item.thumbnail)] = image
+        return image
+
+    def _render_cards(self) -> None:
+        while len(self.cards) < len(self.items):
+            self.cards.append(LibraryCard(self.grid_area, self.select_item, self.open_preview, self.toggle_favorite))
+        for card, item in zip(self.cards, self.items):
+            card.set_item(item, self._thumbnail(item), item.id == self.selected_id)
+        for card in self.cards[len(self.items):]:
+            card.grid_remove()
+            card.item = None
+        self.columns = 0  # force re-layout
+        self._reflow()
+
+    def _reflow(self) -> None:
+        """Place the cards in as many columns as fit the current width."""
+        visible = [c for c in self.cards if c.item is not None]
+        scale = ScalingTracker.get_widget_scaling(self)
+        card_px = (CARD_IMAGE[0] + 16 + CARD_GAP) * scale
+        width = self.grid_holder.winfo_width() - 20 * scale  # minus the scrollbar
+        columns = max(1, int(width // card_px)) if width > 1 else 3
+        if columns == self.columns:
+            return
+        # Equal-weight columns spread the cards evenly across the available width.
+        for col in range(max(columns, self.columns)):
+            self.grid_area.grid_columnconfigure(col, weight=1 if col < columns else 0,
+                                                uniform="cards" if col < columns else "")
+        self.columns = columns
+        for index, card in enumerate(visible):
+            card.grid(row=index // columns, column=index % columns, padx=CARD_GAP // 2, pady=CARD_GAP // 2,
+                      sticky="n")
+
+    def _update_empty_state(self, library_total: int, shown: int) -> None:
+        if shown:
+            self.empty_state.grid_remove()
+            return
+        if library_total == 0:
+            self.empty_title.configure(text="Your library is empty")
+            self.empty_text.configure(text="Import images (JPG, PNG, WEBP, GIF) or videos (MP4, WEBM) to get started.")
+            self.empty_button.pack()
+        else:
+            self.empty_title.configure(text="No matches")
+            self.empty_text.configure(text="No wallpapers match your search and filters.")
+            self.empty_button.pack_forget()
+        self.empty_state.grid(row=0, column=0, columnspan=max(self.columns, 1), sticky="ew")
+
+    # -- actions ------------------------------------------------------------------------
+
+    def select_item(self, item: MediaItem) -> None:
+        self.selected_id = item.id
+        for card in self.cards:
+            if card.item is not None:
+                card.set_selected(card.item.id == item.id)
+        self.details.show(item)
+
+    def show_item(self, media_id: int) -> None:
+        """Select an item from elsewhere in the app (e.g. the Home page)."""
+        self.clear_search(refresh=False)
+        self.type_filter.set("All")
+        self.favorites_only.deselect()
+        self.sort.set("Newest first")
+        self.selected_id = media_id
+        self.refresh(reset_page=True)
+        ids = [m.id for m in self.db.list_media(sort="newest")]
+        if media_id in ids:
+            self.page_index = ids.index(media_id) // PAGE_SIZE
+            self.refresh()
+
+    def open_preview(self, item: MediaItem) -> None:
+        self.details.preview.stop()  # only decode one video at a time
+        window = PreviewWindow(self, item)
+
+        def on_close(event):
+            # <Destroy> also fires for each child widget; react only to the window itself.
+            if event.widget is window and self.details.item and self.winfo_ismapped():
+                self.details.preview.show(self.details.item)
+
+        window.bind("<Destroy>", on_close, add="+")
+
+    def toggle_favorite(self, item: MediaItem) -> None:
+        item.favorite = not item.favorite
+        self.db.set_favorite(item.id, item.favorite)
+        for card in self.cards:
+            if card.item is not None and card.item.id == item.id:
+                card.item.favorite = item.favorite
+                card.set_favorite(item.favorite)
+        if self.details.item and self.details.item.id == item.id:
+            self.details.item.favorite = item.favorite
+            self.details.update_favorite()
+        if self.favorites_only.get():
+            self.refresh()
+
+    def remove_item(self, item: MediaItem, delete_file: bool) -> None:
+        if delete_file:
+            if not messagebox.askyesno(
+                    "Delete file",
+                    f"Move “{item.filename}” to the Recycle Bin?\n\n"
+                    "It will be removed from your library and deleted from disk. "
+                    "You can restore it from the Recycle Bin.",
+                    icon="warning", parent=self):
+                return
+            self.details.preview.stop()  # release the file before deleting it
+            if os.path.exists(item.path):
+                try:
+                    winapi.send_to_recycle_bin(item.path)
+                except OSError as exc:
+                    log.error("Delete failed: %s", exc)
+                    messagebox.showerror("Delete failed", str(exc), parent=self)
+                    self.details.show(item)
+                    return
+            log.info("Deleted file %s", item.path)
+        self.db.remove_media(item.id)
+        media.delete_thumbnail(item, self.thumb_dir)
+        log.info("Removed %s from library", item.path)
+        if self.selected_id == item.id:
+            self.selected_id = None
+        self.refresh()
+
+    # -- importing ----------------------------------------------------------------------
+
+    def import_files(self) -> None:
+        paths = filedialog.askopenfilenames(parent=self, title="Import wallpapers", filetypes=media.FILE_TYPES)
+        if paths:
+            self.start_import(lambda: list(paths))
+
+    def import_folder(self) -> None:
+        folder = filedialog.askdirectory(parent=self, title="Import a folder of wallpapers", mustexist=True)
+        if folder:
+            self.start_import(lambda: media.find_media_files(folder))
+
+    def start_import(self, get_paths) -> None:
+        """Import in the background so the window stays responsive. `get_paths` runs on the worker too
+        because scanning a large folder can take a while."""
+        if self.importing:
+            return
+        self.importing = True
+        state = {"done": 0, "total": 0, "current": "Scanning…"}
+
+        def progress(done, total, path):
+            state.update(done=done, total=total, current=os.path.basename(path))
+
+        def work():
+            return media.import_files(self.db, get_paths(), self.thumb_dir, progress)
+
+        def tick():
+            total = state["total"]
+            self.progress_bar.set(state["done"] / total if total else 0)
+            counter = f"Importing {state['done']} of {total}  ·  " if total else ""
+            self.progress_label.configure(text=f"{counter}{state['current']}")
+
+        self.import_files_btn.configure(state="disabled")
+        self.import_folder_btn.configure(state="disabled")
+        self.progress_bar.set(0)
+        self.progress_row.grid(row=2, column=0, sticky="ew", padx=32, pady=(0, 12))
+        run_in_thread(self, work, on_done=self._import_finished, on_error=self._import_failed, on_tick=tick)
+
+    def _end_import(self) -> None:
+        self.importing = False
+        self.progress_row.grid_remove()
+        self.import_files_btn.configure(state="normal")
+        self.import_folder_btn.configure(state="normal")
+
+    def _import_finished(self, result: media.ImportResult) -> None:
+        self._end_import()
+        self.sort.set("Newest first")
+        self.refresh(reset_page=True)
+        lines = [f"Added {len(result.added)} wallpaper{'s' if len(result.added) != 1 else ''}."]
+        if result.skipped:
+            lines.append(f"Skipped {result.skipped} (already in the library or not supported).")
+        if result.failed:
+            lines.append(f"\nCould not import {len(result.failed)} file(s):")
+            lines += [f"•  {os.path.basename(p)} – {reason}" for p, reason in result.failed[:8]]
+            if len(result.failed) > 8:
+                lines.append(f"…and {len(result.failed) - 8} more (see the log file).")
+            messagebox.showwarning("Import finished", "\n".join(lines), parent=self)
+        elif not result.added:
+            messagebox.showinfo("Import finished", "\n".join(lines), parent=self)
+        else:
+            self.header.subtitle.configure(text=f"{self.header.subtitle.cget('text')}  ·  {lines[0]}")
+
+    def _import_failed(self, exc: BaseException) -> None:
+        self._end_import()
+        messagebox.showerror("Import failed", str(exc), parent=self)

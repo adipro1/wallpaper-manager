@@ -6,7 +6,7 @@ import customtkinter as ctk
 
 from ... import APP_NAME, __version__, winapi
 from .. import theme
-from ..widgets import BasePage, Card, PageHeader, button
+from ..widgets import BasePage, Card, PageHeader, button, segmented
 
 log = logging.getLogger(__name__)
 
@@ -49,10 +49,7 @@ class SettingsPage(BasePage):
         row.pack(fill="x", padx=20, pady=(0, 18))
         current = app.db.get_setting("appearance_mode")
         label = next((k for k, v in APPEARANCE_OPTIONS.items() if v == current), "Dark")
-        self.appearance = ctk.CTkSegmentedButton(
-            row.control, values=list(APPEARANCE_OPTIONS), command=self._set_appearance, font=theme.font(13),
-            selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER, height=32,
-        )
+        self.appearance = segmented(row.control, list(APPEARANCE_OPTIONS), self._set_appearance)
         self.appearance.set(label)
         self.appearance.pack()
 

@@ -41,6 +41,16 @@ def button(master, text: str, command=None, icon: str | None = None, style: str 
     return ctk.CTkButton(master, text=text, command=command, **opts)
 
 
+def segmented(master, values: list[str], command=None, **kwargs) -> ctk.CTkSegmentedButton:
+    """Segmented control styled like the Windows 11 selector bars."""
+    opts = dict(height=34, font=theme.font(13), corner_radius=8, fg_color=theme.SEGMENT_BG,
+                unselected_color=theme.SEGMENT_BG, unselected_hover_color=theme.SEGMENT_HOVER,
+                selected_color=theme.SEGMENT_SELECTED, selected_hover_color=theme.SEGMENT_SELECTED,
+                text_color=theme.TEXT)
+    opts.update(kwargs)
+    return ctk.CTkSegmentedButton(master, values=values, command=command, **opts)
+
+
 class PageHeader(ctk.CTkFrame):
     """Page title, optional subtitle, and a right-aligned area for action buttons."""
 

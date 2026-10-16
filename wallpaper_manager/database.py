@@ -9,6 +9,7 @@ import json
 import logging
 import sqlite3
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,62 @@ MIGRATIONS = [
 DEFAULT_SETTINGS: dict[str, Any] = {
     "appearance_mode": "dark",
 }
+
+SORT_ORDERS = {
+    "newest": "date_added DESC, id DESC",
+    "oldest": "date_added ASC, id ASC",
+    "name": "filename COLLATE NOCASE ASC",
+    "name_desc": "filename COLLATE NOCASE DESC",
+}
+
+
+@dataclass
+class MediaItem:
+    id: int
+    path: str
+    filename: str
+    media_type: str  # 'image' or 'video'
+    width: int | None
+    height: int | None
+    duration: float | None  # seconds, videos only
+    file_size: int | None
+    favorite: bool
+    date_added: str
+    thumbnail: str | None  # file name inside the thumbnail folder
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> "MediaItem":
+        data = dict(row)
+        data["favorite"] = bool(data["favorite"])
+        return cls(**data)
+
+    @property
+    def is_video(self) -> bool:
+        return self.media_type == "video"
+
+    @property
+    def resolution_text(self) -> str:
+        return f"{self.width} × {self.height}" if self.width and self.height else "Unknown"
+
+    @property
+    def duration_text(self) -> str:
+        if not self.duration:
+            return ""
+        total = int(round(self.duration))
+        hours, rest = divmod(total, 3600)
+        minutes, seconds = divmod(rest, 60)
+        return f"{hours}:{minutes:02}:{seconds:02}" if hours else f"{minutes}:{seconds:02}"
+
+    @property
+    def size_text(self) -> str:
+        size = float(self.file_size or 0)
+        if size < 1024:
+            return f"{size:.0f} B"
+        for unit in ("KB", "MB"):
+            size /= 1024
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+        return f"{size / 1024:.1f} GB"
 
 
 class Database:
@@ -107,6 +164,59 @@ class Database:
         )
 
     # -- media library -------------------------------------------------------
+
+    def add_media(self, path: str, media_type: str, width: int | None, height: int | None,
+                  duration: float | None, file_size: int | None, thumbnail: str | None) -> int | None:
+        """Insert a library entry. Returns the new id, or None if the path is already in the library."""
+        cursor = self.execute(
+            "INSERT OR IGNORE INTO media (path, filename, media_type, width, height, duration, file_size, thumbnail)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (path, Path(path).name, media_type, width, height, duration, file_size, thumbnail),
+        )
+        return cursor.lastrowid if cursor.rowcount else None
+
+    def has_media(self, path: str) -> bool:
+        return bool(self.query("SELECT 1 FROM media WHERE path = ?", (path,)))
+
+    def get_media(self, media_id: int) -> MediaItem | None:
+        rows = self.query("SELECT * FROM media WHERE id = ?", (media_id,))
+        return MediaItem.from_row(rows[0]) if rows else None
+
+    @staticmethod
+    def _media_filter(search: str, media_type: str | None, favorites_only: bool) -> tuple[str, list]:
+        clauses, params = [], []
+        if search.strip():
+            clauses.append("instr(lower(filename), lower(?)) > 0")
+            params.append(search.strip())
+        if media_type:
+            clauses.append("media_type = ?")
+            params.append(media_type)
+        if favorites_only:
+            clauses.append("favorite = 1")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, params
+
+    def list_media(self, search: str = "", media_type: str | None = None, favorites_only: bool = False,
+                   sort: str = "newest", limit: int = -1, offset: int = 0) -> list[MediaItem]:
+        where, params = self._media_filter(search, media_type, favorites_only)
+        order = SORT_ORDERS.get(sort, SORT_ORDERS["newest"])
+        rows = self.query(f"SELECT * FROM media {where} ORDER BY {order} LIMIT ? OFFSET ?",
+                          (*params, limit, offset))
+        return [MediaItem.from_row(r) for r in rows]
+
+    def count_media(self, search: str = "", media_type: str | None = None, favorites_only: bool = False) -> int:
+        where, params = self._media_filter(search, media_type, favorites_only)
+        return self.query(f"SELECT COUNT(*) FROM media {where}", tuple(params))[0][0]
+
+    def set_favorite(self, media_id: int, favorite: bool) -> None:
+        self.execute("UPDATE media SET favorite = ? WHERE id = ?", (int(favorite), media_id))
+
+    def set_thumbnail(self, media_id: int, thumbnail: str | None) -> None:
+        self.execute("UPDATE media SET thumbnail = ? WHERE id = ?", (thumbnail, media_id))
+
+    def remove_media(self, media_id: int) -> None:
+        """Remove the library entry only. The media file itself is not touched."""
+        self.execute("DELETE FROM media WHERE id = ?", (media_id,))
 
     def media_stats(self) -> dict[str, int]:
         row = self.query(

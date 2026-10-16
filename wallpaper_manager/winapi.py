@@ -23,6 +23,18 @@ def set_app_user_model_id(app_id: str) -> None:
         log.debug("SetCurrentProcessExplicitAppUserModelID unavailable")
 
 
+SPI_GETWORKAREA = 0x0030
+
+
+def get_work_area() -> tuple[int, int, int, int] | None:
+    """Primary screen area not covered by the taskbar, as (left, top, right, bottom)
+    in physical pixels (the app is DPI aware)."""
+    rect = wintypes.RECT()
+    if not user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+        return None
+    return rect.left, rect.top, rect.right, rect.bottom
+
+
 def get_desktop_wallpaper() -> str | None:
     """Return the path of the current desktop wallpaper, or None if unknown."""
     buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH * 2)

@@ -5,8 +5,9 @@ import traceback
 from tkinter import messagebox
 
 import customtkinter as ctk
+from customtkinter.windows.widgets.scaling import ScalingTracker
 
-from . import APP_NAME, __version__
+from . import APP_NAME, __version__, winapi
 from .config import AppPaths
 from .database import Database
 from .ui import icons, theme
@@ -19,6 +20,8 @@ from .ui.pages.schedule import SchedulePage
 from .ui.pages.settings import SettingsPage
 
 log = logging.getLogger(__name__)
+
+DEFAULT_SIZE = (1240, 800)
 
 # (key, label, icon, page class) in sidebar order
 NAV_ITEMS = [
@@ -40,8 +43,8 @@ class WallpaperManagerApp(ctk.CTk):
         self.paths = paths
 
         self.title(APP_NAME)
-        self.geometry("1240x800")
-        self.minsize(1040, 680)
+        self.minsize(980, 620)
+        self._fit_to_screen()
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -55,7 +58,39 @@ class WallpaperManagerApp(ctk.CTk):
         self.pages: dict = {}
         self.current_page: str | None = None
         self.show_page("home")
+        self.after(200, self._ensure_window_size)
         log.info("Main window ready")
+
+    def _preferred_size(self) -> tuple[int, int, int, int] | None:
+        """Preferred window size (scaled units) and position (physical pixels),
+        shrunk to fit and centred on the screen's work area."""
+        work_area = winapi.get_work_area()
+        if work_area is None:
+            return None
+        left, top, right, bottom = work_area
+        scale = ScalingTracker.get_window_scaling(self)
+        width = min(DEFAULT_SIZE[0], int((right - left) / scale) - 32)
+        height = min(DEFAULT_SIZE[1], int((bottom - top) / scale) - 48)  # room for the title bar
+        x = left + ((right - left) - int(width * scale)) // 2
+        y = top + max(((bottom - top) - int((height + 32) * scale)) // 2, 0)
+        return width, height, x, y
+
+    def _fit_to_screen(self) -> None:
+        size = self._preferred_size()
+        # CustomTkinter scales width/height by the DPI factor but not the x/y position.
+        self.geometry("{}x{}+{}+{}".format(*size) if size else "{}x{}".format(*DEFAULT_SIZE))
+
+    def _ensure_window_size(self, attempts: int = 5) -> None:
+        """On high-DPI screens Windows clamps the size requested before the window is
+        first shown. Re-apply it once the window is visible, retrying briefly if needed."""
+        size = self._preferred_size()
+        if size is None:
+            return
+        scale = ScalingTracker.get_window_scaling(self)
+        if self.winfo_width() < int(size[0] * scale) - 4:
+            self._fit_to_screen()
+            if attempts > 1:
+                self.after(200, lambda: self._ensure_window_size(attempts - 1))
 
     # -- sidebar -------------------------------------------------------------
 
