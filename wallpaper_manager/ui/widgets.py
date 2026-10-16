@@ -24,6 +24,36 @@ class Card(ctk.CTkFrame):
         super().__init__(master, **kwargs)
 
 
+class Toast(ctk.CTkFrame):
+    """Short message shown at the bottom of the window for a few seconds (instead of a dialog)."""
+
+    ICONS = {"info": ("info", theme.ACCENT), "success": ("star_filled", theme.ACCENT),
+             "error": ("info", theme.DANGER)}
+
+    def __init__(self, master):
+        super().__init__(master, corner_radius=10, fg_color=theme.TOAST_BG, border_width=1,
+                         border_color=theme.CARD_BORDER, bg_color=theme.WINDOW_BG)
+        self.icon = ctk.CTkLabel(self, text="")
+        self.icon.pack(side="left", padx=(14, 8), pady=10)
+        self.label = ctk.CTkLabel(self, text="", font=theme.font(13), text_color=theme.TEXT)
+        self.label.pack(side="left", padx=(0, 18), pady=10)
+        self._hide_job: str | None = None
+
+    def show(self, message: str, kind: str = "info", duration_ms: int = 3500) -> None:
+        icon_name, color = self.ICONS.get(kind, self.ICONS["info"])
+        self.icon.configure(image=icons.icon(icon_name, 16, color))
+        self.label.configure(text=message)
+        self.place(relx=0.5, rely=1.0, y=-24, anchor="s")
+        self.lift()
+        if self._hide_job:
+            self.after_cancel(self._hide_job)
+        self._hide_job = self.after(duration_ms, self.hide)
+
+    def hide(self) -> None:
+        self._hide_job = None
+        self.place_forget()
+
+
 def button(master, text: str, command=None, icon: str | None = None, style: str = "secondary", **kwargs):
     """Create a button in one of three styles: 'primary', 'secondary' or 'danger'."""
     styles = {

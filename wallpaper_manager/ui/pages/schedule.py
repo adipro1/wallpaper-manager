@@ -253,8 +253,11 @@ class SchedulePage(BasePage):
         def failed(exc):
             messagebox.showerror("Could not apply the rule", str(exc), parent=self)
 
-        run_in_thread(self, lambda: self.scheduler.apply_rule(rule), on_done=lambda _r: self.refresh(),
-                      on_error=failed)
+        def done(_result):
+            self.refresh()
+            self.app.toast(f"Applied {rule.time} → {rule.target_name}", "success")
+
+        run_in_thread(self, lambda: self.scheduler.apply_rule(rule), on_done=done, on_error=failed)
 
     def _toggle_enabled(self) -> None:
         self.scheduler.set_enabled(bool(self.enabled.get()))

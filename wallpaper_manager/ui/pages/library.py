@@ -511,6 +511,9 @@ class LibraryPage(BasePage):
                     self.details.show(item)
                     return
             log.info("Deleted file %s", item.path)
+            self.app.toast(f"Moved {item.filename} to the Recycle Bin")
+        else:
+            self.app.toast(f"Removed {item.filename} from the library (the file is kept)")
         self.db.remove_media(item.id)
         media.delete_thumbnail(item, self.thumb_dir)
         log.info("Removed %s from library", item.path)
@@ -575,10 +578,8 @@ class LibraryPage(BasePage):
             if len(result.failed) > 8:
                 lines.append(f"…and {len(result.failed) - 8} more (see the log file).")
             messagebox.showwarning("Import finished", "\n".join(lines), parent=self)
-        elif not result.added:
-            messagebox.showinfo("Import finished", "\n".join(lines), parent=self)
         else:
-            self.header.subtitle.configure(text=f"{self.header.subtitle.cget('text')}  ·  {lines[0]}")
+            self.app.toast(" ".join(lines), "success" if result.added else "info")
 
     def _import_failed(self, exc: BaseException) -> None:
         self._end_import()

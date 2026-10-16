@@ -153,6 +153,7 @@ class SettingsPage(BasePage):
 
         def done(saved):
             self.diagnostics_btn.configure(state="normal")
+            self.app.toast("Diagnostics file saved", "success")
             winapi.show_in_explorer(str(saved))
 
         def failed(exc):
@@ -179,7 +180,7 @@ class SettingsPage(BasePage):
             self.update_button.configure(state="normal", text="Check for updates")
             self._show_update_state()
             if not version:
-                messagebox.showinfo("Updates", f"You have the latest version ({__version__}).", parent=self)
+                self.app.toast(f"You have the latest version ({__version__})")
 
         def failed(exc):
             self.update_button.configure(state="normal", text="Check for updates")

@@ -345,6 +345,8 @@ class PlaylistsPage(BasePage):
             self.refresh()
             if exc:
                 messagebox.showerror("Could not play the playlist", str(exc), parent=self)
+            else:
+                self.app.toast(f"Playing “{playlist.name}” on your desktop", "success")
 
         run_in_thread(self, lambda: self.player.start(playlist.id), on_done=lambda _r: finish(), on_error=finish)
 

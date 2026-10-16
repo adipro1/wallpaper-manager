@@ -94,11 +94,16 @@ class LockScreenPage(BasePage):
             if not os.path.exists(item.path):
                 messagebox.showerror("File not found", item.path, parent=self)
                 return
-            FramePicker(self, self.app, item, on_applied=self.refresh_current)
+            FramePicker(self, self.app, item, on_applied=self._frame_applied)
         else:
-            self._run(f"Applying {item.filename}…", lambda: self.service.set_image(item))
+            self._run(f"Applying {item.filename}…", lambda: self.service.set_image(item),
+                      f"Lock screen set: {item.filename}")
 
-    def _run(self, description: str, func) -> None:
+    def _frame_applied(self) -> None:
+        self.refresh_current()
+        self.app.toast("Lock screen set from the chosen video frame", "success")
+
+    def _run(self, description: str, func, done_message: str | None = None) -> None:
         if self.busy:
             return
         self.busy = True
@@ -110,10 +115,12 @@ class LockScreenPage(BasePage):
             self.refresh_current()
             if exc:
                 messagebox.showerror("Could not change the lock screen", str(exc), parent=self)
+            elif done_message:
+                self.app.toast(done_message, "success")
 
         run_in_thread(self, func, on_done=lambda _r: finish(), on_error=finish)
 
     def _restore_original(self) -> None:
         if messagebox.askyesno("Restore original lock screen",
                                "Go back to the lock screen you had before using Wallpaper Manager?", parent=self):
-            self._run("Restoring…", self.service.restore_original)
+            self._run("Restoring…", self.service.restore_original, "Original lock screen restored")

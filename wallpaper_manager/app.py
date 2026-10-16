@@ -24,7 +24,7 @@ from .ui.pages.playlists import PlaylistsPage
 from .ui.pages.schedule import SchedulePage
 from .ui.pages.settings import SettingsPage
 from .ui.thumbs import ThumbnailCache
-from .ui.widgets import run_in_thread
+from .ui.widgets import Toast, run_in_thread
 from .updates import UpdateChecker
 from .wallpaper import WallpaperService
 
@@ -65,6 +65,7 @@ class WallpaperManagerApp(ctk.CTk):
         self._advancing = False
         self.instance = instance
         self._tray_hint_shown = False
+        self._toast: Toast | None = None
         self._shown_once = not start_minimized
 
         self.title(APP_NAME)
@@ -143,6 +144,14 @@ class WallpaperManagerApp(ctk.CTk):
             finished()
 
         run_in_thread(self, work, on_done=finished, on_error=failed)
+
+    def toast(self, message: str, kind: str = "info") -> None:
+        """Brief confirmation at the bottom of the window ('info', 'success' or 'error')."""
+        if self.state() == "withdrawn":
+            return
+        if self._toast is None:
+            self._toast = Toast(self)
+        self._toast.show(message, kind)
 
     def refresh_visible_page(self) -> None:
         """Update pages that show the current wallpaper after it changed in the background."""

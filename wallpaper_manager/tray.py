@@ -7,6 +7,7 @@ its Tk main loop (see WallpaperManagerApp._poll_events).
 
 import logging
 import queue
+import threading
 
 import pystray
 from PIL import Image
@@ -44,7 +45,9 @@ class Tray:
         self.icon = pystray.Icon("WallpaperManager", Image.open(ICON_PNG), APP_NAME, menu)
 
     def start(self) -> None:
-        self.icon.run_detached()
+        # A daemon thread, so the process can always exit - even if the app crashes
+        # before it gets to stop the icon (pystray's own thread would keep it alive).
+        threading.Thread(target=self.icon.run, name="tray", daemon=True).start()
 
     def notify(self, message: str) -> None:
         try:

@@ -188,7 +188,7 @@ class DesktopPage(BasePage):
 
     # -- actions -----------------------------------------------------------------------
 
-    def _run(self, description: str, func) -> None:
+    def _run(self, description: str, func, done_message: str | None = None) -> None:
         """Run a wallpaper change in the background (applying a large image or starting
         the video engine can take a moment)."""
         if self.busy:
@@ -199,6 +199,8 @@ class DesktopPage(BasePage):
         def done(_result):
             self.busy = False
             self.refresh_current()
+            if done_message:
+                self.app.toast(done_message, "success")
             # Other wallpaper apps are only detectable once our window exists.
             self.after(1500, self._update_status)
 
@@ -222,7 +224,8 @@ class DesktopPage(BasePage):
         """Set a library item (image or video) as the desktop wallpaper. Used by other pages too.
         Choosing a wallpaper by hand stops a running playlist, like Windows' own slideshow."""
         self.app.playlists.stop()
-        self._run(f"Applying {item.filename}…", lambda: self.service.set(item))
+        kind = "Live wallpaper" if item.is_video else "Desktop wallpaper"
+        self._run(f"Applying {item.filename}…", lambda: self.service.set(item), f"{kind} set: {item.filename}")
 
     def _change_image_style(self, label: str) -> None:
         style = next(s for s, lbl in STYLE_LABELS.items() if lbl == label)
@@ -253,4 +256,4 @@ class DesktopPage(BasePage):
     def _restore_original(self) -> None:
         if messagebox.askyesno("Restore original wallpaper",
                                "Go back to the wallpaper you had before using Wallpaper Manager?", parent=self):
-            self._run("Restoring…", self.service.restore_original)
+            self._run("Restoring…", self.service.restore_original, "Original wallpaper restored")
