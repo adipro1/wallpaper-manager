@@ -14,7 +14,9 @@ class FakeWindows:
 
     def __init__(self, monkeypatch, current: str | None, style: str = "stretch"):
         self.wallpaper, self.style, self.calls = current, style, []
+        self.transcoded = None
         monkeypatch.setattr(winapi, "get_desktop_wallpaper", lambda: self.wallpaper)
+        monkeypatch.setattr(winapi, "get_transcoded_wallpaper", lambda: self.transcoded)
         monkeypatch.setattr(winapi, "get_wallpaper_style", lambda: self.style)
         monkeypatch.setattr(winapi, "set_wallpaper_style", self._set_style)
         monkeypatch.setattr(winapi, "set_desktop_wallpaper", self._set_wallpaper)
@@ -27,6 +29,42 @@ class FakeWindows:
         self.calls.append(path)
 
 
+class FakeLivePlayer:
+    """Records what the service asks the video engine to do."""
+
+    def __init__(self):
+        self.path, self.fill, self.muted, self.paused, self.healthy = None, None, None, False, True
+
+    active = property(lambda self: self.path is not None)
+
+    def play(self, path, fill=True, muted=True):
+        self.path, self.fill, self.muted, self.paused = path, fill, muted, False
+
+    def stop(self):
+        self.path = None
+
+    def pause(self):
+        self.paused = True
+
+    def resume(self):
+        self.paused = False
+
+    def set_fill(self, fill):
+        self.fill = fill
+
+    def set_muted(self, muted):
+        self.muted = muted
+
+    def is_healthy(self):
+        return self.healthy
+
+    def fit_to_screen(self):
+        pass
+
+    def competing_apps(self):
+        return []
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     paths = AppPaths(tmp_path / "data").ensure()
@@ -35,7 +73,7 @@ def env(tmp_path, monkeypatch):
     original_no_ext = tmp_path / "TranscodedWallpaper"
     original.rename(original_no_ext)  # Windows' copy has no file extension
     fake = FakeWindows(monkeypatch, str(original_no_ext))
-    yield db, paths, WallpaperService(db, paths), fake, tmp_path
+    yield db, paths, WallpaperService(db, paths, FakeLivePlayer()), fake, tmp_path
     db.close()
 
 
@@ -98,3 +136,92 @@ def test_set_image_rejects_videos_and_missing_files(env):
     with pytest.raises(FileNotFoundError):
         service.set_image(gone)
     assert fake.calls == []
+
+
+def test_video_plays_muted_and_saves_state(env):
+    db, paths, service, fake, tmp = env
+    video = _import(db, paths, make_video(tmp / "clip.mp4"))
+    service.set_video(video)
+    assert service.live.path == video.path and service.live.muted is True and service.live.fill is True
+    assert (service.state.kind, service.state.media_id) == ("video", video.id)
+    assert db.get_setting("original_wallpaper") is not None  # backed up before the first change
+
+
+def test_image_after_video_stops_the_video(env):
+    db, paths, service, fake, tmp = env
+    service.set_video(_import(db, paths, make_video(tmp / "clip.mp4")))
+    image = _import(db, paths, make_image(tmp / "a.png"))
+    service.set_image(image)
+    assert not service.live.active and service.state.kind == "image"
+
+
+def test_stop_video_returns_to_previous_image(env):
+    db, paths, service, fake, tmp = env
+    image = _import(db, paths, make_image(tmp / "a.png"))
+    service.set_image(image, "center")
+    service.set_video(_import(db, paths, make_video(tmp / "clip.mp4")))
+    service.stop_video()
+    assert not service.live.active
+    assert fake.calls[-1] == image.path  # desktop repainted with the static picture
+    state = service.state
+    assert (state.kind, state.media_id, state.style) == ("image", image.id, "center")
+
+
+def test_pause_resume_sound_and_fit(env):
+    db, paths, service, fake, tmp = env
+    service.set_video(_import(db, paths, make_video(tmp / "clip.mp4")))
+    service.pause_video()
+    assert service.video_paused
+    service.resume_video()
+    assert not service.video_paused
+    service.set_muted(False)
+    service.set_video_style("fit")
+    assert service.live.muted is False and service.live.fill is False and service.state.style == "fit"
+
+
+def test_shutdown_keeps_choice_and_startup_restores_it(env):
+    db, paths, service, fake, tmp = env
+    video = _import(db, paths, make_video(tmp / "clip.mp4"))
+    service.set_video(video, "fit")
+    service.shutdown()
+    assert not service.live.active and service.state.kind == "video"
+
+    restarted = WallpaperService(db, paths, FakeLivePlayer())
+    assert restarted.restore_on_startup() is True
+    assert restarted.live.path == video.path and restarted.live.fill is False
+
+    db.set_setting("resume_live_wallpaper", False)
+    assert WallpaperService(db, paths, FakeLivePlayer()).restore_on_startup() is False
+
+
+def test_check_live_recreates_lost_window(env):
+    db, paths, service, fake, tmp = env
+    video = _import(db, paths, make_video(tmp / "clip.mp4"))
+    service.set_video(video)
+    service.live.healthy = False  # e.g. Explorer was restarted
+    service.check_live()
+    assert service.live.path == video.path
+
+
+def test_backup_falls_back_to_windows_copy_when_source_is_gone(env):
+    db, paths, service, fake, tmp = env
+    transcoded = make_image(tmp / "cached.png")
+    fake.transcoded = str(transcoded)
+    fake.wallpaper = str(tmp / "deleted-since.jpg")  # Windows still reports a path that no longer exists
+    service.set_image(_import(db, paths, make_image(tmp / "a.png")))
+    original = db.get_setting("original_wallpaper")
+    assert original["path"] and original["path"].endswith("original_wallpaper.png")
+
+    service.restore_original()
+    assert fake.wallpaper == original["path"]  # a picture, not a solid colour
+
+
+def test_backup_when_current_wallpaper_is_already_the_backup_file(env):
+    db, paths, service, fake, tmp = env
+    backup_dir = paths.data_dir / "backup"
+    backup_dir.mkdir()
+    existing = make_image(backup_dir / "original_wallpaper.png")
+    fake.wallpaper = str(existing)
+    service.backup_original()
+    assert db.get_setting("original_wallpaper")["path"] == str(existing)
+    assert existing.exists()

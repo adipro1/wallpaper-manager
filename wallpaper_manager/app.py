@@ -13,6 +13,7 @@ from .database import Database
 from .wallpaper import WallpaperService
 from .ui import icons, theme
 from .ui.thumbs import ThumbnailCache
+from .ui.widgets import run_in_thread
 from .ui.pages.desktop import DesktopPage
 from .ui.pages.home import HomePage
 from .ui.pages.library import LibraryPage
@@ -24,6 +25,7 @@ from .ui.pages.settings import SettingsPage
 log = logging.getLogger(__name__)
 
 DEFAULT_SIZE = (1240, 800)
+LIVE_CHECK_MS = 3000  # how often to check that the live wallpaper window is still alive
 
 # (key, label, icon, page class) in sidebar order
 NAV_ITEMS = [
@@ -63,7 +65,39 @@ class WallpaperManagerApp(ctk.CTk):
         self.current_page: str | None = None
         self.show_page("home")
         self.after(200, self._ensure_window_size)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.after(500, self._restore_live_wallpaper)
+        self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
         log.info("Main window ready")
+
+    # -- live wallpaper lifecycle --------------------------------------------------
+
+    def _restore_live_wallpaper(self) -> None:
+        """Start the live wallpaper that was playing when the app was last closed."""
+        def on_error(exc):
+            log.warning("Could not restore the live wallpaper: %s", exc)
+
+        def on_done(started):
+            if started and self.current_page == "desktop":
+                self.pages["desktop"].refresh_current()
+
+        run_in_thread(self, self.wallpapers.restore_on_startup, on_done=on_done, on_error=on_error)
+
+    def _check_live_wallpaper(self) -> None:
+        try:
+            self.wallpapers.check_live()
+        except Exception:  # noqa: BLE001 - keep the watchdog running
+            log.exception("Live wallpaper check failed")
+        self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
+
+    def on_close(self) -> None:
+        log.info("Closing")
+        for page in self.pages.values():
+            page.on_hide()
+        try:
+            self.wallpapers.shutdown()
+        finally:
+            self.destroy()
 
     def _preferred_size(self) -> tuple[int, int, int, int] | None:
         """Preferred window size (scaled units) and position (physical pixels),

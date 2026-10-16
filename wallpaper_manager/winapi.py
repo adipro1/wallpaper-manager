@@ -24,6 +24,12 @@ def set_app_user_model_id(app_id: str) -> None:
         log.debug("SetCurrentProcessExplicitAppUserModelID unavailable")
 
 
+def get_transcoded_wallpaper() -> str | None:
+    """Windows keeps its own copy of the current wallpaper picture here."""
+    path = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Themes", "TranscodedWallpaper")
+    return path if os.path.isfile(path) else None
+
+
 SPI_GETWORKAREA = 0x0030
 
 

@@ -6,6 +6,7 @@ OneDrive or Git. Set the WPM_DATA_DIR environment variable to override it.
 """
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,3 +47,14 @@ def default_paths() -> AppPaths:
         local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         base = Path(local) / APP_ID
     return AppPaths(base).ensure()
+
+
+def _app_root() -> Path:
+    """Folder that contains main.py (or the .exe once the app is packaged)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+# Folder holding libmpv-2.dll for live wallpapers (see tools/get_libmpv.py)
+LIBMPV_DIR = _app_root() / "bin"

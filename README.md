@@ -23,6 +23,9 @@ built with Python, CustomTkinter, Pillow and SQLite.
   converted to PNG automatically, since Windows doesn't accept them reliably)
 - Your original wallpaper is backed up before the first change and can be
   restored with **Restore original**
+- **Live video wallpapers** (MP4/WEBM) that play *behind the desktop icons*:
+  looping, muted by default, pause / resume / stop, Fill or Fit, optional sound,
+  switching videos without flicker, and resuming the last video on start
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
@@ -33,8 +36,13 @@ built with Python, CustomTkinter, Pillow and SQLite.
 - Windows 10/11 (developed on Windows 11)
 - Python 3.12+
 
-FFmpeg does **not** need to be installed: video decoding uses
+FFmpeg does **not** need to be installed: thumbnails and previews use
 [PyAV](https://pyav.org/), whose wheels ship with the FFmpeg libraries.
+
+Live wallpapers are played by [libmpv](https://mpv.io/) (GPU decoding, very
+low CPU use). Its DLL is ~120 MB, so it is not stored in Git; download it once
+with `python tools/get_libmpv.py` (a pinned build, checked with SHA-256, saved
+to `bin\libmpv-2.dll`). Everything else works without it.
 
 ## Getting started
 
@@ -42,6 +50,7 @@ FFmpeg does **not** need to be installed: video decoding uses
 py -3.12 -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+python tools/get_libmpv.py   # once, for live video wallpapers
 python main.py
 ```
 
@@ -51,6 +60,24 @@ Run the tests:
 pip install -r requirements-dev.txt
 python -m pytest
 ```
+
+## How live wallpapers work
+
+Explorer draws the desktop in two layers: a `WorkerW` window that paints the
+wallpaper and, above it, the window holding the icons (`SHELLDLL_DefView`).
+The app sends Explorer's `Progman` window the (undocumented) message `0x052C`
+to create that split, then creates its own window as a child of the wallpaper
+layer. libmpv renders the video into that window, so it appears above the
+wallpaper and below the icons. See `wallpaper_manager/desktop_host.py`.
+
+- Closing the app stops the video and repaints the static wallpaper; the video
+  starts again next time (can be turned off in Settings).
+- If Explorer restarts, the app notices within a few seconds and recreates the window.
+- Other live wallpaper apps (e.g. Lively Wallpaper, Wallpaper Engine) use the
+  same layer. If one is running, the Desktop page warns that it may cover the
+  video - pause or close it.
+- Tested on Windows 11 23H2. Windows 11 24H2 changed the desktop window layout;
+  the 24H2 code path follows the known approach but has not been tested yet.
 
 ## Where data is stored
 
@@ -80,7 +107,9 @@ wallpaper_manager/
   database.py               SQLite schema, migrations, queries
   logging_setup.py          Log file + uncaught error logging
   media.py                  File types, metadata (Pillow / PyAV), thumbnails, importing
-  wallpaper.py              Applying wallpapers, original backup / restore
+  wallpaper.py              Applying wallpapers, original backup / restore, live state
+  live_wallpaper.py         libmpv video player for live wallpapers
+  desktop_host.py           Win32 window behind the desktop icons (WorkerW)
   imaging.py                Pillow resize helpers
   winapi.py                 Windows API helpers (ctypes)
   app.py                    Main window and sidebar navigation
@@ -92,6 +121,7 @@ wallpaper_manager/
     thumbs.py               Thumbnail images with badges, cached
     chooser.py              Searchable tile grid for picking a wallpaper
     pages/                  One module per sidebar page
+tools/get_libmpv.py         Downloads libmpv-2.dll into bin/
 tests/                      pytest tests
 ```
 
@@ -100,7 +130,7 @@ tests/                      pytest tests
 1. ✅ Project setup, main GUI, navigation, logging, SQLite
 2. ✅ Media import, library, thumbnails, favorites, search, previews
 3. ✅ Static desktop wallpapers
-4. Live video wallpapers behind the desktop icons
+4. ✅ Live video wallpapers behind the desktop icons
 5. Lock screen images, including frames extracted from videos
 6. Playlists (random / sequential, custom intervals)
 7. Time-based scheduling

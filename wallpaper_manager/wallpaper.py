@@ -1,8 +1,9 @@
 """Applying wallpapers and remembering what is currently set.
 
-The UI talks to WallpaperService only; it takes care of converting files Windows
-can't use directly, backing up the user's original wallpaper before the first
-change, and saving the current choice in the settings table.
+The UI talks to WallpaperService only. It converts files Windows can't use
+directly, backs up the user's original wallpaper before the first change,
+switches between static images and live video wallpapers, and saves the
+current choice in the settings table so it survives a restart.
 """
 
 import logging
@@ -16,12 +17,14 @@ from PIL import Image
 from . import imaging, winapi
 from .config import AppPaths
 from .database import Database, MediaItem
+from .live_wallpaper import LivePlayer
 
 log = logging.getLogger(__name__)
 
 # Formats Windows reliably accepts as a wallpaper; anything else is converted to PNG.
 NATIVE_WALLPAPER_FORMATS = {".jpg", ".jpeg", ".png", ".bmp"}
 IMAGE_STYLES = ["fill", "fit", "stretch", "center", "tile"]
+VIDEO_STYLES = ["fill", "fit"]
 
 
 @dataclass
@@ -38,9 +41,10 @@ class DesktopState:
 
 
 class WallpaperService:
-    def __init__(self, db: Database, paths: AppPaths):
+    def __init__(self, db: Database, paths: AppPaths, live: LivePlayer | None = None):
         self.db = db
         self.paths = paths
+        self.live = live or LivePlayer()
 
     # -- state ---------------------------------------------------------------
 
@@ -58,14 +62,15 @@ class WallpaperService:
     # -- static images -------------------------------------------------------
 
     def set_image(self, item: MediaItem, style: str | None = None) -> None:
-        """Make an image the desktop wallpaper. Safe to call from a worker thread."""
+        """Make an image the desktop wallpaper (stops a live wallpaper). Safe to call from a worker thread."""
         if item.is_video:
-            raise ValueError("Use the live wallpaper for videos")
+            raise ValueError("Use set_video for videos")
         if not os.path.exists(item.path):
             raise FileNotFoundError(f"File not found: {item.path}")
         style = style or self.db.get_setting("image_style", "fill")
         self.backup_original()
-        self._apply(self._prepare_image(item.path), style)
+        self._apply(self._prepare_image(item.path), style, item.id)
+        self.live.stop()  # after applying the image, so the old picture never flashes up
         self.db.set_setting("image_style", style)
         self._save_state(DesktopState("image", item.id, item.path, style))
         log.info("Desktop wallpaper set to %s (%s)", item.path, style)
@@ -88,10 +93,119 @@ class WallpaperService:
         imaging.open_rgb(path).save(out, "PNG")
         return str(out)
 
-    @staticmethod
-    def _apply(file_path: str, style: str) -> None:
+    def _apply(self, file_path: str, style: str, media_id: int | None = None) -> None:
         winapi.set_wallpaper_style(style)
         winapi.set_desktop_wallpaper(file_path)
+        # Remember the picture under any live wallpaper, to repaint it when the video stops.
+        self.db.set_setting("static_wallpaper", {"file": file_path, "style": style, "media_id": media_id})
+
+    def _repaint_static(self) -> None:
+        """Re-apply the static picture so Explorer repaints the area the video covered."""
+        static = self.db.get_setting("static_wallpaper") or {}
+        original = self.db.get_setting("original_wallpaper") or {}
+        for path in (static.get("file"), original.get("path")):
+            if path and os.path.exists(path):
+                try:
+                    winapi.set_desktop_wallpaper(path, persist=False)
+                except OSError:
+                    log.warning("Could not repaint the desktop", exc_info=True)
+                return
+
+    # -- live video ------------------------------------------------------------
+
+    @property
+    def muted(self) -> bool:
+        return bool(self.db.get_setting("video_muted", True))
+
+    def set_video(self, item: MediaItem, style: str | None = None) -> None:
+        """Play a video behind the desktop icons. Safe to call from a worker thread."""
+        if not item.is_video:
+            raise ValueError("Use set_image for images")
+        if not os.path.exists(item.path):
+            raise FileNotFoundError(f"File not found: {item.path}")
+        style = style or self.db.get_setting("video_style", "fill")
+        self.backup_original()
+        self.live.play(item.path, fill=style == "fill", muted=self.muted)
+        self.db.set_setting("video_style", style)
+        self._save_state(DesktopState("video", item.id, item.path, style))
+
+    def set(self, item: MediaItem) -> None:
+        """Set any library item (image or video) as the desktop wallpaper."""
+        if item.is_video:
+            self.set_video(item)
+        else:
+            self.set_image(item)
+
+    def set_video_style(self, style: str) -> None:
+        self.db.set_setting("video_style", style)
+        self.live.set_fill(style == "fill")
+        state = self.state
+        if state.kind == "video":
+            state.style = style
+            self._save_state(state)
+
+    def set_muted(self, muted: bool) -> None:
+        self.db.set_setting("video_muted", muted)
+        self.live.set_muted(muted)
+
+    @property
+    def video_active(self) -> bool:
+        return self.live.active
+
+    @property
+    def video_paused(self) -> bool:
+        return self.live.paused
+
+    def pause_video(self) -> None:
+        self.live.pause()
+
+    def resume_video(self) -> None:
+        self.live.resume()
+
+    def stop_video(self) -> None:
+        """Stop the live wallpaper and go back to the static picture underneath."""
+        if not self.live.active and self.state.kind != "video":
+            return
+        self.live.stop()
+        self._repaint_static()
+        static = self.db.get_setting("static_wallpaper") or {}
+        item = self.db.get_media(static["media_id"]) if static.get("media_id") else None
+        self._save_state(DesktopState("image", item.id, item.path, static.get("style", "fill"))
+                         if item else DesktopState())
+
+    def restore_on_startup(self) -> bool:
+        """Start the saved live wallpaper again after the app was restarted. Returns True if started."""
+        state = self.state
+        if state.kind != "video" or not self.db.get_setting("resume_live_wallpaper", True):
+            return False
+        item = self.current_item()
+        if item is None or not os.path.exists(item.path):
+            log.warning("Saved live wallpaper is no longer available: %s", state.path)
+            return False
+        self.live.play(item.path, fill=state.style == "fill", muted=self.muted)
+        return True
+
+    def check_live(self) -> None:
+        """Called periodically: recover after an Explorer restart and follow resolution changes."""
+        if not self.live.active:
+            return
+        if not self.live.is_healthy():
+            log.warning("Live wallpaper window was lost (Explorer restarted?) - recreating it")
+            path, state = self.live.path, self.state
+            self.live.stop()
+            if path:
+                self.live.play(path, fill=state.style == "fill", muted=self.muted)
+        else:
+            self.live.fit_to_screen()
+
+    def competing_apps(self) -> list[str]:
+        return self.live.competing_apps() if self.live.active else []
+
+    def shutdown(self) -> None:
+        """App is closing: remove the video window but keep the saved choice for next start."""
+        if self.live.active:
+            self.live.stop()
+            self._repaint_static()
 
     # -- original wallpaper ----------------------------------------------------
 
@@ -101,8 +215,12 @@ class WallpaperService:
         if self.db.get_setting("original_wallpaper"):
             return
         current = winapi.get_desktop_wallpaper()
+        if not (current and os.path.exists(current)):
+            # The file the wallpaper was set from may have been moved or deleted since;
+            # Windows' own cached copy is what is actually on screen.
+            current = winapi.get_transcoded_wallpaper()
         backup_path = None
-        if current and os.path.exists(current):
+        if current:
             backup_dir = self.paths.data_dir / "backup"
             backup_dir.mkdir(exist_ok=True)
             try:
@@ -110,7 +228,8 @@ class WallpaperService:
                 with Image.open(current) as img:
                     ext = {"JPEG": ".jpg", "PNG": ".png", "BMP": ".bmp"}.get(img.format or "", ".png")
                 backup_path = backup_dir / f"original_wallpaper{ext}"
-                shutil.copyfile(current, backup_path)
+                if not (backup_path.exists() and os.path.samefile(current, backup_path)):
+                    shutil.copyfile(current, backup_path)
             except OSError:
                 log.warning("Could not back up the current wallpaper %s", current, exc_info=True)
                 backup_path = None
@@ -132,5 +251,6 @@ class WallpaperService:
             self._apply(path, original.get("style", "fill"))
         else:
             winapi.set_desktop_wallpaper("")  # the user had no picture (solid colour)
+        self.live.stop()
         self._save_state(DesktopState())
         log.info("Restored the original wallpaper")

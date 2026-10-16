@@ -5,6 +5,7 @@ import logging
 import customtkinter as ctk
 
 from ... import APP_NAME, __version__, winapi
+from ...live_wallpaper import libmpv_available
 from .. import theme
 from ..widgets import BasePage, Card, PageHeader, button, segmented
 
@@ -24,7 +25,7 @@ class SettingRow(ctk.CTkFrame):
         if description:
             ctk.CTkLabel(self, text=description, font=theme.font(12), text_color=theme.TEXT_MUTED, anchor="w",
                          justify="left", wraplength=520).grid(row=1, column=0, sticky="w")
-        self.control = ctk.CTkFrame(self, fg_color="transparent")
+        self.control = ctk.CTkFrame(self, fg_color="transparent", width=1, height=1)  # no 200px default
         self.control.grid(row=0, column=1, rowspan=2, sticky="e", padx=(16, 0))
 
 
@@ -63,6 +64,20 @@ class SettingsPage(BasePage):
         row.pack(fill="x", padx=20, pady=(0, 18))
         button(row.control, "Open", lambda: winapi.open_folder(str(app.paths.log_dir)),
                icon="folder_open", width=100).pack()
+
+        # Live wallpapers
+        live = self._card("Live wallpapers")
+        row = SettingRow(live, "Resume on start", "Start the last live wallpaper again when Wallpaper Manager opens.")
+        row.pack(fill="x", padx=20, pady=(0, 12))
+        self.resume_live = ctk.CTkSwitch(row.control, text="", progress_color=theme.ACCENT, width=46,
+                                         command=lambda: app.db.set_setting("resume_live_wallpaper",
+                                                                            bool(self.resume_live.get())))
+        if app.db.get_setting("resume_live_wallpaper", True):
+            self.resume_live.select()
+        self.resume_live.pack()
+        engine = "installed" if libmpv_available() else "missing - run  python tools/get_libmpv.py"
+        row = SettingRow(live, "Video engine (libmpv)", f"Status: {engine}")
+        row.pack(fill="x", padx=20, pady=(0, 18))
 
         # About
         about = self._card("About")
