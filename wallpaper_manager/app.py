@@ -10,6 +10,7 @@ from customtkinter.windows.widgets.scaling import ScalingTracker
 from . import APP_NAME, __version__, winapi
 from .config import AppPaths
 from .database import Database
+from .lockscreen import LockScreenService
 from .wallpaper import WallpaperService
 from .ui import icons, theme
 from .ui.thumbs import ThumbnailCache
@@ -47,6 +48,7 @@ class WallpaperManagerApp(ctk.CTk):
         self.paths = paths
         self.thumbs = ThumbnailCache(db, paths.thumb_dir)
         self.wallpapers = WallpaperService(db, paths)
+        self.lockscreen = LockScreenService(db, paths)
 
         self.title(APP_NAME)
         self.minsize(980, 620)

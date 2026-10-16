@@ -26,6 +26,11 @@ built with Python, CustomTkinter, Pillow and SQLite.
 - **Live video wallpapers** (MP4/WEBM) that play *behind the desktop icons*:
   looping, muted by default, pause / resume / stop, Fill or Fit, optional sound,
   switching videos without flicker, and resuming the last video on start
+- **Lock screen**: set any library image, or pick a frame from a video
+  (slider, frame-by-frame stepping, save frame as PNG/JPG) and use that. Uses
+  the official WinRT `LockScreen` API - no admin rights or registry hacks.
+  The previous lock screen (including whether Windows Spotlight was on) is
+  backed up and can be restored
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
@@ -79,6 +84,14 @@ wallpaper and below the icons. See `wallpaper_manager/desktop_host.py`.
 - Tested on Windows 11 23H2. Windows 11 24H2 changed the desktop window layout;
   the 24H2 code path follows the known approach but has not been tested yet.
 
+## Lock screen notes
+
+Windows only supports still images on the lock screen, so videos are turned
+into a single frame of your choice. Setting a picture switches Windows from
+Spotlight to "Picture" mode; **Restore original** puts the old picture back and
+turns the Spotlight setting on again. If Spotlight doesn't start rotating again,
+pick *Windows spotlight* once in Settings → Personalization → Lock screen.
+
 ## Where data is stored
 
 Everything the app generates lives in `%LOCALAPPDATA%\WallpaperManager`:
@@ -89,6 +102,7 @@ Everything the app generates lives in `%LOCALAPPDATA%\WallpaperManager`:
 | `thumbnails\` | Generated thumbnails |
 | `backup\` | Copy of your wallpaper from before the first change |
 | `cache\` | Converted wallpaper images (e.g. WEBP → PNG) |
+| `lockscreen\` | Lock screen images (converted images, extracted video frames) |
 | `logs\wallpaper_manager.log` | Log file (rotates at 1 MB) |
 
 Your media files are never copied or moved; the database only stores their
@@ -110,6 +124,7 @@ wallpaper_manager/
   wallpaper.py              Applying wallpapers, original backup / restore, live state
   live_wallpaper.py         libmpv video player for live wallpapers
   desktop_host.py           Win32 window behind the desktop icons (WorkerW)
+  lockscreen.py             Lock screen via WinRT, frame extraction, backup / restore
   imaging.py                Pillow resize helpers
   winapi.py                 Windows API helpers (ctypes)
   app.py                    Main window and sidebar navigation
@@ -120,6 +135,7 @@ wallpaper_manager/
     preview.py              Image / GIF / video preview widget and window
     thumbs.py               Thumbnail images with badges, cached
     chooser.py              Searchable tile grid for picking a wallpaper
+    frame_picker.py         Window for choosing a video frame
     pages/                  One module per sidebar page
 tools/get_libmpv.py         Downloads libmpv-2.dll into bin/
 tests/                      pytest tests
@@ -131,7 +147,7 @@ tests/                      pytest tests
 2. ✅ Media import, library, thumbnails, favorites, search, previews
 3. ✅ Static desktop wallpapers
 4. ✅ Live video wallpapers behind the desktop icons
-5. Lock screen images, including frames extracted from videos
+5. ✅ Lock screen images, including frames extracted from videos
 6. Playlists (random / sequential, custom intervals)
 7. Time-based scheduling
 8. Tray icon, start with Windows, pause on fullscreen apps / battery

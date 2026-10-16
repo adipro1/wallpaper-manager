@@ -83,6 +83,13 @@ def probe(path: str) -> MediaInfo:
     raise ValueError(f"Unsupported file type: {path}")
 
 
+def video_fps(path: str) -> float:
+    """Frames per second (30 if the file doesn't say)."""
+    with av.open(path) as container:
+        rate = container.streams.video[0].average_rate
+    return float(rate) if rate else 30.0
+
+
 def read_video_frame(path: str, seconds: float = 0.0) -> Image.Image:
     """Decode the frame shown at `seconds` into the video and return it as an RGB image."""
     with av.open(path) as container:

@@ -11,6 +11,7 @@ from customtkinter.windows.widgets.scaling import ScalingTracker
 from ... import imaging, media, winapi
 from ...database import MediaItem
 from .. import icons, theme
+from ..frame_picker import FramePicker
 from ..preview import MediaPreview, PreviewWindow
 from ..widgets import BasePage, Card, PageHeader, button, run_in_thread, segmented
 
@@ -110,9 +111,10 @@ class DetailsPanel(Card):
         actions = ctk.CTkFrame(self, fg_color="transparent")
         actions.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 8))
         actions.grid_columnconfigure((0, 1), weight=1, uniform="actions")
-        self.set_desktop_btn = button(actions, "Set as desktop wallpaper", self._set_desktop, icon="desktop",
-                                      style="primary")
-        self.set_desktop_btn.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=4)
+        button(actions, "Desktop", self._set_desktop, icon="desktop", style="primary").grid(
+            row=0, column=0, sticky="ew", padx=4, pady=4)
+        self.lock_btn = button(actions, "Lock screen", self._set_lock_screen, icon="lock", style="primary")
+        self.lock_btn.grid(row=0, column=1, sticky="ew", padx=4, pady=4)
         self.fav_button = button(actions, "Favorite", self._toggle_favorite, icon="star")
         self.fav_button.grid(row=1, column=0, sticky="ew", padx=4, pady=4)
         button(actions, "Preview", self._open_preview, icon="open").grid(row=1, column=1, sticky="ew", padx=4, pady=4)
@@ -160,6 +162,7 @@ class DetailsPanel(Card):
         if not item.is_video:
             self.labels["Duration"].grid_remove()
             self.values["Duration"].grid_remove()
+        self.lock_btn.configure(text="Lock screen frame…" if item.is_video else "Lock screen")
         self.update_favorite()
         self.after_idle(self._fit_preview)
 
@@ -192,6 +195,10 @@ class DetailsPanel(Card):
     def _set_desktop(self) -> None:
         if self.item:
             self.page.set_as_desktop(self.item)
+
+    def _set_lock_screen(self) -> None:
+        if self.item:
+            self.page.set_as_lock_screen(self.item)
 
     def _toggle_favorite(self) -> None:
         if self.item:
@@ -464,6 +471,13 @@ class LibraryPage(BasePage):
     def set_as_desktop(self, item: MediaItem) -> None:
         """Apply the item and switch to the Desktop page so the user sees the result."""
         self.app.show_page("desktop").apply(item)
+
+    def set_as_lock_screen(self, item: MediaItem) -> None:
+        """Images switch to the Lock Screen page and apply; videos open the frame picker."""
+        if item.is_video:
+            FramePicker(self, self.app, item)
+        else:
+            self.app.show_page("lockscreen").apply(item)
 
     def toggle_favorite(self, item: MediaItem) -> None:
         item.favorite = not item.favorite
