@@ -39,6 +39,7 @@ GLYPHS = {
     "up": "\uE70E",
     "down": "\uE70D",
     "close": "\uE711",
+    "edit": "\uE70F",
 }
 
 _FONT_DIR = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")

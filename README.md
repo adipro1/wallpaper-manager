@@ -35,6 +35,11 @@ built with Python, CustomTkinter, Pillow and SQLite.
   every item once before repeating), custom change interval in minutes or
   hours, reorder / remove items; the running playlist and its position survive
   a restart. Picking a wallpaper by hand stops the playlist
+- **Schedule**: daily rules such as 07:00 → morning.jpg, 18:00 → city.mp4 or
+  22:00 → a playlist. Rules persist, can be switched on/off individually or all
+  at once, and are caught up after a restart (the rule that should be showing
+  is applied when the app starts). Edits take effect at the next rule time, or
+  immediately with *Apply now*
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
@@ -130,6 +135,7 @@ wallpaper_manager/
   desktop_host.py           Win32 window behind the desktop icons (WorkerW)
   lockscreen.py             Lock screen via WinRT, frame extraction, backup / restore
   playlists.py              Playlist playback (timer, sequential / random)
+  scheduler.py              Daily time-based rules
   imaging.py                Pillow resize helpers
   winapi.py                 Windows API helpers (ctypes)
   app.py                    Main window and sidebar navigation
@@ -154,6 +160,6 @@ tests/                      pytest tests
 4. ✅ Live video wallpapers behind the desktop icons
 5. ✅ Lock screen images, including frames extracted from videos
 6. ✅ Playlists (random / sequential, custom intervals)
-7. Time-based scheduling
+7. ✅ Time-based scheduling
 8. Tray icon, start with Windows, pause on fullscreen apps / battery
 9. Polish, tests, packaging

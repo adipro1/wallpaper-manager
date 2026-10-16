@@ -9,7 +9,7 @@ from ...database import MediaItem, Playlist
 from ...playlists import MIN_INTERVAL_SECONDS
 from .. import icons, theme
 from ..chooser import MediaChooser
-from ..widgets import BasePage, Card, PageHeader, button, run_in_thread, section_label, segmented
+from ..widgets import BasePage, Card, PageHeader, button, icon_button, run_in_thread, section_label, segmented
 
 log = logging.getLogger(__name__)
 
@@ -23,11 +23,6 @@ def format_countdown(seconds: float) -> str:
     hours, rest = divmod(seconds, 3600)
     minutes, secs = divmod(rest, 60)
     return f"{hours}:{minutes:02}:{secs:02}" if hours else f"{minutes}:{secs:02}"
-
-
-def icon_button(master, icon_name: str, command, color=theme.TEXT_MUTED) -> ctk.CTkButton:
-    return ctk.CTkButton(master, text="", width=30, height=30, corner_radius=6, fg_color="transparent",
-                         hover_color=theme.NAV_HOVER, image=icons.icon(icon_name, 14, color), command=command)
 
 
 class PlaylistRow(ctk.CTkFrame):

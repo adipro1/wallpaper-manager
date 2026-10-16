@@ -41,6 +41,12 @@ def button(master, text: str, command=None, icon: str | None = None, style: str 
     return ctk.CTkButton(master, text=text, command=command, **opts)
 
 
+def icon_button(master, icon_name: str, command, color=theme.TEXT_MUTED) -> ctk.CTkButton:
+    """Small borderless button showing only an icon (move up, remove, edit, ...)."""
+    return ctk.CTkButton(master, text="", width=30, height=30, corner_radius=6, fg_color="transparent",
+                         hover_color=theme.NAV_HOVER, image=icons.icon(icon_name, 14, color), command=command)
+
+
 def segmented(master, values: list[str], command=None, **kwargs) -> ctk.CTkSegmentedButton:
     """Segmented control styled like the Windows 11 selector bars."""
     opts = dict(height=34, font=theme.font(13), corner_radius=8, fg_color=theme.SEGMENT_BG,

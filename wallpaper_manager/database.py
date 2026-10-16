@@ -54,6 +54,17 @@ MIGRATIONS = [
         PRIMARY KEY (playlist_id, media_id)
     );
     """,
+    # 3: time-based schedule; each rule shows either one wallpaper or a playlist
+    """
+    CREATE TABLE schedule_rules (
+        id           INTEGER PRIMARY KEY,
+        time         TEXT NOT NULL,  -- 'HH:MM', every day
+        media_id     INTEGER REFERENCES media(id) ON DELETE CASCADE,
+        playlist_id  INTEGER REFERENCES playlists(id) ON DELETE CASCADE,
+        enabled      INTEGER NOT NULL DEFAULT 1,
+        CHECK ((media_id IS NULL) != (playlist_id IS NULL))
+    );
+    """,
 ]
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -83,6 +94,21 @@ class Playlist:
         if minutes >= 60 and minutes % 60 == 0:
             return f"every {minutes // 60} h"
         return f"every {minutes} min" if minutes else f"every {self.interval_seconds} s"
+
+
+@dataclass
+class ScheduleRule:
+    id: int
+    time: str  # 'HH:MM'
+    media_id: int | None
+    playlist_id: int | None
+    enabled: bool
+    target_name: str = ""  # file name or playlist name, filled in by the query
+
+    @property
+    def minutes(self) -> int:
+        hours, minutes = map(int, self.time.split(":"))
+        return hours * 60 + minutes
 
 
 @dataclass
@@ -305,6 +331,29 @@ class Database:
         with self._lock, self._conn:
             self._conn.executemany("UPDATE playlist_items SET position = ? WHERE playlist_id = ? AND media_id = ?",
                                    [(pos, playlist_id, mid) for pos, mid in enumerate(ids)])
+
+    # -- schedule --------------------------------------------------------------
+
+    def add_rule(self, time: str, media_id: int | None = None, playlist_id: int | None = None) -> int:
+        return self.execute("INSERT INTO schedule_rules (time, media_id, playlist_id) VALUES (?, ?, ?)",
+                            (time, media_id, playlist_id)).lastrowid
+
+    def update_rule(self, rule_id: int, time: str, media_id: int | None, playlist_id: int | None) -> None:
+        self.execute("UPDATE schedule_rules SET time = ?, media_id = ?, playlist_id = ? WHERE id = ?",
+                     (time, media_id, playlist_id, rule_id))
+
+    def set_rule_enabled(self, rule_id: int, enabled: bool) -> None:
+        self.execute("UPDATE schedule_rules SET enabled = ? WHERE id = ?", (int(enabled), rule_id))
+
+    def delete_rule(self, rule_id: int) -> None:
+        self.execute("DELETE FROM schedule_rules WHERE id = ?", (rule_id,))
+
+    def list_rules(self) -> list[ScheduleRule]:
+        rows = self.query(
+            "SELECT r.*, COALESCE(m.filename, p.name, '') AS target_name FROM schedule_rules r "
+            "LEFT JOIN media m ON m.id = r.media_id LEFT JOIN playlists p ON p.id = r.playlist_id "
+            "ORDER BY r.time, r.id")
+        return [ScheduleRule(**{**dict(r), "enabled": bool(r["enabled"])}) for r in rows]
 
     def media_stats(self) -> dict[str, int]:
         row = self.query(
