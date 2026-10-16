@@ -10,7 +10,7 @@ from ...database import ScheduleRule
 from ...scheduler import parse_time
 from .. import icons, theme
 from ..chooser import MediaChooser
-from ..widgets import BasePage, Card, PageHeader, button, icon_button, run_in_thread, section_label, segmented
+from ..widgets import apply_window_icon, BasePage, Card, PageHeader, button, icon_button, run_in_thread, section_label, segmented
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class RuleDialog(ctk.CTkToplevel):
 
     def __init__(self, page: "SchedulePage", rule: ScheduleRule | None = None):
         super().__init__(page, fg_color=theme.WINDOW_BG)
+        apply_window_icon(self)
         self.page = page
         self.rule = rule
         self.media_id = rule.media_id if rule else None

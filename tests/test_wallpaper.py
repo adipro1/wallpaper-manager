@@ -225,3 +225,47 @@ def test_backup_when_current_wallpaper_is_already_the_backup_file(env):
     service.backup_original()
     assert db.get_setting("original_wallpaper")["path"] == str(existing)
     assert existing.exists()
+
+
+def test_auto_pause_and_resume(env):
+    db, paths, service, fake, tmp = env
+    service.set_video(_import(db, paths, make_video(tmp / "clip.mp4")))
+    service.update_auto_pause("fullscreen")
+    assert service.video_paused and service.auto_pause_reason == "fullscreen"
+    service.update_auto_pause("fullscreen")  # still fullscreen: stays paused
+    assert service.video_paused
+    service.update_auto_pause(None)  # game closed
+    assert not service.video_paused and service.auto_pause_reason is None
+
+
+def test_auto_pause_never_overrides_the_user(env):
+    db, paths, service, fake, tmp = env
+    service.set_video(_import(db, paths, make_video(tmp / "clip.mp4")))
+    # user paused by hand: leaving fullscreen must not resume it
+    service.pause_video()
+    service.update_auto_pause("fullscreen")
+    service.update_auto_pause(None)
+    assert service.video_paused
+
+    # user resumes while on battery: don't pause again for the same reason...
+    service.resume_video()
+    service.update_auto_pause("battery")
+    service.resume_video()
+    service.update_auto_pause("battery")
+    assert not service.video_paused
+    # ...but a new reason (or the same one later) pauses again
+    service.update_auto_pause(None)
+    service.update_auto_pause("battery")
+    assert service.video_paused
+
+
+def test_next_and_random_from_library(env):
+    db, paths, service, fake, tmp = env
+    ids = media.import_files(db, [str(make_image(tmp / f"{n}.png")) for n in "abc"], paths.thumb_dir).added
+    newest_first = [m.id for m in db.list_media(sort="newest")]
+    shown = [service.next_from_library().id for _ in range(4)]
+    assert shown == newest_first + newest_first[:1]
+    for _ in range(10):
+        before = service.state.media_id
+        assert service.random_from_library().id != before
+    assert set(ids) == set(newest_first)

@@ -136,7 +136,12 @@ class DesktopPage(BasePage):
             return
         self.heading.configure(text="Live wallpaper  ·  " + ("Paused" if self.service.video_paused else "Playing"))
         others = self.service.competing_apps()
-        if others:
+        reason = self.service.auto_pause_reason
+        if reason:
+            why = {"fullscreen": "a fullscreen app is running", "battery": "the PC is on battery"}.get(reason, reason)
+            self.status.configure(text=f"Paused automatically because {why}. It resumes by itself.",
+                                  text_color=theme.TEXT_MUTED)
+        elif others:
             self.status.configure(
                 text=f"{', '.join(others)} is also showing a live wallpaper and may cover this one. "
                      "Close or pause it to see your video.", text_color=theme.DANGER)

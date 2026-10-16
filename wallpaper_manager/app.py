@@ -7,12 +7,14 @@ from tkinter import messagebox
 import customtkinter as ctk
 from customtkinter.windows.widgets.scaling import ScalingTracker
 
-from . import APP_NAME, __version__, winapi
-from .config import AppPaths
+from . import APP_NAME, __version__, system, winapi
+from .config import ICON_ICO, AppPaths
 from .database import Database
 from .lockscreen import LockScreenService
 from .playlists import PlaylistPlayer
 from .scheduler import Scheduler
+from .system import SingleInstance
+from .tray import Tray
 from .wallpaper import WallpaperService
 from .ui import icons, theme
 from .ui.thumbs import ThumbnailCache
@@ -29,6 +31,8 @@ log = logging.getLogger(__name__)
 
 DEFAULT_SIZE = (1240, 800)
 LIVE_CHECK_MS = 3000
+AUTO_PAUSE_CHECK_MS = 2000  # fullscreen / battery check
+EVENT_POLL_MS = 200  # tray clicks and requests from a second instance
 AUTOMATION_CHECK_MS = 5000  # how often to check the schedule and the running playlist  # how often to check that the live wallpaper window is still alive
 
 # (key, label, icon, page class) in sidebar order
@@ -44,7 +48,8 @@ NAV_ITEMS = [
 
 
 class WallpaperManagerApp(ctk.CTk):
-    def __init__(self, db: Database, paths: AppPaths):
+    def __init__(self, db: Database, paths: AppPaths, start_minimized: bool = False,
+                 instance: SingleInstance | None = None):
         ctk.set_appearance_mode(db.get_setting("appearance_mode"))
         super().__init__(fg_color=theme.WINDOW_BG)
         self.db = db
@@ -55,10 +60,16 @@ class WallpaperManagerApp(ctk.CTk):
         self.playlists = PlaylistPlayer(db, self.wallpapers)
         self.scheduler = Scheduler(db, self.wallpapers, self.playlists)
         self._advancing = False
+        self.instance = instance
+        self._tray_hint_shown = False
+        self._shown_once = not start_minimized
 
         self.title(APP_NAME)
+        self.iconbitmap(str(ICON_ICO))
         self.minsize(980, 620)
         self._fit_to_screen()
+        if start_minimized:  # started with Windows: live in the tray until opened
+            self.withdraw()
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -72,8 +83,13 @@ class WallpaperManagerApp(ctk.CTk):
         self.pages: dict = {}
         self.current_page: str | None = None
         self.show_page("home")
-        self.after(200, self._ensure_window_size)
+        if not start_minimized:
+            self.after(200, self._ensure_window_size)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.tray = Tray(self.wallpapers)
+        self.tray.start()
+        self.after(EVENT_POLL_MS, self._poll_events)
+        self.after(AUTO_PAUSE_CHECK_MS, self._check_auto_pause)
         self.after(500, self._restore_live_wallpaper)
         self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
         self.after(AUTOMATION_CHECK_MS, self._check_automation)
@@ -115,10 +131,7 @@ class WallpaperManagerApp(ctk.CTk):
 
         def finished(_result=None):
             self._advancing = False
-            if self.current_page == "desktop":
-                self.pages["desktop"].refresh_current()
-            elif self.current_page in ("playlists", "schedule"):
-                self.pages[self.current_page].refresh()
+            self.refresh_visible_page()
 
         def failed(exc):
             log.warning("Automatic wallpaper change failed: %s", exc)
@@ -126,13 +139,113 @@ class WallpaperManagerApp(ctk.CTk):
 
         run_in_thread(self, work, on_done=finished, on_error=failed)
 
+    def refresh_visible_page(self) -> None:
+        """Update pages that show the current wallpaper after it changed in the background."""
+        if self.state() == "withdrawn":
+            return
+        if self.current_page == "desktop":
+            self.pages["desktop"].refresh_current()
+        elif self.current_page in ("playlists", "schedule"):
+            self.pages[self.current_page].refresh()
+
+    def _check_auto_pause(self) -> None:
+        """Pause the live wallpaper while a fullscreen app runs or (optionally) on battery."""
+        self.after(AUTO_PAUSE_CHECK_MS, self._check_auto_pause)
+        if not self.wallpapers.video_active:
+            return
+        reason = None
+        try:
+            if self.db.get_setting("pause_on_fullscreen", True) and system.fullscreen_app_running():
+                reason = "fullscreen"
+            elif self.db.get_setting("pause_on_battery", False) and system.on_battery():
+                reason = "battery"
+        except OSError:
+            log.debug("Auto-pause check failed", exc_info=True)
+        before = self.wallpapers.auto_pause_reason
+        self.wallpapers.update_auto_pause(reason)
+        if self.wallpapers.auto_pause_reason != before and self.current_page == "desktop":
+            self.refresh_visible_page()
+
+    # -- tray, window visibility and exit ------------------------------------------------
+
+    def _poll_events(self) -> None:
+        """Handle tray menu clicks and "show yourself" requests from a second app instance."""
+        while not self.tray.actions.empty():
+            self._handle_tray_action(self.tray.actions.get_nowait())
+            if not self.winfo_exists():
+                return  # "Exit" was chosen
+        if self.instance and self.instance.show_requested():
+            self.show_window()
+        self.after(EVENT_POLL_MS, self._poll_events)
+
+    def _handle_tray_action(self, action: str) -> None:
+        log.info("Tray: %s", action)
+        if action == "exit":
+            self.exit_app()
+            return
+        if action == "open":
+            self.show_window()
+        elif action == "pause":
+            self.wallpapers.pause_video()
+        elif action == "resume":
+            self.wallpapers.resume_video()
+        elif action == "stop":
+            self.wallpapers.stop_video()
+        elif action in ("next", "random"):
+            self._change_wallpaper(action)
+        self.refresh_visible_page()
+
+    def _change_wallpaper(self, action: str) -> None:
+        """Tray "Next" advances the running playlist (or steps through the library);
+        "Random" picks any library item and, being a manual choice, stops the playlist."""
+        if action == "next" and self.playlists.active_playlist():
+            work = self.playlists.advance
+        elif action == "next":
+            work = self.wallpapers.next_from_library
+        else:
+            self.playlists.stop()
+            work = self.wallpapers.random_from_library
+
+        def failed(exc):
+            log.warning("Could not change the wallpaper from the tray: %s", exc)
+            self.tray.notify(f"Could not change the wallpaper: {exc}")
+
+        run_in_thread(self, work, on_done=lambda _r: self.refresh_visible_page(), on_error=failed)
+
+    def show_window(self) -> None:
+        first_show = not self._shown_once
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+        if first_show:
+            self._shown_once = True
+            self.after(200, self._ensure_window_size)
+        if self.current_page:
+            self.pages[self.current_page].on_show()
+
+    def hide_to_tray(self) -> None:
+        for page in self.pages.values():
+            page.on_hide()  # e.g. stop preview videos
+        self.withdraw()
+        if not self._tray_hint_shown:
+            self._tray_hint_shown = True
+            self.tray.notify("Still running in the system tray. Right-click the icon for options.")
+
     def on_close(self) -> None:
-        log.info("Closing")
+        """Window close button: hide to the tray (default) or quit."""
+        if self.db.get_setting("close_to_tray", True):
+            self.hide_to_tray()
+        else:
+            self.exit_app()
+
+    def exit_app(self) -> None:
+        log.info("Exiting")
         for page in self.pages.values():
             page.on_hide()
         try:
             self.wallpapers.shutdown()
         finally:
+            self.tray.stop()
             self.destroy()
 
     def _preferred_size(self) -> tuple[int, int, int, int] | None:

@@ -40,6 +40,13 @@ built with Python, CustomTkinter, Pillow and SQLite.
   at once, and are caught up after a restart (the rule that should be showing
   is applied when the app starts). Edits take effect at the next rule time, or
   immediately with *Apply now*
+- **System tray**: Open, Next wallpaper, Random wallpaper, Pause / Resume /
+  Stop video, Exit. The close button hides the window to the tray (optional)
+- **Start with Windows** (optional): starts hidden in the tray at sign-in
+- **Automatic pausing** of the live wallpaper while a fullscreen app or game is
+  running (on by default) and, optionally, while on battery. It resumes by
+  itself - but never overrides a pause or resume you did yourself
+- Only one copy runs at a time; starting it again brings the window to the front
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
@@ -65,7 +72,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python tools/get_libmpv.py   # once, for live video wallpapers
-python main.py
+python main.py               # add --minimized to start in the tray
 ```
 
 Run the tests:
@@ -136,6 +143,9 @@ wallpaper_manager/
   lockscreen.py             Lock screen via WinRT, frame extraction, backup / restore
   playlists.py              Playlist playback (timer, sequential / random)
   scheduler.py              Daily time-based rules
+  tray.py                   System tray icon and menu
+  system.py                 Fullscreen / battery detection, single instance, start with Windows
+  assets/                   App icon (made by tools/make_icon.py)
   imaging.py                Pillow resize helpers
   winapi.py                 Windows API helpers (ctypes)
   app.py                    Main window and sidebar navigation
@@ -149,6 +159,7 @@ wallpaper_manager/
     frame_picker.py         Window for choosing a video frame
     pages/                  One module per sidebar page
 tools/get_libmpv.py         Downloads libmpv-2.dll into bin/
+tools/make_icon.py          Regenerates the app icon
 tests/                      pytest tests
 ```
 
@@ -161,5 +172,5 @@ tests/                      pytest tests
 5. ✅ Lock screen images, including frames extracted from videos
 6. ✅ Playlists (random / sequential, custom intervals)
 7. ✅ Time-based scheduling
-8. Tray icon, start with Windows, pause on fullscreen apps / battery
+8. ✅ Tray icon, start with Windows, pause on fullscreen apps / battery
 9. Polish, tests, packaging

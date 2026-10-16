@@ -8,6 +8,7 @@ current choice in the settings table so it survives a restart.
 
 import logging
 import os
+import random
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,10 @@ class WallpaperService:
         self.db = db
         self.paths = paths
         self.live = live or LivePlayer()
+        # Automatic pausing (fullscreen apps, battery): the reason we paused, if we did,
+        # and a reason the user overrode by pressing Resume (we don't fight the user).
+        self.auto_pause_reason: str | None = None
+        self._overridden_reason: str | None = None
 
     # -- state ---------------------------------------------------------------
 
@@ -126,6 +131,7 @@ class WallpaperService:
         style = style or self.db.get_setting("video_style", "fill")
         self.backup_original()
         self.live.play(item.path, fill=style == "fill", muted=self.muted)
+        self.auto_pause_reason = None  # a new video starts playing; the next check re-pauses if needed
         self.db.set_setting("video_style", style)
         self._save_state(DesktopState("video", item.id, item.path, style))
 
@@ -157,21 +163,67 @@ class WallpaperService:
         return self.live.paused
 
     def pause_video(self) -> None:
+        """Pause requested by the user: stays paused until the user resumes."""
         self.live.pause()
+        self.auto_pause_reason = None
 
     def resume_video(self) -> None:
+        """Resume requested by the user, even if an automatic reason still applies."""
         self.live.resume()
+        if self.auto_pause_reason:
+            self._overridden_reason = self.auto_pause_reason
+            self.auto_pause_reason = None
+
+    def update_auto_pause(self, reason: str | None) -> None:
+        """Called every few seconds with why the video should be paused right now
+        (e.g. 'fullscreen', 'battery') or None. Only resumes what it paused itself."""
+        if not self.live.active:
+            self.auto_pause_reason = self._overridden_reason = None
+            return
+        if reason is None:
+            self._overridden_reason = None
+            if self.auto_pause_reason:
+                log.info("Resuming live wallpaper (%s ended)", self.auto_pause_reason)
+                self.auto_pause_reason = None
+                self.live.resume()
+        elif (self.auto_pause_reason is None and not self.live.paused
+              and reason != self._overridden_reason):
+            log.info("Pausing live wallpaper automatically (%s)", reason)
+            self.auto_pause_reason = reason
+            self.live.pause()
 
     def stop_video(self) -> None:
         """Stop the live wallpaper and go back to the static picture underneath."""
         if not self.live.active and self.state.kind != "video":
             return
         self.live.stop()
+        self.auto_pause_reason = None
         self._repaint_static()
         static = self.db.get_setting("static_wallpaper") or {}
         item = self.db.get_media(static["media_id"]) if static.get("media_id") else None
         self._save_state(DesktopState("image", item.id, item.path, static.get("style", "fill"))
                          if item else DesktopState())
+
+    def next_from_library(self) -> MediaItem | None:
+        """Show the library item after the current one (newest first, wrapping round)."""
+        items = self.db.list_media(sort="newest")
+        if not items:
+            return None
+        ids = [m.id for m in items]
+        current = self.state.media_id
+        item = items[(ids.index(current) + 1) % len(items)] if current in ids else items[0]
+        self.set(item)
+        return item
+
+    def random_from_library(self) -> MediaItem | None:
+        """Show a random library item other than the current one."""
+        current = self.state.media_id
+        items = [m for m in self.db.list_media() if m.id != current and os.path.exists(m.path)]
+        if not items:
+            return None
+        item = random.choice(items)
+        self.set(item)
+        return item
 
     def restore_on_startup(self) -> bool:
         """Start the saved live wallpaper again after the app was restarted. Returns True if started."""

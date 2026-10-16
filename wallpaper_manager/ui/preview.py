@@ -19,6 +19,7 @@ from PIL import Image, ImageSequence, ImageTk
 from .. import imaging
 from ..database import MediaItem
 from . import icons, theme
+from .widgets import apply_window_icon
 
 log = logging.getLogger(__name__)
 
@@ -280,6 +281,7 @@ class PreviewWindow(ctk.CTkToplevel):
 
     def __init__(self, master, item: MediaItem):
         super().__init__(master, fg_color=theme.WINDOW_BG)
+        apply_window_icon(self)
         self.title(f"Preview – {item.filename}")
         self.geometry("1100x660")
         self.minsize(480, 300)

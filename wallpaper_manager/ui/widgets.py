@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import customtkinter as ctk
 
+from ..config import ICON_ICO
 from . import icons, theme
 
 log = logging.getLogger(__name__)
@@ -92,6 +93,11 @@ class BasePage(ctk.CTkFrame):
 
     def on_hide(self) -> None:
         """Called when another page is shown (stop previews, timers, ...)."""
+
+
+def apply_window_icon(window) -> None:
+    """Use the app icon for a CTkToplevel (CustomTkinter would otherwise set its own)."""
+    window.iconbitmap(str(ICON_ICO))
 
 
 class PlaceholderPage(BasePage):

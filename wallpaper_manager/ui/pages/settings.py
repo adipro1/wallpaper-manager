@@ -1,10 +1,11 @@
 """Settings page."""
 
 import logging
+from tkinter import messagebox
 
 import customtkinter as ctk
 
-from ... import APP_NAME, __version__, winapi
+from ... import APP_NAME, __version__, system, winapi
 from ...live_wallpaper import libmpv_available
 from .. import theme
 from ..widgets import BasePage, Card, PageHeader, button, segmented
@@ -54,6 +55,27 @@ class SettingsPage(BasePage):
         self.appearance.set(label)
         self.appearance.pack()
 
+        # General
+        general = self._card("General")
+        self._switch_row(general, "Close to tray",
+                         "The close button hides the window; the app keeps running in the system tray.",
+                         app.db.get_setting("close_to_tray", True),
+                         lambda on: app.db.set_setting("close_to_tray", on))
+        self._switch_row(general, "Start with Windows",
+                         "Open Wallpaper Manager in the tray when you sign in.",
+                         system.startup_enabled(), self._set_startup, last=True)
+
+        # Performance
+        performance = self._card("Performance")
+        self._switch_row(performance, "Pause video for fullscreen apps",
+                         "Pause the live wallpaper while a game or video runs full screen.",
+                         app.db.get_setting("pause_on_fullscreen", True),
+                         lambda on: app.db.set_setting("pause_on_fullscreen", on))
+        self._switch_row(performance, "Pause video on battery",
+                         "Pause the live wallpaper while the PC runs on battery power.",
+                         app.db.get_setting("pause_on_battery", False),
+                         lambda on: app.db.set_setting("pause_on_battery", on), last=True)
+
         # Storage
         storage = self._card("Storage")
         row = SettingRow(storage, "App data folder", str(app.paths.data_dir))
@@ -67,14 +89,9 @@ class SettingsPage(BasePage):
 
         # Live wallpapers
         live = self._card("Live wallpapers")
-        row = SettingRow(live, "Resume on start", "Start the last live wallpaper again when Wallpaper Manager opens.")
-        row.pack(fill="x", padx=20, pady=(0, 12))
-        self.resume_live = ctk.CTkSwitch(row.control, text="", progress_color=theme.ACCENT, width=46,
-                                         command=lambda: app.db.set_setting("resume_live_wallpaper",
-                                                                            bool(self.resume_live.get())))
-        if app.db.get_setting("resume_live_wallpaper", True):
-            self.resume_live.select()
-        self.resume_live.pack()
+        self._switch_row(live, "Resume on start", "Start the last live wallpaper again when Wallpaper Manager opens.",
+                         app.db.get_setting("resume_live_wallpaper", True),
+                         lambda on: app.db.set_setting("resume_live_wallpaper", on))
         engine = "installed" if libmpv_available() else "missing - run  python tools/get_libmpv.py"
         row = SettingRow(live, "Video engine (libmpv)", f"Status: {engine}")
         row.pack(fill="x", padx=20, pady=(0, 18))
@@ -90,6 +107,23 @@ class SettingsPage(BasePage):
         ctk.CTkLabel(card, text=title, font=theme.font(15, "bold"), text_color=theme.TEXT, anchor="w").pack(
             fill="x", padx=20, pady=(16, 10))
         return card
+
+    def _switch_row(self, card, title: str, description: str, value: bool, on_change, last: bool = False):
+        row = SettingRow(card, title, description)
+        row.pack(fill="x", padx=20, pady=(0, 18 if last else 12))
+        switch = ctk.CTkSwitch(row.control, text="", width=46, progress_color=theme.ACCENT,
+                               command=lambda: on_change(bool(switch.get())))
+        if value:
+            switch.select()
+        switch.pack()
+        return switch
+
+    def _set_startup(self, enabled: bool) -> None:
+        try:
+            system.set_startup(enabled)
+        except OSError as exc:
+            log.error("Could not change the startup setting: %s", exc)
+            messagebox.showerror("Start with Windows", f"Could not change the setting:\n{exc}", parent=self)
 
     def _set_appearance(self, label: str) -> None:
         mode = APPEARANCE_OPTIONS[label]

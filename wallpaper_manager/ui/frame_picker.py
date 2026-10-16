@@ -13,7 +13,7 @@ from .. import imaging, media
 from ..database import MediaItem
 from ..lockscreen import format_timestamp
 from . import theme
-from .widgets import button, run_in_thread
+from .widgets import apply_window_icon, button, run_in_thread
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ class FramePicker(ctk.CTkToplevel):
 
     def __init__(self, master, app, item: MediaItem, on_applied=None):
         super().__init__(master, fg_color=theme.WINDOW_BG)
+        apply_window_icon(self)
         self.app = app
         self.item = item
         self.on_applied = on_applied

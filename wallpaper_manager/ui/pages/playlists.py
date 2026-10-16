@@ -9,7 +9,7 @@ from ...database import MediaItem, Playlist
 from ...playlists import MIN_INTERVAL_SECONDS
 from .. import icons, theme
 from ..chooser import MediaChooser
-from ..widgets import BasePage, Card, PageHeader, button, icon_button, run_in_thread, section_label, segmented
+from ..widgets import apply_window_icon, BasePage, Card, PageHeader, button, icon_button, run_in_thread, section_label, segmented
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ class AddWallpapersDialog(ctk.CTkToplevel):
 
     def __init__(self, page: "PlaylistsPage", playlist_id: int):
         super().__init__(page, fg_color=theme.WINDOW_BG)
+        apply_window_icon(self)
         self.page = page
         self.playlist_id = playlist_id
         self.title(f"Add wallpapers – {page.app.db.get_playlist(playlist_id).name}")
