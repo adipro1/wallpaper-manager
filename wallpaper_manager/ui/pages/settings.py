@@ -1,6 +1,7 @@
 """Settings page."""
 
 import logging
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -10,6 +11,7 @@ import customtkinter as ctk
 from ... import APP_NAME, __version__, system, winapi
 from ...diagnostics import save_diagnostics
 from ...live_wallpaper import libmpv_available
+from ...updates import RELEASES_PAGE
 from .. import theme
 from ..widgets import BasePage, Card, PageHeader, button, run_in_thread, segmented
 
@@ -24,8 +26,8 @@ class SettingRow(ctk.CTkFrame):
     def __init__(self, master, title: str, description: str = ""):
         super().__init__(master, fg_color="transparent")
         self.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(self, text=title, font=theme.font(14), text_color=theme.TEXT, anchor="w").grid(
-            row=0, column=0, sticky="w")
+        self.title_label = ctk.CTkLabel(self, text=title, font=theme.font(14), text_color=theme.TEXT, anchor="w")
+        self.title_label.grid(row=0, column=0, sticky="w")
         if description:
             ctk.CTkLabel(self, text=description, font=theme.font(12), text_color=theme.TEXT_MUTED, anchor="w",
                          justify="left", wraplength=520).grid(row=1, column=0, sticky="w")
@@ -66,7 +68,11 @@ class SettingsPage(BasePage):
                          lambda on: app.db.set_setting("close_to_tray", on))
         self._switch_row(general, "Start with Windows",
                          "Open Wallpaper Manager in the tray when you sign in.",
-                         system.startup_enabled(), self._set_startup, last=True)
+                         system.startup_enabled(), self._set_startup)
+        self._switch_row(general, "Check for updates",
+                         "Once a day, look for a newer version on GitHub. Nothing is installed automatically.",
+                         app.db.get_setting("check_for_updates", True),
+                         lambda on: app.db.set_setting("check_for_updates", on), last=True)
 
         # Performance
         performance = self._card("Performance")
@@ -110,8 +116,12 @@ class SettingsPage(BasePage):
 
         # About
         about = self._card("About")
-        ctk.CTkLabel(about, text=f"{APP_NAME}  ·  Version {__version__}", font=theme.font(13),
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(fill="x", padx=20, pady=(0, 18))
+        row = SettingRow(about, f"{APP_NAME}  ·  Version {__version__}", "")
+        row.pack(fill="x", padx=20, pady=(0, 18))
+        self.update_label = row.title_label
+        self.update_button = button(row.control, "Check for updates", self._check_updates, icon="refresh")
+        self.update_button.pack()
+        self._show_update_state()
 
     def _card(self, title: str) -> Card:
         card = Card(self.body)
@@ -152,6 +162,30 @@ class SettingsPage(BasePage):
         app = self.app
         run_in_thread(self, lambda: save_diagnostics(Path(path), app.db, app.paths, app.wallpapers),
                       on_done=done, on_error=failed)
+
+    def _show_update_state(self) -> None:
+        version = self.app.updates.available_version()
+        if version:
+            self.update_label.configure(text=f"{APP_NAME}  ·  Version {__version__}  ·  Version {version} is available")
+            self.update_button.configure(text=f"Download {version}", command=lambda: webbrowser.open(RELEASES_PAGE),
+                                         state="normal")
+        else:
+            self.update_label.configure(text=f"{APP_NAME}  ·  Version {__version__}")
+
+    def _check_updates(self) -> None:
+        self.update_button.configure(state="disabled", text="Checking…")
+
+        def done(version):
+            self.update_button.configure(state="normal", text="Check for updates")
+            self._show_update_state()
+            if not version:
+                messagebox.showinfo("Updates", f"You have the latest version ({__version__}).", parent=self)
+
+        def failed(exc):
+            self.update_button.configure(state="normal", text="Check for updates")
+            messagebox.showerror("Updates", f"Could not check for updates:\n{exc}", parent=self)
+
+        run_in_thread(self, lambda: self.app.updates.check_if_due(force=True), on_done=done, on_error=failed)
 
     def _set_startup(self, enabled: bool) -> None:
         try:

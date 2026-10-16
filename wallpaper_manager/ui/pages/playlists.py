@@ -9,7 +9,17 @@ from ...database import MediaItem, Playlist
 from ...playlists import MIN_INTERVAL_SECONDS
 from .. import icons, theme
 from ..chooser import MediaChooser
-from ..widgets import apply_window_icon, BasePage, Card, PageHeader, button, icon_button, run_in_thread, section_label, segmented
+from ..widgets import (
+    BasePage,
+    Card,
+    PageHeader,
+    apply_window_icon,
+    button,
+    icon_button,
+    run_in_thread,
+    section_label,
+    segmented,
+)
 
 log = logging.getLogger(__name__)
 

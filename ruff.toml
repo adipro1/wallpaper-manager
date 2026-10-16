@@ -1,0 +1,7 @@
+# Lint settings (run:  ruff check .)
+line-length = 120
+target-version = "py312"
+
+[lint]
+# Real errors (pyflakes, syntax) and import order
+select = ["F", "E9", "I"]

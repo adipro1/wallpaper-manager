@@ -15,10 +15,7 @@ from .playlists import PlaylistPlayer
 from .scheduler import Scheduler
 from .system import SingleInstance
 from .tray import Tray
-from .wallpaper import WallpaperService
 from .ui import icons, theme
-from .ui.thumbs import ThumbnailCache
-from .ui.widgets import run_in_thread
 from .ui.pages.desktop import DesktopPage
 from .ui.pages.home import HomePage
 from .ui.pages.library import LibraryPage
@@ -26,12 +23,17 @@ from .ui.pages.lockscreen import LockScreenPage
 from .ui.pages.playlists import PlaylistsPage
 from .ui.pages.schedule import SchedulePage
 from .ui.pages.settings import SettingsPage
+from .ui.thumbs import ThumbnailCache
+from .ui.widgets import run_in_thread
+from .updates import UpdateChecker
+from .wallpaper import WallpaperService
 
 log = logging.getLogger(__name__)
 
 DEFAULT_SIZE = (1240, 800)
 LIVE_CHECK_MS = 3000
 AUTO_PAUSE_CHECK_MS = 2000  # fullscreen / battery check
+UPDATE_CHECK_DELAY_MS = 15_000  # check for updates shortly after start, not during it
 EVENT_POLL_MS = 200  # tray clicks and requests from a second instance
 AUTOMATION_CHECK_MS = 5000  # how often to check the schedule and the running playlist  # how often to check that the live wallpaper window is still alive
 
@@ -59,6 +61,7 @@ class WallpaperManagerApp(ctk.CTk):
         self.lockscreen = LockScreenService(db, paths)
         self.playlists = PlaylistPlayer(db, self.wallpapers)
         self.scheduler = Scheduler(db, self.wallpapers, self.playlists)
+        self.updates = UpdateChecker(db)
         self._advancing = False
         self.instance = instance
         self._tray_hint_shown = False
@@ -91,6 +94,7 @@ class WallpaperManagerApp(ctk.CTk):
         self.tray.start()
         self.after(EVENT_POLL_MS, self._poll_events)
         self.after(AUTO_PAUSE_CHECK_MS, self._check_auto_pause)
+        self.after(UPDATE_CHECK_DELAY_MS, self._check_for_updates)
         self.after(500, self._restore_live_wallpaper)
         self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
         self.after(AUTOMATION_CHECK_MS, self._check_automation)
@@ -166,6 +170,15 @@ class WallpaperManagerApp(ctk.CTk):
         self.wallpapers.update_auto_pause(reason)
         if self.wallpapers.auto_pause_reason != before:
             self.refresh_visible_page()
+
+    def _check_for_updates(self) -> None:
+        """Once a day (in the background) look for a newer release on GitHub."""
+        def done(version):
+            if version and self.db.get_setting("notified_version") != version:
+                self.db.set_setting("notified_version", version)
+                self.tray.notify(f"Version {version} is available. Open Settings to download it.")
+
+        run_in_thread(self, self.updates.check_if_due, on_done=done, on_error=lambda exc: None)
 
     # -- tray, window visibility and exit ------------------------------------------------
 

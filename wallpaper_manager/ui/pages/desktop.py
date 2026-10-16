@@ -13,7 +13,15 @@ from ...live_wallpaper import LibmpvMissing
 from ...wallpaper import IMAGE_STYLES, VIDEO_STYLES
 from .. import icons, theme
 from ..chooser import MediaChooser
-from ..widgets import BasePage, Card, PageHeader, button, run_in_thread, section_label, segmented
+from ..widgets import (
+    BasePage,
+    Card,
+    PageHeader,
+    button,
+    run_in_thread,
+    section_label,
+    segmented,
+)
 
 log = logging.getLogger(__name__)
 
