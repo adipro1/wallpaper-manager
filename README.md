@@ -50,6 +50,12 @@ built with Python, CustomTkinter, Pillow and SQLite.
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
+**New in 1.1**: drag & drop import, multi-select with bulk actions and *Add to
+playlist*, toast messages, live wallpapers pause when the PC is locked, the
+screen is off or a maximized window hides the desktop, update check, a
+diagnostics file for bug reports (Settings), and an installer + zip on the
+[Releases page](https://github.com/adipro1/wallpaper-manager/releases).
+
 **Keyboard shortcuts**: Ctrl+1 … Ctrl+7 switch pages, Ctrl+F searches the
 library, Ctrl+I imports files. Multi-monitor setups are not supported (the
 primary monitor is used).
