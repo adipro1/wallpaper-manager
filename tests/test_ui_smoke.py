@@ -94,3 +94,46 @@ def test_close_hides_to_tray_and_shows_again(app):
     pump(app, 0.5)
     assert app.state() == "normal"
     assert app.errors == []
+
+
+class Click:
+    """Stand-in for a Tk click event with modifier keys."""
+
+    def __init__(self, ctrl=False, shift=False):
+        self.state = (0x0004 if ctrl else 0) | (0x0001 if shift else 0)
+
+
+def test_library_multi_select_and_bulk_actions(app, monkeypatch, tmp_path):
+    library = app.show_page("library")
+    pump(app)
+    items = library.items
+    library.select_item(items[0], Click())
+    library.select_item(items[2], Click(ctrl=True))
+    assert library.selected_ids == {items[0].id, items[2].id}
+    assert library.details.bulk.winfo_ismapped() or library.details.bulk.grid_info()
+
+    library.select_item(items[4], Click(shift=True))  # range from the last Ctrl+click
+    assert library.selected_ids == {m.id for m in items[2:5]}
+
+    library.bulk_favorite(True)
+    assert all(app.db.get_media(m.id).favorite for m in items[2:5])
+
+    library.select_all()
+    pid = app.db.create_playlist("Mix")
+    library._add_to_playlist(pid, "Mix", library.selected_items)
+    library._add_to_playlist(pid, "Mix", library.selected_items)  # duplicates are skipped
+    assert app.db.get_playlist(pid).item_count == len(items)
+
+    import wallpaper_manager.ui.pages.library as library_module
+    monkeypatch.setattr(library_module.messagebox, "askyesno", lambda *a, **k: True)
+    library.select_item(items[0], Click())
+    library.select_item(items[1], Click(ctrl=True))
+    paths = [m.path for m in items[:2]]
+    library.bulk_remove()
+    assert app.db.count_media() == len(items) - 2
+    assert all(__import__("os").path.exists(p) for p in paths)  # files are kept
+    assert library.selected_ids == set()
+
+    library.select_item(library.items[0], Click())  # single selection shows the details again
+    assert library.details.item is not None and not library.details.bulk.grid_info()
+    assert app.errors == []

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox
 
@@ -13,7 +14,7 @@ from ...database import MediaItem
 from .. import icons, theme
 from ..frame_picker import FramePicker
 from ..preview import MediaPreview, PreviewWindow
-from ..widgets import BasePage, Card, PageHeader, button, run_in_thread, segmented
+from ..widgets import BasePage, Card, PageHeader, button, link_button, run_in_thread, segmented
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class LibraryCard(Card):
         self.grid_columnconfigure(0, weight=1)
 
         for widget in (self, self.thumb, self.name, self.meta):
-            widget.bind("<Button-1>", lambda _e: self.item and self._on_select(self.item))
+            widget.bind("<Button-1>", lambda e: self.item and self._on_select(self.item, e))
             widget.bind("<Double-Button-1>", lambda _e: self.item and self._on_open(self.item))
             widget.configure(cursor="hand2")
 
@@ -121,10 +122,11 @@ class DetailsPanel(Card):
         button(actions, "Show in folder", self._show_in_explorer, icon="folder_open").grid(
             row=2, column=0, sticky="ew", padx=4, pady=4)
         button(actions, "Remove", self._remove, icon="delete").grid(row=2, column=1, sticky="ew", padx=4, pady=4)
-        ctk.CTkButton(actions, text="Delete file from disk…", command=self._delete_file, height=26,
-                      fg_color="transparent", hover_color=theme.NAV_HOVER, text_color=theme.DANGER,
-                      font=theme.font(12)).grid(row=3, column=0, columnspan=2, pady=(2, 0))
+        self.playlist_link = link_button(actions, "Add to playlist…", self._add_to_playlist, theme.ACCENT)
+        self.playlist_link.grid(row=3, column=0, pady=(2, 0))
+        link_button(actions, "Delete file…", self._delete_file, theme.DANGER).grid(row=3, column=1, pady=(2, 0))
         self.actions = actions
+        self._build_bulk_panel()
 
         self.empty = ctk.CTkLabel(self, text="Select a wallpaper\nto see its details", font=theme.font(13),
                                   text_color=theme.TEXT_MUTED, image=icons.icon("image", 40, theme.TEXT_SUBTLE),
@@ -132,8 +134,39 @@ class DetailsPanel(Card):
         self.bind("<Configure>", lambda _e: self.after_idle(self._fit_preview))
         self.show(None)
 
+    def _build_bulk_panel(self) -> None:
+        """Shown instead of the details when several wallpapers are selected."""
+        bulk = self.bulk = ctk.CTkFrame(self, fg_color="transparent")
+        bulk.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(bulk, text="", image=icons.icon("library", 40, theme.ACCENT)).grid(row=0, column=0, pady=(60, 6))
+        self.bulk_title = ctk.CTkLabel(bulk, text="", font=theme.font(17, "bold"), text_color=theme.TEXT)
+        self.bulk_title.grid(row=1, column=0)
+        ctk.CTkLabel(bulk, text="Ctrl+click to add or remove, Shift+click for a range",
+                     font=theme.font(12), text_color=theme.TEXT_MUTED).grid(row=2, column=0, pady=(0, 16))
+        for row, (text, icon_name, command) in enumerate([
+                ("Add to favorites", "star_filled", lambda: self.page.bulk_favorite(True)),
+                ("Remove from favorites", "star", lambda: self.page.bulk_favorite(False)),
+                ("Add to playlist…", "playlist", self._add_to_playlist),
+                ("Remove from library", "delete", self.page.bulk_remove)], start=3):
+            widget = button(bulk, text, command, icon=icon_name)
+            widget.grid(row=row, column=0, sticky="ew", padx=24, pady=4)
+            if text == "Add to playlist…":
+                self.bulk_playlist_btn = widget
+        link_button(bulk, "Clear selection", self.page.clear_selection, theme.TEXT_MUTED).grid(
+            row=7, column=0, pady=(8, 0))
+
+    def show_bulk(self, count: int) -> None:
+        self.item = None
+        self.preview.stop()
+        for widget in [self.preview, self.title, self.actions, self.empty, *self.labels.values(),
+                       *self.values.values()]:
+            widget.grid_remove()
+        self.bulk_title.configure(text=f"{count} wallpapers selected")
+        self.bulk.grid(row=0, column=0, rowspan=4, sticky="nsew")
+
     def show(self, item: MediaItem | None) -> None:
         self.item = item
+        self.bulk.grid_remove()
         widgets = [self.preview, self.title, self.actions, *self.labels.values(), *self.values.values()]
         if item is None:
             self.preview.stop()
@@ -218,6 +251,10 @@ class DetailsPanel(Card):
         if self.item:
             self.page.remove_item(self.item, delete_file=False)
 
+    def _add_to_playlist(self) -> None:
+        anchor = self.bulk_playlist_btn if self.bulk.winfo_ismapped() else self.playlist_link
+        self.page.show_playlist_menu(anchor)
+
     def _delete_file(self) -> None:
         if self.item:
             self.page.remove_item(self.item, delete_file=True)
@@ -233,7 +270,8 @@ class LibraryPage(BasePage):
         self.db = app.db
         self.thumb_dir = app.paths.thumb_dir
         self.page_index = 0
-        self.selected_id: int | None = None
+        self.selected_ids: set[int] = set()
+        self._anchor_id: int | None = None  # start of a Shift+click range
         self.items: list[MediaItem] = []
         self.cards: list[LibraryCard] = []
         self.columns = 0
@@ -374,15 +412,25 @@ class LibraryPage(BasePage):
         self._render_cards()
         self._update_empty_state(library_total, total)
 
-        # Keep the details panel in sync (the selected item may have been filtered out or removed).
-        selected = next((m for m in self.items if m.id == self.selected_id), None)
-        if selected is None:
-            self.selected_id = None
+        # Keep the selection to items still on this page (others may have been filtered out or removed).
+        self.selected_ids &= {m.id for m in self.items}
+        self._update_details()
+
+    @property
+    def selected_items(self) -> list[MediaItem]:
+        return [m for m in self.items if m.id in self.selected_ids]
+
+    def _update_details(self) -> None:
+        selected = self.selected_items
+        if len(selected) > 1:
+            self.details.show_bulk(len(selected))
+            return
+        item = selected[0] if selected else None
         shown = self.details.item
-        if selected is None or shown is None or selected.id != shown.id:
-            self.details.show(selected)
+        if item is None or shown is None or item.id != shown.id:
+            self.details.show(item)
         else:  # same item: just refresh its data without restarting the preview
-            self.details.item = selected
+            self.details.item = item
             self.details.update_favorite()
 
     def _change_page(self, delta: int) -> None:
@@ -396,7 +444,7 @@ class LibraryPage(BasePage):
         while len(self.cards) < len(self.items):
             self.cards.append(LibraryCard(self.grid_area, self.select_item, self.open_preview, self.toggle_favorite))
         for card, item in zip(self.cards, self.items):
-            card.set_item(item, self.app.thumbs.get(item, CARD_IMAGE), item.id == self.selected_id)
+            card.set_item(item, self.app.thumbs.get(item, CARD_IMAGE), item.id in self.selected_ids)
         for card in self.cards[len(self.items):]:
             card.grid_remove()
             card.item = None
@@ -437,12 +485,85 @@ class LibraryPage(BasePage):
 
     # -- actions ------------------------------------------------------------------------
 
-    def select_item(self, item: MediaItem) -> None:
-        self.selected_id = item.id
+    def select_item(self, item: MediaItem, event=None) -> None:
+        """Click selects one item; Ctrl+click adds/removes it; Shift+click selects a range."""
+        state = event.state if event is not None else 0
+        ctrl, shift = bool(state & 0x0004), bool(state & 0x0001)
+        ids = [m.id for m in self.items]
+        if shift and self._anchor_id in ids:
+            start, end = sorted((ids.index(self._anchor_id), ids.index(item.id)))
+            chosen = set(ids[start:end + 1])
+            self.selected_ids = self.selected_ids | chosen if ctrl else chosen
+        elif ctrl:
+            self.selected_ids ^= {item.id}
+            self._anchor_id = item.id
+        else:
+            self.selected_ids = {item.id}
+            self._anchor_id = item.id
+        self._sync_selection()
+
+    def _sync_selection(self) -> None:
         for card in self.cards:
             if card.item is not None:
-                card.set_selected(card.item.id == item.id)
-        self.details.show(item)
+                card.set_selected(card.item.id in self.selected_ids)
+        self._update_details()
+
+    def select_all(self) -> None:
+        self.selected_ids = {m.id for m in self.items}
+        self._sync_selection()
+
+    def clear_selection(self) -> None:
+        self.selected_ids = set()
+        self._sync_selection()
+
+    def bulk_favorite(self, favorite: bool) -> None:
+        items = self.selected_items
+        for item in items:
+            self.db.set_favorite(item.id, favorite)
+        self.refresh()
+        self.app.toast(f"{'Added' if favorite else 'Removed'} {len(items)} wallpapers "
+                       f"{'to' if favorite else 'from'} favorites", "success")
+
+    def bulk_remove(self) -> None:
+        items = self.selected_items
+        if not items or not messagebox.askyesno(
+                "Remove from library", f"Remove {len(items)} wallpapers from the library?\n\n"
+                "The files themselves are not deleted.", parent=self):
+            return
+        self.details.preview.stop()
+        for item in items:
+            self.db.remove_media(item.id)
+            media.delete_thumbnail(item, self.thumb_dir)
+        log.info("Removed %d items from the library", len(items))
+        self.selected_ids = set()
+        self.refresh()
+        self.app.toast(f"Removed {len(items)} wallpapers from the library (the files are kept)")
+
+    def show_playlist_menu(self, anchor) -> None:
+        """Small menu of playlists below `anchor`; adds the selected wallpapers to the one chosen."""
+        items = self.selected_items
+        if not items:
+            return
+        menu = tk.Menu(self, tearoff=0)
+        for playlist in self.db.list_playlists():
+            menu.add_command(label=f"{playlist.name}  ({playlist.item_count})",
+                             command=lambda p=playlist: self._add_to_playlist(p.id, p.name, items))
+        if self.db.list_playlists():
+            menu.add_separator()
+        menu.add_command(label="New playlist…", command=lambda: self._add_to_new_playlist(items))
+        menu.tk_popup(anchor.winfo_rootx(), anchor.winfo_rooty() + anchor.winfo_height())
+
+    def _add_to_new_playlist(self, items: list[MediaItem]) -> None:
+        name = (ctk.CTkInputDialog(title="New playlist", text="Name of the new playlist:").get_input() or "").strip()
+        if name:
+            self._add_to_playlist(self.db.create_playlist(name), name, items)
+
+    def _add_to_playlist(self, playlist_id: int, name: str, items: list[MediaItem]) -> None:
+        before = self.db.get_playlist(playlist_id).item_count
+        self.db.add_to_playlist(playlist_id, [m.id for m in items])
+        added = self.db.get_playlist(playlist_id).item_count - before
+        skipped = f" ({len(items) - added} already in it)" if added < len(items) else ""
+        self.app.toast(f"Added {added} to “{name}”{skipped}", "success")
 
     def show_item(self, media_id: int) -> None:
         """Select an item from elsewhere in the app (e.g. the Home page)."""
@@ -450,7 +571,8 @@ class LibraryPage(BasePage):
         self.type_filter.set("All")
         self.favorites_only.deselect()
         self.sort.set("Newest first")
-        self.selected_id = media_id
+        self.selected_ids = {media_id}
+        self._anchor_id = media_id
         self.refresh(reset_page=True)
         ids = [m.id for m in self.db.list_media(sort="newest")]
         if media_id in ids:
@@ -517,8 +639,7 @@ class LibraryPage(BasePage):
         self.db.remove_media(item.id)
         media.delete_thumbnail(item, self.thumb_dir)
         log.info("Removed %s from library", item.path)
-        if self.selected_id == item.id:
-            self.selected_id = None
+        self.selected_ids.discard(item.id)
         self.refresh()
 
     # -- importing ----------------------------------------------------------------------

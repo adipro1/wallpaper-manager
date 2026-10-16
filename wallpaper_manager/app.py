@@ -1,6 +1,7 @@
 """Main window: sidebar navigation plus a content area that hosts the pages."""
 
 import logging
+import tkinter as tk
 import traceback
 from tkinter import messagebox
 
@@ -308,6 +309,15 @@ class WallpaperManagerApp(ctk.CTk):
             self.bind_all(f"<Control-Key-{number}>", lambda _e, k=key: self.show_page(k))
         self.bind_all("<Control-f>", lambda _e: self._focus_library_search())
         self.bind_all("<Control-i>", lambda _e: self.show_page("library").import_files())
+        # Library selection: Ctrl+A selects the page, Delete removes, Esc clears (not while typing).
+        self.bind_all("<Control-a>", lambda _e: self._library_key("select_all"))
+        self.bind_all("<Delete>", lambda _e: self._library_key("bulk_remove"))
+        self.bind_all("<Escape>", lambda _e: self._library_key("clear_selection"), add="+")
+
+    def _library_key(self, action: str) -> None:
+        if self.current_page != "library" or isinstance(self.focus_get(), tk.Entry):
+            return  # leave Ctrl+A / Delete to text boxes
+        getattr(self.pages["library"], action)()
 
     def _focus_library_search(self) -> None:
         self.show_page("library").search_entry.focus_set()

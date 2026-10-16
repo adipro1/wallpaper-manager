@@ -72,6 +72,12 @@ def button(master, text: str, command=None, icon: str | None = None, style: str 
     return ctk.CTkButton(master, text=text, command=command, **opts)
 
 
+def link_button(master, text: str, command, color=theme.ACCENT) -> ctk.CTkButton:
+    """Text-only button that looks like a link (for secondary actions)."""
+    return ctk.CTkButton(master, text=text, command=command, height=26, fg_color="transparent",
+                         hover_color=theme.NAV_HOVER, text_color=color, font=theme.font(12))
+
+
 def icon_button(master, icon_name: str, command, color=theme.TEXT_MUTED) -> ctk.CTkButton:
     """Small borderless button showing only an icon (move up, remove, edit, ...)."""
     return ctk.CTkButton(master, text="", width=30, height=30, corner_radius=6, fg_color="transparent",
