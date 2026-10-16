@@ -29,7 +29,7 @@ class PlaylistRow(ctk.CTkFrame):
     """One entry in the list of playlists on the left."""
 
     def __init__(self, master, playlist: Playlist, selected: bool, playing: bool, on_click):
-        super().__init__(master, corner_radius=8, fg_color=theme.NAV_SELECTED if selected else "transparent",
+        super().__init__(master, corner_radius=8, fg_color=theme.LIST_SELECTED if selected else "transparent",
                          cursor="hand2")
         self.grid_columnconfigure(0, weight=1)
         name = ctk.CTkLabel(self, text=playlist.name, font=theme.font(14, "bold" if selected else "normal"),
@@ -52,7 +52,7 @@ class ItemRow(ctk.CTkFrame):
     """One wallpaper inside the selected playlist, with move / remove buttons."""
 
     def __init__(self, master, page: "PlaylistsPage", item: MediaItem, index: int, count: int, now_showing: bool):
-        super().__init__(master, corner_radius=8, fg_color=theme.NAV_SELECTED if now_showing else "transparent")
+        super().__init__(master, corner_radius=8, fg_color=theme.LIST_SELECTED if now_showing else "transparent")
         self.grid_columnconfigure(2, weight=1)
         ctk.CTkLabel(self, text=str(index + 1), width=26, font=theme.font(12), text_color=theme.TEXT_SUBTLE).grid(
             row=0, column=0, rowspan=2, padx=(6, 0))

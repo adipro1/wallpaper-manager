@@ -1,4 +1,4 @@
-"""Home page: current wallpaper and library overview."""
+"""Home page: what's on the desktop now, quick actions, automation status and the library."""
 
 import logging
 import os
@@ -6,8 +6,8 @@ from datetime import datetime
 
 import customtkinter as ctk
 
-from ... import imaging, winapi
-from .. import theme
+from ... import imaging, media, winapi
+from .. import icons, theme
 from ..widgets import BasePage, Card, PageHeader, button, section_label
 
 log = logging.getLogger(__name__)
@@ -52,18 +52,29 @@ class HomePage(BasePage):
         body.grid_columnconfigure(0, weight=1)
         self.body = body
 
-        # Current wallpaper card
+        # What's on the desktop right now + quick actions
         current = Card(body)
         current.grid(row=0, column=0, sticky="ew", padx=12, pady=(0, 16))
         current.grid_columnconfigure(1, weight=1)
         self.wallpaper_image = ctk.CTkLabel(current, text="", width=PREVIEW_SIZE[0], height=PREVIEW_SIZE[1])
-        self.wallpaper_image.grid(row=0, column=0, rowspan=3, padx=16, pady=16)
-        section_label(current, "Current desktop wallpaper").grid(row=0, column=1, sticky="sw", padx=(8, 16),
-                                                                 pady=(16, 0))
+        self.wallpaper_image.grid(row=0, column=0, rowspan=5, padx=16, pady=16)
+        self.heading = section_label(current, "Current desktop wallpaper")
+        self.heading.grid(row=0, column=1, sticky="sw", padx=(8, 16), pady=(16, 0))
         self.wallpaper_name = ctk.CTkLabel(current, text="", font=theme.font(13), text_color=theme.TEXT_MUTED,
                                            anchor="w", justify="left")
         self.wallpaper_name.grid(row=1, column=1, sticky="nw", padx=(8, 16), pady=(4, 0))
-        current.grid_rowconfigure(2, weight=1)
+
+        actions = ctk.CTkFrame(current, fg_color="transparent")
+        actions.grid(row=2, column=1, sticky="nw", padx=(8, 16), pady=(14, 0))
+        button(actions, "Next", lambda: self._change("next"), icon="refresh", width=96, height=32).pack(side="left")
+        button(actions, "Random", lambda: self._change("random"), icon="refresh", width=110, height=32).pack(
+            side="left", padx=8)
+        self.pause_btn = button(actions, "Pause", self._toggle_pause, icon="pause", width=110, height=32)
+
+        self.automation = ctk.CTkLabel(current, text="", font=theme.font(12), text_color=theme.TEXT_MUTED,
+                                       anchor="w", justify="left")
+        self.automation.grid(row=3, column=1, sticky="nw", padx=(8, 16), pady=(14, 0))
+        current.grid_rowconfigure(4, weight=1)
 
         # Library statistics
         section_label(body, "Library").grid(row=1, column=0, sticky="w", padx=14, pady=(4, 8))
@@ -91,14 +102,89 @@ class HomePage(BasePage):
             self.recent_tiles.append(tile)
         self.recent_empty = ctk.CTkLabel(self.recent, text="Nothing here yet - import some wallpapers to get started.",
                                          font=theme.font(13), text_color=theme.TEXT_MUTED)
-        self._wallpaper_key: tuple | None = None
+        self._preview_key: tuple | None = None
 
     def on_show(self) -> None:
         self.header.title_label.configure(text=greeting())
         for key, value in self.app.db.media_stats().items():
             self.stat_cards[key].value.configure(text=str(value))
-        self._show_current_wallpaper()
+        self.refresh_current()
         self._show_recent()
+
+    # -- current wallpaper -----------------------------------------------------------
+
+    def refresh_current(self) -> None:
+        service = self.app.wallpapers
+        state = service.state
+        item = service.current_item()
+        live = state.kind == "video" and item is not None and service.video_active
+
+        if live:
+            paused = service.video_paused
+            self.heading.configure(text="Live wallpaper  ·  " + ("Paused" if paused else "Playing"))
+            self.pause_btn.configure(text="Resume" if paused else "Pause",
+                                     image=icons.icon("play" if paused else "pause", 16, theme.TEXT))
+            self.pause_btn.pack(side="left")
+            self._set_preview(item.path, video=True)
+            self.wallpaper_name.configure(
+                text=f"{item.filename}\n{item.resolution_text}  ·  {item.duration_text}  ·  looping")
+        else:
+            self.heading.configure(text="Current desktop wallpaper")
+            self.pause_btn.pack_forget()
+            path = winapi.get_desktop_wallpaper()
+            name = os.path.basename(path) if path else ""
+            if item and state.kind == "image":
+                name, path = item.filename, item.path
+            elif name == "TranscodedWallpaper":  # Windows' own cached copy of the wallpaper
+                name = "Set through Windows Settings"
+            if self._set_preview(path):
+                self.wallpaper_name.configure(text=f"{name}\n{imaging.shorten_middle(os.path.dirname(path), 38)}")
+            else:
+                self.wallpaper_name.configure(text="Windows is using a solid colour or slideshow.")
+        self.automation.configure(text=self._automation_text())
+
+    def _automation_text(self) -> str:
+        lines = []
+        playlist = self.app.playlists.active_playlist()
+        if playlist:
+            minutes = round((self.app.playlists.seconds_until_change() or 0) / 60)
+            lines.append(f"Playlist “{playlist.name}” is running - next change in about {minutes} min")
+        if self.app.scheduler.enabled:
+            upcoming = self.app.scheduler.upcoming()
+            if upcoming:
+                lines.append(f"Schedule: next {upcoming[1].time} → {upcoming[1].target_name}")
+        return "\n".join(lines)
+
+    def _set_preview(self, path: str | None, video: bool = False) -> bool:
+        if not path or not os.path.exists(path):
+            self._preview_key = None
+            self.wallpaper_image.configure(image=None, text="No wallpaper image", text_color=theme.TEXT_MUTED)
+            return False
+        key = (path, os.path.getmtime(path))
+        if key == self._preview_key:
+            return True  # unchanged since last time; skip decoding a large image again
+        try:
+            img = media.read_video_frame(path, 1.0) if video else imaging.open_rgb(path, draft_size=(960, 540))
+            img = imaging.rounded(imaging.cover(img, PREVIEW_SIZE), 10)
+        except Exception:  # noqa: BLE001 - a broken preview must not break the page
+            log.warning("Could not preview the current wallpaper %s", path, exc_info=True)
+            return False
+        self._preview_key = key
+        self._preview_image = ctk.CTkImage(img, img, size=PREVIEW_SIZE)
+        self.wallpaper_image.configure(image=self._preview_image, text="")
+        return True
+
+    # -- actions ------------------------------------------------------------------------
+
+    def _change(self, action: str) -> None:
+        self.app.change_wallpaper(action)
+
+    def _toggle_pause(self) -> None:
+        if self.app.wallpapers.video_paused:
+            self.app.wallpapers.resume_video()
+        else:
+            self.app.wallpapers.pause_video()
+        self.refresh_current()
 
     def _import(self) -> None:
         self.app.show_page("library").import_files()
@@ -123,30 +209,3 @@ class HomePage(BasePage):
 
     def _open_in_library(self, media_id: int) -> None:
         self.app.show_page("library").show_item(media_id)
-
-    def _show_current_wallpaper(self) -> None:
-        path = winapi.get_desktop_wallpaper()
-        if not path or not os.path.exists(path):
-            self.wallpaper_image.configure(image=None, text="No wallpaper image", text_color=theme.TEXT_MUTED)
-            self.wallpaper_name.configure(text="Windows is using a solid colour or slideshow.")
-            self._wallpaper_key = None
-            return
-        key = (path, os.path.getmtime(path))
-        if key == self._wallpaper_key:
-            return  # unchanged since last time; skip decoding a large image again
-        try:
-            img = imaging.rounded(imaging.cover(imaging.open_rgb(path, draft_size=(960, 540)), PREVIEW_SIZE), 10)
-        except OSError:
-            log.warning("Could not read current wallpaper %s", path, exc_info=True)
-            self.wallpaper_name.configure(text=path)
-            return
-        self._wallpaper_key = key
-        self._wallpaper_ctk_image = ctk.CTkImage(img, img, size=PREVIEW_SIZE)
-        self.wallpaper_image.configure(image=self._wallpaper_ctk_image, text="")
-        name = os.path.basename(path)
-        item = self.app.wallpapers.current_item()
-        if item and self.app.wallpapers.state.kind == "image":
-            name, path = item.filename, item.path
-        elif name == "TranscodedWallpaper":  # Windows' own cached copy of the wallpaper
-            name = "Set through Windows Settings"
-        self.wallpaper_name.configure(text=f"{name}\n{imaging.shorten_middle(os.path.dirname(path), 38)}")

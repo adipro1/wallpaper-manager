@@ -86,6 +86,7 @@ class WallpaperManagerApp(ctk.CTk):
         if not start_minimized:
             self.after(200, self._ensure_window_size)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self._bind_shortcuts()
         self.tray = Tray(self.wallpapers)
         self.tray.start()
         self.after(EVENT_POLL_MS, self._poll_events)
@@ -143,8 +144,8 @@ class WallpaperManagerApp(ctk.CTk):
         """Update pages that show the current wallpaper after it changed in the background."""
         if self.state() == "withdrawn":
             return
-        if self.current_page == "desktop":
-            self.pages["desktop"].refresh_current()
+        if self.current_page in ("home", "desktop"):
+            self.pages[self.current_page].refresh_current()
         elif self.current_page in ("playlists", "schedule"):
             self.pages[self.current_page].refresh()
 
@@ -163,7 +164,7 @@ class WallpaperManagerApp(ctk.CTk):
             log.debug("Auto-pause check failed", exc_info=True)
         before = self.wallpapers.auto_pause_reason
         self.wallpapers.update_auto_pause(reason)
-        if self.wallpapers.auto_pause_reason != before and self.current_page == "desktop":
+        if self.wallpapers.auto_pause_reason != before:
             self.refresh_visible_page()
 
     # -- tray, window visibility and exit ------------------------------------------------
@@ -192,10 +193,10 @@ class WallpaperManagerApp(ctk.CTk):
         elif action == "stop":
             self.wallpapers.stop_video()
         elif action in ("next", "random"):
-            self._change_wallpaper(action)
+            self.change_wallpaper(action)
         self.refresh_visible_page()
 
-    def _change_wallpaper(self, action: str) -> None:
+    def change_wallpaper(self, action: str) -> None:
         """Tray "Next" advances the running playlist (or steps through the library);
         "Random" picks any library item and, being a manual choice, stops the playlist."""
         if action == "next" and self.playlists.active_playlist():
@@ -278,6 +279,16 @@ class WallpaperManagerApp(ctk.CTk):
             self._fit_to_screen()
             if attempts > 1:
                 self.after(200, lambda: self._ensure_window_size(attempts - 1))
+
+    def _bind_shortcuts(self) -> None:
+        """Ctrl+1…7 switch pages, Ctrl+F searches the library, Ctrl+I imports files."""
+        for number, (key, *_rest) in enumerate(NAV_ITEMS, start=1):
+            self.bind_all(f"<Control-Key-{number}>", lambda _e, k=key: self.show_page(k))
+        self.bind_all("<Control-f>", lambda _e: self._focus_library_search())
+        self.bind_all("<Control-i>", lambda _e: self.show_page("library").import_files())
+
+    def _focus_library_search(self) -> None:
+        self.show_page("library").search_entry.focus_set()
 
     # -- sidebar -------------------------------------------------------------
 

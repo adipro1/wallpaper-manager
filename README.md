@@ -3,11 +3,11 @@
 A Windows 11 desktop utility for managing static and live (video) wallpapers,
 built with Python, CustomTkinter, Pillow and SQLite.
 
-> Status: in development. See [Roadmap](#roadmap) for what works today.
+> Status: version 1.0 - all planned features are implemented (single monitor).
 
 ## Features
 
-**Working now**
+**Features**
 
 - Modern sidebar UI (Home, Desktop, Lock Screen, Library, Playlists, Schedule, Settings)
 - Dark / light / system appearance, saved between sessions
@@ -50,7 +50,9 @@ built with Python, CustomTkinter, Pillow and SQLite.
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
-**Planned** — see the roadmap below.
+**Keyboard shortcuts**: Ctrl+1 … Ctrl+7 switch pages, Ctrl+F searches the
+library, Ctrl+I imports files. Multi-monitor setups are not supported (the
+primary monitor is used).
 
 ## Requirements
 
@@ -81,6 +83,24 @@ Run the tests:
 pip install -r requirements-dev.txt
 python -m pytest
 ```
+
+The tests never change your real wallpaper or lock screen (Windows calls are
+replaced by fakes). `tests/test_ui_smoke.py` opens the real main window briefly
+and visits every page in dark and light mode.
+
+## Building a standalone app
+
+```powershell
+pip install -r requirements-dev.txt
+python tools/get_libmpv.py
+python tools/build.py
+```
+
+This creates `dist\WallpaperManager\WallpaperManager.exe` (a PyInstaller
+folder build, about 230 MB because of libmpv). Copy the whole
+`WallpaperManager` folder anywhere and run the exe - no Python needed. If you
+use *Start with Windows*, turn it on from the copy you'll keep, since the
+startup entry points at the exe that set it.
 
 ## How live wallpapers work
 
@@ -160,6 +180,7 @@ wallpaper_manager/
     pages/                  One module per sidebar page
 tools/get_libmpv.py         Downloads libmpv-2.dll into bin/
 tools/make_icon.py          Regenerates the app icon
+tools/build.py              Builds the standalone app with PyInstaller
 tests/                      pytest tests
 ```
 
@@ -173,4 +194,4 @@ tests/                      pytest tests
 6. ✅ Playlists (random / sequential, custom intervals)
 7. ✅ Time-based scheduling
 8. ✅ Tray icon, start with Windows, pause on fullscreen apps / battery
-9. Polish, tests, packaging
+9. ✅ Polish, tests, packaging

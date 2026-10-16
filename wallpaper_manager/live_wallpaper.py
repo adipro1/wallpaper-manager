@@ -7,6 +7,7 @@ installed with pip; tools/get_libmpv.py downloads it into the bin/ folder.
 
 import logging
 import os
+import threading
 
 from .config import LIBMPV_DIR
 from .desktop_host import DesktopHost, window_process_name
@@ -49,6 +50,8 @@ class LivePlayer:
         self.host: DesktopHost | None = None
         self.player = None
         self.path: str | None = None
+        # play/stop run on worker threads while the watchdog runs on the UI thread.
+        self._lock = threading.RLock()
 
     @property
     def active(self) -> bool:
@@ -60,13 +63,14 @@ class LivePlayer:
 
     def play(self, path: str, fill: bool = True, muted: bool = True) -> None:
         """Start (or switch to) a video. Switching reuses the window, so there is no flicker."""
-        if self.player is None or not self.host.is_alive():
-            self._create()
-        self.player.panscan = 1.0 if fill else 0.0  # 1.0 = crop to fill the screen, 0 = letterbox
-        self.player.mute = muted
-        self.player.pause = False
-        self.player.loadfile(path)
-        self.path = path
+        with self._lock:
+            if self.player is None or not self.host.is_alive():
+                self._create()
+            self.player.panscan = 1.0 if fill else 0.0  # 1.0 = crop to fill the screen, 0 = letterbox
+            self.player.mute = muted
+            self.player.pause = False
+            self.player.loadfile(path)
+            self.path = path
         log.info("Live wallpaper playing %s", path)
 
     def _create(self) -> None:
@@ -119,11 +123,16 @@ class LivePlayer:
         return sorted({window_process_name(hwnd) for hwnd in self.host.foreign_windows()})
 
     def fit_to_screen(self) -> None:
-        if self.host:
-            self.host.fit_to_screen()
+        with self._lock:
+            if self.host:
+                self.host.fit_to_screen()
 
     def stop(self) -> None:
         """Stop playback and remove the window."""
+        with self._lock:
+            self._stop()
+
+    def _stop(self) -> None:
         if self.player:
             try:
                 self.player.terminate()

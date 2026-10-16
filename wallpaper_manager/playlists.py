@@ -40,6 +40,13 @@ class PlaylistPlayer:
     def _save(self, state: dict | None) -> None:
         self.db.set_setting("active_playlist", state or {})
 
+    def _save_if_still_running(self, playlist_id: int, state: dict) -> None:
+        """advance() runs on a worker thread; if the user stopped (or switched) the playlist
+        meanwhile, saving would silently start it again."""
+        current = self.state
+        if current and current.get("id") == playlist_id:
+            self._save(state)
+
     def active_playlist(self) -> Playlist | None:
         state = self.state
         playlist = self.db.get_playlist(state["id"]) if state else None
@@ -105,13 +112,13 @@ class PlaylistPlayer:
                     continue
                 state["media_id"] = item.id
                 state["next_change"] = self.clock() + max(playlist.interval_seconds, MIN_INTERVAL_SECONDS)
-                self._save(state)
+                self._save_if_still_running(playlist.id, state)
                 log.info("Playlist %s: showing %s", playlist.name, item.filename)
                 return item
 
             # Nothing could be shown; don't keep retrying every few seconds.
             state["next_change"] = self.clock() + max(playlist.interval_seconds, MIN_INTERVAL_SECONDS)
-            self._save(state)
+            self._save_if_still_running(playlist.id, state)
             raise last_error or FileNotFoundError(f"None of the files in “{playlist.name}” can be found")
 
     @staticmethod

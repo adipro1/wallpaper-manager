@@ -109,7 +109,7 @@ class RuleDialog(ctk.CTkToplevel):
 
 class RuleRow(ctk.CTkFrame):
     def __init__(self, master, page: "SchedulePage", rule: ScheduleRule, active: bool):
-        super().__init__(master, corner_radius=8, fg_color=theme.NAV_SELECTED if active else "transparent")
+        super().__init__(master, corner_radius=8, fg_color=theme.LIST_SELECTED if active else "transparent")
         self.grid_columnconfigure(2, weight=1)
         ctk.CTkLabel(self, text=rule.time, width=76, font=theme.font(20, "bold"),
                      text_color=theme.TEXT if rule.enabled else theme.TEXT_SUBTLE).grid(

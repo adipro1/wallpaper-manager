@@ -100,29 +100,6 @@ def apply_window_icon(window) -> None:
     window.iconbitmap(str(ICON_ICO))
 
 
-class PlaceholderPage(BasePage):
-    """Shown for features that arrive in a later development phase."""
-
-    icon_name = "info"
-    subtitle = ""
-    planned: list[str] = []
-
-    def __init__(self, master, app):
-        super().__init__(master, app)
-        self.grid_columnconfigure(0, weight=1)
-        PageHeader(self, self.title, self.subtitle).grid(row=0, column=0, sticky="ew", padx=32, pady=(28, 20))
-        card = Card(self)
-        card.grid(row=1, column=0, sticky="ew", padx=32)
-        ctk.CTkLabel(card, text="", image=icons.icon(self.icon_name, 40, theme.ACCENT)).pack(pady=(32, 8))
-        ctk.CTkLabel(card, text="Coming in a later update", font=theme.font(17, "bold"),
-                     text_color=theme.TEXT).pack()
-        bullets = ctk.CTkFrame(card, fg_color="transparent")
-        bullets.pack(pady=(6, 28))
-        for line in self.planned:
-            ctk.CTkLabel(bullets, text=f"•   {line}", font=theme.font(13), text_color=theme.TEXT_MUTED,
-                         anchor="w").pack(anchor="w")
-
-
 def run_in_thread(
     widget,
     func: Callable[[], Any],

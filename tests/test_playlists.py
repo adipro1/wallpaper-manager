@@ -149,3 +149,21 @@ def test_deleting_running_playlist_stops_it(env):
     player.start(pid)
     db.delete_playlist(pid)
     assert player.active_playlist() is None and player.state is None
+
+
+def test_stopping_during_a_change_is_not_undone(env):
+    """The user presses Stop while the worker thread is still changing the wallpaper."""
+    db, player, service, fake, clock, ids = env
+    pid = db.create_playlist("Seq", "sequential", 300)
+    db.add_to_playlist(pid, ids[:2])
+    player.start(pid)
+    original_set = service.set
+
+    def set_and_get_stopped(item):
+        original_set(item)
+        player.stop()  # happens on the UI thread in real life
+
+    service.set = set_and_get_stopped
+    clock.now += 300
+    player.advance()
+    assert player.state is None and player.active_playlist() is None
