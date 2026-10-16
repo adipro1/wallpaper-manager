@@ -18,6 +18,11 @@ built with Python, CustomTkinter, Pillow and SQLite.
   library and in a large preview window)
 - Remove from library (keeps the file) or delete file (moves it to the Recycle Bin)
 - Home page with the current desktop wallpaper, library stats and recent imports
+- Static desktop wallpapers from the Desktop page or the Library, with Fill / Fit /
+  Stretch / Center / Tile positioning and a Random button (WEBP and GIF are
+  converted to PNG automatically, since Windows doesn't accept them reliably)
+- Your original wallpaper is backed up before the first change and can be
+  restored with **Restore original**
 - SQLite storage for settings and library metadata
 - Error logging to a rotating log file
 
@@ -55,6 +60,8 @@ Everything the app generates lives in `%LOCALAPPDATA%\WallpaperManager`:
 | --- | --- |
 | `library.db` | SQLite database (settings and library metadata) |
 | `thumbnails\` | Generated thumbnails |
+| `backup\` | Copy of your wallpaper from before the first change |
+| `cache\` | Converted wallpaper images (e.g. WEBP → PNG) |
 | `logs\wallpaper_manager.log` | Log file (rotates at 1 MB) |
 
 Your media files are never copied or moved; the database only stores their
@@ -73,6 +80,7 @@ wallpaper_manager/
   database.py               SQLite schema, migrations, queries
   logging_setup.py          Log file + uncaught error logging
   media.py                  File types, metadata (Pillow / PyAV), thumbnails, importing
+  wallpaper.py              Applying wallpapers, original backup / restore
   imaging.py                Pillow resize helpers
   winapi.py                 Windows API helpers (ctypes)
   app.py                    Main window and sidebar navigation
@@ -81,6 +89,8 @@ wallpaper_manager/
     icons.py                Icons rendered from the Segoe Fluent Icons font
     widgets.py              Shared widgets (cards, buttons, page base class)
     preview.py              Image / GIF / video preview widget and window
+    thumbs.py               Thumbnail images with badges, cached
+    chooser.py              Searchable tile grid for picking a wallpaper
     pages/                  One module per sidebar page
 tests/                      pytest tests
 ```
@@ -89,7 +99,7 @@ tests/                      pytest tests
 
 1. ✅ Project setup, main GUI, navigation, logging, SQLite
 2. ✅ Media import, library, thumbnails, favorites, search, previews
-3. Static desktop wallpapers
+3. ✅ Static desktop wallpapers
 4. Live video wallpapers behind the desktop icons
 5. Lock screen images, including frames extracted from videos
 6. Playlists (random / sequential, custom intervals)

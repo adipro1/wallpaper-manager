@@ -4,6 +4,7 @@ import ctypes
 import logging
 import os
 import subprocess
+import winreg
 from ctypes import wintypes
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,52 @@ def get_desktop_wallpaper() -> str | None:
     if not user32.SystemParametersInfoW(SPI_GETDESKWALLPAPER, len(buf), buf, 0):
         return None
     return buf.value or None
+
+
+# --- static desktop wallpaper -------------------------------------------------
+
+SPI_SETDESKWALLPAPER = 0x0014
+SPIF_UPDATEINIFILE = 0x01  # save the change in the user profile
+SPIF_SENDCHANGE = 0x02  # tell other apps the setting changed
+
+# How Windows positions the picture: (WallpaperStyle, TileWallpaper) registry values
+# under HKCU\Control Panel\Desktop. These are the same values the Settings app writes.
+WALLPAPER_STYLES = {
+    "fill": ("10", "0"),
+    "fit": ("6", "0"),
+    "stretch": ("2", "0"),
+    "center": ("0", "0"),
+    "tile": ("0", "1"),
+}
+_DESKTOP_KEY = r"Control Panel\Desktop"
+
+
+def set_desktop_wallpaper(path: str, persist: bool = True) -> None:
+    """Set the desktop wallpaper image. `path` should be a JPG, PNG or BMP file."""
+    flags = SPIF_UPDATEINIFILE | SPIF_SENDCHANGE if persist else 0
+    if not user32.SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, ctypes.c_wchar_p(path), flags):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def get_wallpaper_style() -> str:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _DESKTOP_KEY) as key:
+            style = str(winreg.QueryValueEx(key, "WallpaperStyle")[0])
+            tile = str(winreg.QueryValueEx(key, "TileWallpaper")[0])
+    except OSError:
+        return "fill"
+    for name, values in WALLPAPER_STYLES.items():
+        if values == (style, tile):
+            return name
+    return "fill"
+
+
+def set_wallpaper_style(style: str) -> None:
+    """Write the position style; it takes effect the next time the wallpaper is set."""
+    wallpaper_style, tile = WALLPAPER_STYLES[style]
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _DESKTOP_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, wallpaper_style)
+        winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, tile)
 
 
 # --- Recycle Bin -------------------------------------------------------------

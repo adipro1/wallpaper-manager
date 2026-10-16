@@ -6,11 +6,9 @@ from datetime import datetime
 
 import customtkinter as ctk
 
-from ... import imaging, media, winapi
-from ...database import MediaItem
+from ... import imaging, winapi
 from .. import theme
 from ..widgets import BasePage, Card, PageHeader, button, section_label
-from .library import card_image
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +91,6 @@ class HomePage(BasePage):
             self.recent_tiles.append(tile)
         self.recent_empty = ctk.CTkLabel(self.recent, text="Nothing here yet - import some wallpapers to get started.",
                                          font=theme.font(13), text_color=theme.TEXT_MUTED)
-        self._recent_images: dict[tuple, ctk.CTkImage] = {}
         self._wallpaper_key: tuple | None = None
 
     def on_show(self) -> None:
@@ -120,17 +117,9 @@ class HomePage(BasePage):
                 continue
             item = items[index]
             name = item.filename if len(item.filename) <= 20 else item.filename[:18] + "…"
-            tile.configure(image=self._tile_image(item), text=name)
+            tile.configure(image=self.app.thumbs.get(item, RECENT_SIZE), text=name)
             tile.bind("<Button-1>", lambda _e, media_id=item.id: self._open_in_library(media_id))
             tile.grid()
-
-    def _tile_image(self, item: MediaItem) -> ctk.CTkImage:
-        key = (item.id, item.thumbnail)
-        if key not in self._recent_images:
-            thumb = media.ensure_thumbnail(self.app.db, item, self.app.paths.thumb_dir)
-            img = card_image(thumb, item)
-            self._recent_images[key] = ctk.CTkImage(img, img, RECENT_SIZE)
-        return self._recent_images[key]
 
     def _open_in_library(self, media_id: int) -> None:
         self.app.show_page("library").show_item(media_id)
@@ -155,6 +144,9 @@ class HomePage(BasePage):
         self._wallpaper_ctk_image = ctk.CTkImage(img, img, size=PREVIEW_SIZE)
         self.wallpaper_image.configure(image=self._wallpaper_ctk_image, text="")
         name = os.path.basename(path)
-        if name == "TranscodedWallpaper":  # Windows' own cached copy of the wallpaper
+        item = self.app.wallpapers.current_item()
+        if item and self.app.wallpapers.state.kind == "image":
+            name, path = item.filename, item.path
+        elif name == "TranscodedWallpaper":  # Windows' own cached copy of the wallpaper
             name = "Set through Windows Settings"
         self.wallpaper_name.configure(text=f"{name}\n{imaging.shorten_middle(os.path.dirname(path), 38)}")

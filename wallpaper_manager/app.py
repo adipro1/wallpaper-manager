@@ -10,7 +10,9 @@ from customtkinter.windows.widgets.scaling import ScalingTracker
 from . import APP_NAME, __version__, winapi
 from .config import AppPaths
 from .database import Database
+from .wallpaper import WallpaperService
 from .ui import icons, theme
+from .ui.thumbs import ThumbnailCache
 from .ui.pages.desktop import DesktopPage
 from .ui.pages.home import HomePage
 from .ui.pages.library import LibraryPage
@@ -41,6 +43,8 @@ class WallpaperManagerApp(ctk.CTk):
         super().__init__(fg_color=theme.WINDOW_BG)
         self.db = db
         self.paths = paths
+        self.thumbs = ThumbnailCache(db, paths.thumb_dir)
+        self.wallpapers = WallpaperService(db, paths)
 
         self.title(APP_NAME)
         self.minsize(980, 620)

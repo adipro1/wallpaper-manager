@@ -7,7 +7,6 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 from customtkinter.windows.widgets.scaling import ScalingTracker
-from PIL import Image, ImageDraw, ImageFont
 
 from ... import imaging, media, winapi
 from ...database import MediaItem
@@ -24,50 +23,6 @@ SEARCH_PLACEHOLDER = "Search by file name"
 PREVIEW_MAX_HEIGHT, PREVIEW_MIN_HEIGHT = 176, 90
 TYPE_FILTERS = {"All": None, "Images": "image", "Videos": "video"}
 SORTS = {"Newest first": "newest", "Oldest first": "oldest", "Name A–Z": "name", "Name Z–A": "name_desc"}
-
-
-# --- card thumbnails ---------------------------------------------------------
-
-_badge_font: ImageFont.FreeTypeFont | None = None
-
-
-def _draw_badge(img: Image.Image, text: str, play_icon: bool = False) -> None:
-    """Draw a small rounded label (e.g. video duration) in the bottom-right corner."""
-    global _badge_font
-    if _badge_font is None:
-        try:
-            _badge_font = ImageFont.truetype(os.path.join(os.environ.get("WINDIR", r"C:\Windows"),
-                                                          "Fonts", "segoeuib.ttf"), 22)
-        except OSError:
-            _badge_font = ImageFont.load_default()
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=_badge_font)
-    icon_w = 20 if play_icon else 0
-    w, h = right - left + 20 + icon_w, bottom - top + 12
-    x0, y0 = img.width - w - 10, img.height - h - 10
-    draw.rounded_rectangle((x0, y0, x0 + w, y0 + h), radius=8, fill=(0, 0, 0, 170))
-    if play_icon:
-        cy = y0 + h / 2
-        draw.polygon([(x0 + 11, cy - 7), (x0 + 11, cy + 7), (x0 + 23, cy)], fill=(255, 255, 255, 255))
-    draw.text((x0 + 10 + icon_w - left, y0 + 6 - top), text, font=_badge_font, fill=(255, 255, 255, 255))
-    img.alpha_composite(overlay)
-
-
-def card_image(thumb_path, item: MediaItem) -> Image.Image:
-    """Card thumbnail at 2x resolution (for sharpness on scaled displays) with a type badge."""
-    size = (CARD_IMAGE[0] * 2, CARD_IMAGE[1] * 2)
-    if thumb_path is None:
-        img = Image.new("RGBA", size, (40, 40, 40, 255))
-        _draw_badge(img, "Missing")
-    else:
-        with Image.open(thumb_path) as thumb:
-            img = imaging.cover(thumb.convert("RGB"), size).convert("RGBA")
-        if item.is_video:
-            _draw_badge(img, item.duration_text or "Video", play_icon=True)
-        elif item.filename.lower().endswith(".gif"):
-            _draw_badge(img, "GIF")
-    return imaging.rounded(img, 14)
 
 
 class LibraryCard(Card):
@@ -155,15 +110,18 @@ class DetailsPanel(Card):
         actions = ctk.CTkFrame(self, fg_color="transparent")
         actions.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 8))
         actions.grid_columnconfigure((0, 1), weight=1, uniform="actions")
+        self.set_desktop_btn = button(actions, "Set as desktop wallpaper", self._set_desktop, icon="desktop",
+                                      style="primary")
+        self.set_desktop_btn.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=4)
         self.fav_button = button(actions, "Favorite", self._toggle_favorite, icon="star")
-        self.fav_button.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
-        button(actions, "Preview", self._open_preview, icon="open").grid(row=0, column=1, sticky="ew", padx=4, pady=4)
+        self.fav_button.grid(row=1, column=0, sticky="ew", padx=4, pady=4)
+        button(actions, "Preview", self._open_preview, icon="open").grid(row=1, column=1, sticky="ew", padx=4, pady=4)
         button(actions, "Show in folder", self._show_in_explorer, icon="folder_open").grid(
-            row=1, column=0, sticky="ew", padx=4, pady=4)
-        button(actions, "Remove", self._remove, icon="delete").grid(row=1, column=1, sticky="ew", padx=4, pady=4)
+            row=2, column=0, sticky="ew", padx=4, pady=4)
+        button(actions, "Remove", self._remove, icon="delete").grid(row=2, column=1, sticky="ew", padx=4, pady=4)
         ctk.CTkButton(actions, text="Delete file from disk…", command=self._delete_file, height=26,
                       fg_color="transparent", hover_color=theme.NAV_HOVER, text_color=theme.DANGER,
-                      font=theme.font(12)).grid(row=2, column=0, columnspan=2, pady=(2, 0))
+                      font=theme.font(12)).grid(row=3, column=0, columnspan=2, pady=(2, 0))
         self.actions = actions
 
         self.empty = ctk.CTkLabel(self, text="Select a wallpaper\nto see its details", font=theme.font(13),
@@ -231,6 +189,10 @@ class DetailsPanel(Card):
         except ValueError:
             return value
 
+    def _set_desktop(self) -> None:
+        if self.item:
+            self.page.set_as_desktop(self.item)
+
     def _toggle_favorite(self) -> None:
         if self.item:
             self.page.toggle_favorite(self.item)
@@ -268,7 +230,6 @@ class LibraryPage(BasePage):
         self.items: list[MediaItem] = []
         self.cards: list[LibraryCard] = []
         self.columns = 0
-        self._image_cache: dict[tuple, ctk.CTkImage] = {}
         self._search_job: str | None = None
         self.importing = False
 
@@ -424,22 +385,11 @@ class LibraryPage(BasePage):
 
     # -- grid -------------------------------------------------------------------------
 
-    def _thumbnail(self, item: MediaItem) -> ctk.CTkImage:
-        cached = self._image_cache.get((item.id, item.thumbnail))
-        if cached:
-            return cached
-        thumb_path = media.ensure_thumbnail(self.db, item, self.thumb_dir)  # may update item.thumbnail
-        img = card_image(thumb_path, item)
-        image = ctk.CTkImage(img, img, CARD_IMAGE)
-        if thumb_path is not None:  # don't cache "missing" placeholders; the file may come back
-            self._image_cache[(item.id, item.thumbnail)] = image
-        return image
-
     def _render_cards(self) -> None:
         while len(self.cards) < len(self.items):
             self.cards.append(LibraryCard(self.grid_area, self.select_item, self.open_preview, self.toggle_favorite))
         for card, item in zip(self.cards, self.items):
-            card.set_item(item, self._thumbnail(item), item.id == self.selected_id)
+            card.set_item(item, self.app.thumbs.get(item, CARD_IMAGE), item.id == self.selected_id)
         for card in self.cards[len(self.items):]:
             card.grid_remove()
             card.item = None
@@ -510,6 +460,10 @@ class LibraryPage(BasePage):
                 self.details.preview.show(self.details.item)
 
         window.bind("<Destroy>", on_close, add="+")
+
+    def set_as_desktop(self, item: MediaItem) -> None:
+        """Apply the item and switch to the Desktop page so the user sees the result."""
+        self.app.show_page("desktop").apply(item)
 
     def toggle_favorite(self, item: MediaItem) -> None:
         item.favorite = not item.favorite
