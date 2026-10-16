@@ -137,3 +137,32 @@ def test_library_multi_select_and_bulk_actions(app, monkeypatch, tmp_path):
     library.select_item(library.items[0], Click())  # single selection shows the details again
     assert library.details.item is not None and not library.details.bulk.grid_info()
     assert app.errors == []
+
+
+def test_auto_pause_reason_priority_and_settings(app, monkeypatch):
+    from wallpaper_manager import app as app_module_
+    state = {"locked": False, "screen_on": True, "fullscreen": False, "covered": False, "battery": False}
+    monkeypatch.setattr(app_module_.system, "session_locked", lambda: state["locked"])
+    monkeypatch.setattr(app_module_, "display_is_on", lambda: state["screen_on"])
+    monkeypatch.setattr(app_module_.system, "fullscreen_app_running", lambda: state["fullscreen"])
+    monkeypatch.setattr(app_module_.system, "desktop_covered", lambda: state["covered"])
+    monkeypatch.setattr(app_module_.system, "on_battery", lambda: state["battery"])
+
+    assert app._auto_pause_reason() is None
+    state.update(battery=True)
+    assert app._auto_pause_reason() is None  # battery pausing is off by default
+    app.db.set_setting("pause_on_battery", True)
+    assert app._auto_pause_reason() == "battery"
+    state.update(covered=True)
+    assert app._auto_pause_reason() == "covered"
+    state.update(fullscreen=True)
+    assert app._auto_pause_reason() == "fullscreen"
+    state.update(screen_on=False)
+    assert app._auto_pause_reason() == "screen_off"
+    state.update(locked=True)
+    assert app._auto_pause_reason() == "locked"
+
+    app.db.set_setting("pause_when_hidden", False)
+    app.db.set_setting("pause_on_fullscreen", False)
+    app.db.set_setting("pause_when_covered", False)
+    assert app._auto_pause_reason() == "battery"

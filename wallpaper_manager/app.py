@@ -12,6 +12,7 @@ from customtkinter.windows.widgets.scaling import ScalingTracker
 from . import APP_NAME, __version__, media, system, winapi
 from .config import ICON_ICO, AppPaths
 from .database import Database
+from .desktop_host import display_is_on
 from .lockscreen import LockScreenService
 from .playlists import PlaylistPlayer
 from .scheduler import Scheduler
@@ -175,18 +176,31 @@ class WallpaperManagerApp(ctk.CTk):
         self.after(AUTO_PAUSE_CHECK_MS, self._check_auto_pause)
         if not self.wallpapers.video_active:
             return
-        reason = None
         try:
-            if self.db.get_setting("pause_on_fullscreen", True) and system.fullscreen_app_running():
-                reason = "fullscreen"
-            elif self.db.get_setting("pause_on_battery", False) and system.on_battery():
-                reason = "battery"
+            reason = self._auto_pause_reason()
         except OSError:
             log.debug("Auto-pause check failed", exc_info=True)
+            reason = None
         before = self.wallpapers.auto_pause_reason
         self.wallpapers.update_auto_pause(reason)
         if self.wallpapers.auto_pause_reason != before:
             self.refresh_visible_page()
+
+    def _auto_pause_reason(self) -> str | None:
+        """Why the live wallpaper should be paused right now (most important first), or None."""
+        setting = self.db.get_setting
+        if setting("pause_when_hidden", True):
+            if system.session_locked():
+                return "locked"
+            if not display_is_on():
+                return "screen_off"
+        if setting("pause_on_fullscreen", True) and system.fullscreen_app_running():
+            return "fullscreen"
+        if setting("pause_when_covered", True) and system.desktop_covered():
+            return "covered"
+        if setting("pause_on_battery", False) and system.on_battery():
+            return "battery"
+        return None
 
     def _check_for_updates(self) -> None:
         """Once a day (in the background) look for a newer release on GitHub."""

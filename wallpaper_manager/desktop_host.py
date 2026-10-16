@@ -219,15 +219,54 @@ def primary_screen_rect(parent: int) -> tuple[int, int, int, int]:
     return points[0].x, points[0].y, width, height
 
 
+# --- screen on/off --------------------------------------------------------------------
+# Windows reports the console display state (off / on / dimmed) to windows that register
+# for GUID_CONSOLE_DISPLAY_STATE. A hidden top-level window in the host thread receives it.
+
+class GUID(ctypes.Structure):
+    _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD),
+                ("Data4", ctypes.c_ubyte * 8)]
+
+
+class POWERBROADCAST_SETTING(ctypes.Structure):
+    _fields_ = [("PowerSetting", GUID), ("DataLength", wintypes.DWORD), ("Data", wintypes.DWORD)]
+
+
+GUID_CONSOLE_DISPLAY_STATE = GUID(0x6FE69556, 0x704A, 0x47A0,
+                                  (ctypes.c_ubyte * 8)(0x8F, 0x24, 0xC2, 0x8D, 0x93, 0x6F, 0xDA, 0x47))
+RegisterPowerSettingNotification = _fn(user32.RegisterPowerSettingNotification, wintypes.HANDLE,
+                                       wintypes.HANDLE, ctypes.POINTER(GUID), wintypes.DWORD)
+UnregisterPowerSettingNotification = _fn(user32.UnregisterPowerSettingNotification, wintypes.BOOL,
+                                         wintypes.HANDLE)
+WM_POWERBROADCAST, PBT_POWERSETTINGCHANGE = 0x0218, 0x8013
+WS_POPUP = 0x80000000
+
+_display = {"on": True}  # updated by the host thread, read by the app
+
+
+def display_is_on() -> bool:
+    return _display["on"]
+
+
 @WNDPROC
 def _window_proc(hwnd, msg, wparam, lparam):
+    if msg == WM_POWERBROADCAST and wparam == PBT_POWERSETTINGCHANGE and lparam:
+        setting = ctypes.cast(lparam, ctypes.POINTER(POWERBROADCAST_SETTING)).contents
+        if bytes(setting.PowerSetting) == bytes(GUID_CONSOLE_DISPLAY_STATE):
+            _display["on"] = setting.Data != 0  # 0 = off, 1 = on, 2 = dimmed (still visible)
+            log.info("Screen is %s", "on" if _display["on"] else "off")
+        return 1
     if msg == WM_CLOSE:
         DestroyWindow(hwnd)
         return 0
     if msg == WM_DESTROY:
-        PostQuitMessage(0)
+        if hwnd in _host_windows:  # the video window ends the thread; the helper window doesn't
+            PostQuitMessage(0)
         return 0
     return DefWindowProcW(hwnd, msg, wparam, lparam)
+
+
+_host_windows: set[int] = set()
 
 
 _class_registered = False
@@ -258,6 +297,8 @@ class DesktopHost:
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
         self._error: Exception | None = None
+        self._power_hwnd = None
+        self._power_notify = None
 
     def start(self, timeout: float = 5.0) -> None:
         self._thread = threading.Thread(target=self._run, name="desktop-host", daemon=True)
@@ -288,7 +329,9 @@ class DesktopHost:
                 # player), so move ours to the top of the wallpaper layer.
                 SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
             self.hwnd, self.parent, self.rect = hwnd, parent, (x, y, width, height)
+            _host_windows.add(hwnd)
             log.info("Live wallpaper window %#x attached to %#x at %s", hwnd, parent, self.rect)
+            self._watch_display(hinstance)
         except Exception as exc:  # noqa: BLE001 - reported to the caller of start()
             self._error = exc
             self._ready.set()
@@ -299,7 +342,21 @@ class DesktopHost:
         while GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             TranslateMessage(ctypes.byref(msg))
             DispatchMessageW(ctypes.byref(msg))
+        if self._power_notify:
+            UnregisterPowerSettingNotification(self._power_notify)
+        if self._power_hwnd:
+            DestroyWindow(self._power_hwnd)
+        _host_windows.discard(self.hwnd)
+        _display["on"] = True
         log.info("Live wallpaper window closed")
+
+    def _watch_display(self, hinstance) -> None:
+        """Hidden top-level window that receives "screen turned off/on" notifications."""
+        self._power_hwnd = CreateWindowExW(0, CLASS_NAME, "Wallpaper Manager power", WS_POPUP,
+                                           0, 0, 0, 0, None, None, hinstance, None)
+        if self._power_hwnd:
+            self._power_notify = RegisterPowerSettingNotification(
+                self._power_hwnd, ctypes.byref(GUID_CONSOLE_DISPLAY_STATE), 0)  # 0 = window handle
 
     def is_alive(self) -> bool:
         """False if Explorer was restarted (our window dies with its parent)."""

@@ -147,7 +147,9 @@ class DesktopPage(BasePage):
         others = self.service.competing_apps()
         reason = self.service.auto_pause_reason
         if reason:
-            why = {"fullscreen": "a fullscreen app is running", "battery": "the PC is on battery"}.get(reason, reason)
+            why = {"fullscreen": "a fullscreen app is running", "battery": "the PC is on battery",
+                   "covered": "a maximized window covers the desktop", "locked": "the PC is locked",
+                   "screen_off": "the screen is off"}.get(reason, reason)
             self.status.configure(text=f"Paused automatically because {why}. It resumes by itself.",
                                   text_color=theme.TEXT_MUTED)
         elif others:

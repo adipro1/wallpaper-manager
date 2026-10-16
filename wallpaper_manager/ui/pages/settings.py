@@ -80,6 +80,14 @@ class SettingsPage(BasePage):
                          "Pause the live wallpaper while a game or video runs full screen.",
                          app.db.get_setting("pause_on_fullscreen", True),
                          lambda on: app.db.set_setting("pause_on_fullscreen", on))
+        self._switch_row(performance, "Pause video when the desktop is hidden",
+                         "Pause while a maximized window covers the whole desktop.",
+                         app.db.get_setting("pause_when_covered", True),
+                         lambda on: app.db.set_setting("pause_when_covered", on))
+        self._switch_row(performance, "Pause video when locked or the screen is off",
+                         "No one can see the wallpaper then, so don't spend power on it.",
+                         app.db.get_setting("pause_when_hidden", True),
+                         lambda on: app.db.set_setting("pause_when_hidden", on))
         self._switch_row(performance, "Pause video on battery",
                          "Pause the live wallpaper while the PC runs on battery power.",
                          app.db.get_setting("pause_on_battery", False),

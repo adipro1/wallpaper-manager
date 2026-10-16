@@ -85,6 +85,56 @@ def _foreground_covers_monitor() -> bool:
     return rect.left <= mon.left and rect.top <= mon.top and rect.right >= mon.right and rect.bottom >= mon.bottom
 
 
+# --- locked session / covered desktop ---------------------------------------------------
+
+OpenInputDesktop = _fn(user32.OpenInputDesktop, wintypes.HANDLE, wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+CloseDesktop = _fn(user32.CloseDesktop, wintypes.BOOL, wintypes.HANDLE)
+DESKTOP_SWITCHDESKTOP = 0x0100
+
+
+def session_locked() -> bool:
+    """True while the lock screen (or another secure desktop, e.g. a UAC prompt) is showing:
+    our process can't open the input desktop then."""
+    desktop = OpenInputDesktop(0, False, DESKTOP_SWITCHDESKTOP)
+    if not desktop:
+        return True
+    CloseDesktop(desktop)
+    return False
+
+
+EnumWindows = _fn(user32.EnumWindows, wintypes.BOOL,
+                  ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM), wintypes.LPARAM)
+IsWindowVisible = _fn(user32.IsWindowVisible, wintypes.BOOL, wintypes.HWND)
+IsIconic = _fn(user32.IsIconic, wintypes.BOOL, wintypes.HWND)
+DwmGetWindowAttribute = _fn(ctypes.WinDLL("dwmapi").DwmGetWindowAttribute, ctypes.c_long, wintypes.HWND,
+                            wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD)
+DWMWA_CLOAKED = 14
+MONITOR_DEFAULTTOPRIMARY = 1
+
+
+def _cloaked(hwnd) -> bool:
+    """Suspended Store apps and windows on other virtual desktops are 'visible' but cloaked."""
+    value = wintypes.DWORD()
+    return DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, ctypes.byref(value), ctypes.sizeof(value)) == 0 \
+        and value.value != 0
+
+
+def desktop_covered() -> bool:
+    """True if a maximized window hides the desktop on the primary monitor."""
+    primary = MonitorFromWindow(None, MONITOR_DEFAULTTOPRIMARY)
+    found = []
+
+    def on_window(hwnd, _lparam):
+        if (IsWindowVisible(hwnd) and IsZoomed(hwnd) and not IsIconic(hwnd) and not _cloaked(hwnd)
+                and MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) == primary):
+            found.append(hwnd)
+            return False  # stop: one is enough
+        return True
+
+    EnumWindows(EnumWindows.argtypes[0](on_window), 0)
+    return bool(found)
+
+
 # --- power -----------------------------------------------------------------------------
 
 class SYSTEM_POWER_STATUS(ctypes.Structure):
