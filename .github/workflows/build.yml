@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:  # "Run workflow" button: builds without publishing a release
+
+permissions:
+  contents: write  # needed to publish releases
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  package:
+    # Only for version tags (v1.2.3) or a manual run.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+
+      - name: Check that the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(python -c "import wallpaper_manager as w; print(w.__version__)")
+          [ "v$version" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} != app version $version"; exit 1; }
+
+      - run: python tools/get_libmpv.py
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - run: python tools/build.py --zip --installer
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WallpaperManager
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*-setup.exe --title "Wallpaper Manager ${GITHUB_REF_NAME#v}" --generate-notes

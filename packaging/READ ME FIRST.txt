@@ -1,0 +1,50 @@
+Wallpaper Manager
+=================
+
+A Windows 10/11 app for managing desktop wallpapers: a library of images and
+videos, live video wallpapers behind the desktop icons, lock screen images
+(including a frame picked from a video), playlists and a daily schedule.
+
+
+Starting it
+-----------
+1. Unzip the whole folder somewhere permanent, e.g. Documents\WallpaperManager
+   (don't run it from inside the zip file).
+2. Double-click WallpaperManager.exe. No installation or Python is needed.
+
+Windows may show "Windows protected your PC" (SmartScreen), because the app
+isn't signed by a publisher. Click "More info" and then "Run anyway".
+
+
+Getting started
+---------------
+- Library -> "Import files" or "Import folder" to add JPG, PNG, WEBP, GIF,
+  MP4 or WEBM files. Your files are not copied or moved.
+- Desktop -> click a picture or a video to use it. Videos play muted behind
+  your desktop icons.
+- Lock Screen -> click a picture, or a video to choose one of its frames.
+- Closing the window keeps the app running in the system tray (near the clock).
+  Right-click the tray icon for Next / Random wallpaper, Pause / Stop video and
+  Exit.
+
+
+Good to know
+------------
+- Before changing anything, the app saves your current wallpaper and lock
+  screen. "Restore original" on the Desktop and Lock Screen pages puts them back.
+- Setting a lock screen picture switches Windows Spotlight off; Restore
+  original turns it on again.
+- If another live wallpaper app (Wallpaper Engine, Lively, ...) is running, it
+  may cover this app's videos - pause or close it.
+- Live videos pause automatically while a game or other fullscreen app runs.
+- Only the main monitor is supported.
+
+
+Removing it
+-----------
+1. If you turned on "Start with Windows" in Settings, turn it off first.
+2. Use "Restore original" on the Desktop and Lock Screen pages if you want
+   your old wallpaper and lock screen back.
+3. Right-click the tray icon -> Exit.
+4. Delete the WallpaperManager folder, and the app's data folder:
+   %LOCALAPPDATA%\WallpaperManager   (paste this into the File Explorer address bar)
