@@ -73,6 +73,8 @@ PostQuitMessage = _fn(user32.PostQuitMessage, None, ctypes.c_int)
 IsWindow = _fn(user32.IsWindow, wintypes.BOOL, wintypes.HWND)
 GetParent = _fn(user32.GetParent, wintypes.HWND, wintypes.HWND)
 IsWindowVisible = _fn(user32.IsWindowVisible, wintypes.BOOL, wintypes.HWND)
+GetWindow = _fn(user32.GetWindow, wintypes.HWND, wintypes.HWND, wintypes.UINT)
+GetClassNameW = _fn(user32.GetClassNameW, ctypes.c_int, wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
 GetWindowThreadProcessId = _fn(user32.GetWindowThreadProcessId, wintypes.DWORD, wintypes.HWND,
                                ctypes.POINTER(wintypes.DWORD))
 SetWindowPos = _fn(user32.SetWindowPos, wintypes.BOOL, wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
@@ -97,6 +99,17 @@ BLACK_BRUSH = 4
 SPAWN_WORKERW = 0x052C  # undocumented Progman message, see module docstring
 
 CLASS_NAME = "WallpaperManagerLiveHost"
+GW_HWNDNEXT = 2
+
+HELP_TEXT = ("Live video wallpapers could not be attached to the desktop on this PC. "
+             "Please save a diagnostics file (Settings → Diagnostics) and send it to the developer.")
+
+
+class DesktopLayerError(RuntimeError):
+    """The desktop window layout is not what we expect (e.g. a new Windows version)."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"{detail}\n\n{HELP_TEXT}")
 
 
 def find_wallpaper_layer() -> tuple[int, int | None]:
@@ -104,7 +117,7 @@ def find_wallpaper_layer() -> tuple[int, int | None]:
     window we must sit directly below (None for the classic layout)."""
     progman = FindWindowW("Progman", None)
     if not progman:
-        raise RuntimeError("Explorer's desktop window was not found. Is Explorer running?")
+        raise DesktopLayerError("Explorer's desktop window (Progman) was not found. Is Explorer running?")
 
     result = ctypes.c_size_t()
     SendMessageTimeoutW(progman, SPAWN_WORKERW, 0xD, 0x1, SMTO_NORMAL, 1000, ctypes.byref(result))
@@ -114,6 +127,7 @@ def find_wallpaper_layer() -> tuple[int, int | None]:
     if FindWindowExW(progman, None, "WorkerW", None):
         defview = FindWindowExW(progman, None, "SHELLDLL_DefView", None)
         if defview:
+            log.info("Desktop layout: 24H2 (WorkerW and icons inside Progman)")
             return progman, defview
 
     # Classic layout: the WorkerW that follows the top-level window holding the icons.
@@ -128,8 +142,44 @@ def find_wallpaper_layer() -> tuple[int, int | None]:
 
     EnumWindows(WNDENUMPROC(on_window), 0)
     if not found:
-        raise RuntimeError("Could not find the desktop wallpaper layer (WorkerW).")
+        raise DesktopLayerError("The desktop wallpaper layer (WorkerW) was not found.")
+    log.info("Desktop layout: classic (top-level WorkerW behind the icons)")
     return found[0], None
+
+
+def class_name(hwnd: int) -> str:
+    buf = ctypes.create_unicode_buffer(128)
+    GetClassNameW(hwnd, buf, len(buf))
+    return buf.value
+
+
+def _children(parent: int) -> list[int]:
+    result, child = [], FindWindowExW(parent, None, None, None)
+    while child:
+        result.append(child)
+        child = FindWindowExW(parent, child, None, None)
+    return result
+
+
+def describe_desktop() -> list[str]:
+    """Read-only description of Explorer's desktop windows, for diagnostics."""
+    lines = []
+
+    def describe(hwnd: int, indent: str) -> None:
+        lines.append(f"{indent}{class_name(hwnd)}  hwnd={hwnd:#x}  visible={bool(IsWindowVisible(hwnd))}  "
+                     f"process={window_process_name(hwnd)}")
+
+    def on_window(hwnd, _lparam):
+        if class_name(hwnd) in ("Progman", "WorkerW"):
+            children = _children(hwnd)
+            if children or IsWindowVisible(hwnd):  # skip Explorer's many empty helper windows
+                describe(hwnd, "")
+                for child in children:
+                    describe(child, "    ")
+        return True
+
+    EnumWindows(WNDENUMPROC(on_window), 0)
+    return lines
 
 
 def window_pid(hwnd: int) -> int:
@@ -254,6 +304,31 @@ class DesktopHost:
     def is_alive(self) -> bool:
         """False if Explorer was restarted (our window dies with its parent)."""
         return bool(self.hwnd and IsWindow(self.hwnd) and GetParent(self.hwnd) == self.parent)
+
+    def is_behind_icons(self) -> bool:
+        """Check that our window really sits below the desktop icons in the z-order."""
+        if not self.is_alive():
+            return False
+        if self.parent == FindWindowW("Progman", None):  # 24H2: siblings inside Progman
+            start = FindWindowExW(self.parent, None, "SHELLDLL_DefView", None)
+            target = self.hwnd
+        else:  # classic: our parent WorkerW must come after the window holding the icons
+            found: list[int] = []
+
+            def on_window(hwnd, _lparam):
+                if FindWindowExW(hwnd, None, "SHELLDLL_DefView", None):
+                    found.append(hwnd)
+                return True
+
+            EnumWindows(WNDENUMPROC(on_window), 0)
+            defview_owner = found[0] if found else None
+            start, target = defview_owner, self.parent
+        hwnd = start
+        while hwnd:
+            hwnd = GetWindow(hwnd, GW_HWNDNEXT)
+            if hwnd == target:
+                return True
+        return False
 
     def foreign_windows(self) -> list[int]:
         """Other processes' windows in our layer, e.g. another live wallpaper app's player."""

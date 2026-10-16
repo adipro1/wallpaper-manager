@@ -1,14 +1,17 @@
 """Settings page."""
 
 import logging
-from tkinter import messagebox
+from datetime import datetime
+from pathlib import Path
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
 from ... import APP_NAME, __version__, system, winapi
+from ...diagnostics import save_diagnostics
 from ...live_wallpaper import libmpv_available
 from .. import theme
-from ..widgets import BasePage, Card, PageHeader, button, segmented
+from ..widgets import BasePage, Card, PageHeader, button, run_in_thread, segmented
 
 log = logging.getLogger(__name__)
 
@@ -96,6 +99,15 @@ class SettingsPage(BasePage):
         row = SettingRow(live, "Video engine (libmpv)", f"Status: {engine}")
         row.pack(fill="x", padx=20, pady=(0, 18))
 
+        # Diagnostics
+        diagnostics = self._card("Diagnostics")
+        row = SettingRow(diagnostics, "Save diagnostics file",
+                         "Creates a zip with your Windows version, desktop layout, settings and log files - "
+                         "send it along with a bug report. No pictures or videos are included.")
+        row.pack(fill="x", padx=20, pady=(0, 18))
+        self.diagnostics_btn = button(row.control, "Save…", self._save_diagnostics, icon="info", width=100)
+        self.diagnostics_btn.pack()
+
         # About
         about = self._card("About")
         ctk.CTkLabel(about, text=f"{APP_NAME}  ·  Version {__version__}", font=theme.font(13),
@@ -117,6 +129,29 @@ class SettingsPage(BasePage):
             switch.select()
         switch.pack()
         return switch
+
+    def _save_diagnostics(self) -> None:
+        default_dir = Path.home() / "Desktop"
+        path = filedialog.asksaveasfilename(
+            parent=self, title="Save diagnostics", defaultextension=".zip",
+            initialdir=str(default_dir if default_dir.exists() else Path.home()),
+            initialfile=f"WallpaperManager-diagnostics-{datetime.now():%Y%m%d-%H%M}.zip",
+            filetypes=[("Zip file", "*.zip")])
+        if not path:
+            return
+        self.diagnostics_btn.configure(state="disabled")
+
+        def done(saved):
+            self.diagnostics_btn.configure(state="normal")
+            winapi.show_in_explorer(str(saved))
+
+        def failed(exc):
+            self.diagnostics_btn.configure(state="normal")
+            messagebox.showerror("Diagnostics", f"Could not save the diagnostics file:\n{exc}", parent=self)
+
+        app = self.app
+        run_in_thread(self, lambda: save_diagnostics(Path(path), app.db, app.paths, app.wallpapers),
+                      on_done=done, on_error=failed)
 
     def _set_startup(self, enabled: bool) -> None:
         try:

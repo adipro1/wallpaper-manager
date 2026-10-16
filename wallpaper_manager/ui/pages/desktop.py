@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 from ... import imaging, media, winapi
 from ...database import MediaItem
+from ...desktop_host import DesktopLayerError
 from ...live_wallpaper import LibmpvMissing
 from ...wallpaper import IMAGE_STYLES, VIDEO_STYLES
 from .. import icons, theme
@@ -196,7 +197,12 @@ class DesktopPage(BasePage):
         def failed(exc):
             self.busy = False
             self.refresh_current()
-            title = "Live wallpapers unavailable" if isinstance(exc, LibmpvMissing) else "Could not change the wallpaper"
+            if isinstance(exc, LibmpvMissing):
+                title = "Live wallpapers unavailable"
+            elif isinstance(exc, DesktopLayerError):
+                title = "Live wallpapers not supported here"
+            else:
+                title = "Could not change the wallpaper"
             messagebox.showerror(title, str(exc), parent=self)
 
         run_in_thread(self, func, on_done=done, on_error=failed)
