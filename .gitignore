@@ -47,3 +47,6 @@ desktop.ini
 
 # Downloaded binaries (tools/get_libmpv.py)
 bin/
+
+# Shareable builds
+*.zip
