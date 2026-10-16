@@ -475,7 +475,8 @@ class LibraryPage(BasePage):
             return
         if library_total == 0:
             self.empty_title.configure(text="Your library is empty")
-            self.empty_text.configure(text="Import images (JPG, PNG, WEBP, GIF) or videos (MP4, WEBM) to get started.")
+            self.empty_text.configure(text="Import images (JPG, PNG, WEBP, GIF) or videos (MP4, WEBM) to get started "
+                                           "- or drag files and folders onto this window.")
             self.empty_button.pack()
         else:
             self.empty_title.configure(text="No matches")

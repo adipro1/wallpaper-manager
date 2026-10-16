@@ -1,6 +1,7 @@
 """Main window: sidebar navigation plus a content area that hosts the pages."""
 
 import logging
+import os
 import tkinter as tk
 import traceback
 from tkinter import messagebox
@@ -8,7 +9,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 from customtkinter.windows.widgets.scaling import ScalingTracker
 
-from . import APP_NAME, __version__, system, winapi
+from . import APP_NAME, __version__, media, system, winapi
 from .config import ICON_ICO, AppPaths
 from .database import Database
 from .lockscreen import LockScreenService
@@ -17,6 +18,7 @@ from .scheduler import Scheduler
 from .system import SingleInstance
 from .tray import Tray
 from .ui import icons, theme
+from .ui.dragdrop import FileDropTarget
 from .ui.pages.desktop import DesktopPage
 from .ui.pages.home import HomePage
 from .ui.pages.library import LibraryPage
@@ -92,6 +94,11 @@ class WallpaperManagerApp(ctk.CTk):
             self.after(200, self._ensure_window_size)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self._bind_shortcuts()
+        try:
+            self.drop_target: FileDropTarget | None = FileDropTarget(self)
+        except OSError:
+            self.drop_target = None
+            log.warning("Drag and drop is not available", exc_info=True)
         self.tray = Tray(self.wallpapers)
         self.tray.start()
         self.after(EVENT_POLL_MS, self._poll_events)
@@ -193,7 +200,9 @@ class WallpaperManagerApp(ctk.CTk):
     # -- tray, window visibility and exit ------------------------------------------------
 
     def _poll_events(self) -> None:
-        """Handle tray menu clicks and "show yourself" requests from a second app instance."""
+        """Handle dropped files, tray menu clicks and "show yourself" requests from a second instance."""
+        while self.drop_target and not self.drop_target.drops.empty():
+            self.import_dropped(self.drop_target.drops.get_nowait())
         while not self.tray.actions.empty():
             self._handle_tray_action(self.tray.actions.get_nowait())
             if not self.winfo_exists():
@@ -318,6 +327,27 @@ class WallpaperManagerApp(ctk.CTk):
         if self.current_page != "library" or isinstance(self.focus_get(), tk.Entry):
             return  # leave Ctrl+A / Delete to text boxes
         getattr(self.pages["library"], action)()
+
+    def import_dropped(self, paths: list[str]) -> None:
+        """Files or folders dropped on the window: import the supported ones."""
+        library = self.show_page("library")
+        if library.importing:
+            self.toast("An import is already running - try again when it has finished", "error")
+            return
+
+        def collect() -> list[str]:  # runs on the import worker; folders can be big
+            files = []
+            for path in paths:
+                if os.path.isdir(path):
+                    files.extend(media.find_media_files(path))
+                elif media.media_type_for(path):
+                    files.append(path)
+            return files
+
+        if not any(os.path.isdir(p) or media.media_type_for(p) for p in paths):
+            self.toast("None of the dropped files are supported (JPG, PNG, WEBP, GIF, MP4, WEBM)", "error")
+            return
+        library.start_import(collect)
 
     def _focus_library_search(self) -> None:
         self.show_page("library").search_entry.focus_set()
