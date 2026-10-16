@@ -46,7 +46,7 @@ def test_parse_time(text, expected):
     assert parse_time(text) == expected
 
 
-@pytest.mark.parametrize("text", ["24:00", "12:60", "noon", "", "7"])
+@pytest.mark.parametrize("text", ["24:00", "12:60", "noon", "", "7", "25:00ge", "ab:cd", "-1:30"])
 def test_parse_time_rejects(text):
     with pytest.raises(ValueError):
         parse_time(text)

@@ -9,10 +9,10 @@ from tkinter import messagebox
 import customtkinter as ctk
 from customtkinter.windows.widgets.scaling import ScalingTracker
 
-from . import APP_NAME, __version__, media, system, winapi
+from . import APP_NAME, __version__, media, winapi
+from .automation import Automation
 from .config import ICON_ICO, AppPaths
 from .database import Database
-from .desktop_host import display_is_on
 from .lockscreen import LockScreenService
 from .playlists import PlaylistPlayer
 from .scheduler import Scheduler
@@ -35,11 +35,7 @@ from .wallpaper import WallpaperService
 log = logging.getLogger(__name__)
 
 DEFAULT_SIZE = (1240, 800)
-LIVE_CHECK_MS = 3000
-AUTO_PAUSE_CHECK_MS = 2000  # fullscreen / battery check
-UPDATE_CHECK_DELAY_MS = 15_000  # check for updates shortly after start, not during it
-EVENT_POLL_MS = 200  # tray clicks and requests from a second instance
-AUTOMATION_CHECK_MS = 5000  # how often to check the schedule and the running playlist  # how often to check that the live wallpaper window is still alive
+EVENT_POLL_MS = 200  # dropped files, tray clicks and requests from a second instance
 
 # (key, label, icon, page class) in sidebar order
 NAV_ITEMS = [
@@ -66,7 +62,6 @@ class WallpaperManagerApp(ctk.CTk):
         self.playlists = PlaylistPlayer(db, self.wallpapers)
         self.scheduler = Scheduler(db, self.wallpapers, self.playlists)
         self.updates = UpdateChecker(db)
-        self._advancing = False
         self.instance = instance
         self._tray_hint_shown = False
         self._toast: Toast | None = None
@@ -103,56 +98,9 @@ class WallpaperManagerApp(ctk.CTk):
         self.tray = Tray(self.wallpapers)
         self.tray.start()
         self.after(EVENT_POLL_MS, self._poll_events)
-        self.after(AUTO_PAUSE_CHECK_MS, self._check_auto_pause)
-        self.after(UPDATE_CHECK_DELAY_MS, self._check_for_updates)
-        self.after(500, self._restore_live_wallpaper)
-        self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
-        self.after(AUTOMATION_CHECK_MS, self._check_automation)
+        self.automation = Automation(self)
+        self.automation.start()
         log.info("Main window ready")
-
-    # -- live wallpaper lifecycle --------------------------------------------------
-
-    def _restore_live_wallpaper(self) -> None:
-        """Start the live wallpaper that was playing when the app was last closed."""
-        def on_error(exc):
-            log.warning("Could not restore the live wallpaper: %s", exc)
-
-        def on_done(started):
-            if started and self.current_page == "desktop":
-                self.pages["desktop"].refresh_current()
-
-        run_in_thread(self, self.wallpapers.restore_on_startup, on_done=on_done, on_error=on_error)
-
-    def _check_live_wallpaper(self) -> None:
-        try:
-            self.wallpapers.check_live()
-        except Exception:  # noqa: BLE001 - keep the watchdog running
-            log.exception("Live wallpaper check failed")
-        self.after(LIVE_CHECK_MS, self._check_live_wallpaper)
-
-    def _check_automation(self) -> None:
-        """Apply a due schedule rule, or advance the running playlist (on a worker thread).
-        One check at a time, so the two never change the wallpaper simultaneously."""
-        self.after(AUTOMATION_CHECK_MS, self._check_automation)
-        if self._advancing:
-            return
-        if self.scheduler.is_due():
-            work = self.scheduler.apply_due
-        elif self.playlists.is_due():
-            work = self.playlists.advance
-        else:
-            return
-        self._advancing = True
-
-        def finished(_result=None):
-            self._advancing = False
-            self.refresh_visible_page()
-
-        def failed(exc):
-            log.warning("Automatic wallpaper change failed: %s", exc)
-            finished()
-
-        run_in_thread(self, work, on_done=finished, on_error=failed)
 
     def toast(self, message: str, kind: str = "info") -> None:
         """Brief confirmation at the bottom of the window ('info', 'success' or 'error')."""
@@ -170,46 +118,6 @@ class WallpaperManagerApp(ctk.CTk):
             self.pages[self.current_page].refresh_current()
         elif self.current_page in ("playlists", "schedule"):
             self.pages[self.current_page].refresh()
-
-    def _check_auto_pause(self) -> None:
-        """Pause the live wallpaper while a fullscreen app runs or (optionally) on battery."""
-        self.after(AUTO_PAUSE_CHECK_MS, self._check_auto_pause)
-        if not self.wallpapers.video_active:
-            return
-        try:
-            reason = self._auto_pause_reason()
-        except OSError:
-            log.debug("Auto-pause check failed", exc_info=True)
-            reason = None
-        before = self.wallpapers.auto_pause_reason
-        self.wallpapers.update_auto_pause(reason)
-        if self.wallpapers.auto_pause_reason != before:
-            self.refresh_visible_page()
-
-    def _auto_pause_reason(self) -> str | None:
-        """Why the live wallpaper should be paused right now (most important first), or None."""
-        setting = self.db.get_setting
-        if setting("pause_when_hidden", True):
-            if system.session_locked():
-                return "locked"
-            if not display_is_on():
-                return "screen_off"
-        if setting("pause_on_fullscreen", True) and system.fullscreen_app_running():
-            return "fullscreen"
-        if setting("pause_when_covered", True) and system.desktop_covered():
-            return "covered"
-        if setting("pause_on_battery", False) and system.on_battery():
-            return "battery"
-        return None
-
-    def _check_for_updates(self) -> None:
-        """Once a day (in the background) look for a newer release on GitHub."""
-        def done(version):
-            if version and self.db.get_setting("notified_version") != version:
-                self.db.set_setting("notified_version", version)
-                self.tray.notify(f"Version {version} is available. Open Settings to download it.")
-
-        run_in_thread(self, self.updates.check_if_due, on_done=done, on_error=lambda exc: None)
 
     # -- tray, window visibility and exit ------------------------------------------------
 

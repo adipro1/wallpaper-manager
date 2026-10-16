@@ -30,6 +30,8 @@ def parse_time(text: str) -> str:
         hours, minutes = text[:-2], text[-2:]
     else:
         raise ValueError(f"“{text}” is not a time (use HH:MM)")
+    if not (hours.strip().isdigit() and minutes.strip().isdigit()):
+        raise ValueError(f"“{text}” is not a time (use HH:MM)")
     hours, minutes = int(hours), int(minutes)
     if not (0 <= hours < 24 and 0 <= minutes < 60):
         raise ValueError(f"“{text}” is not a valid time")
