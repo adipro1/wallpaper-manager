@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material.icons.outlined.Home
@@ -44,6 +45,7 @@ import wpm.AppState
 import wpm.Page
 import wpm.ui.components.AddUrlDialog
 import wpm.ui.components.ToastHost
+import wpm.ui.pages.CustomizePage
 import wpm.ui.pages.DesktopPage
 import wpm.ui.pages.HomePage
 import wpm.ui.pages.LibraryPage
@@ -59,6 +61,7 @@ private fun Page.icon(): ImageVector = when (this) {
     Page.Library -> Icons.Outlined.PhotoLibrary
     Page.Playlists -> Icons.AutoMirrored.Outlined.PlaylistPlay
     Page.Schedule -> Icons.Outlined.CalendarMonth
+    Page.Customize -> Icons.Outlined.AutoAwesome
     Page.Settings -> Icons.Outlined.Settings
 }
 
@@ -76,6 +79,7 @@ fun App(app: AppState) {
                     Page.Library -> LibraryPage(app)
                     Page.Playlists -> PlaylistsPage(app)
                     Page.Schedule -> SchedulePage(app)
+                    Page.Customize -> CustomizePage(app)
                 }
                 ToastHost(app.toast, app::dismissToast, Modifier.align(Alignment.BottomCenter))
                 app.addUrl?.let { url -> AddUrlDialog(app, url, onDismiss = { app.addUrl = null }) }

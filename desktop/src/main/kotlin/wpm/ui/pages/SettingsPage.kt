@@ -114,6 +114,19 @@ fun SettingsPage(app: AppState) {
             BooleanSetting(app, "resume_live_wallpaper", true, "Start the live wallpaper again when the app starts")
             BooleanSetting(app, "web_interaction", true, "Web wallpapers react to the mouse on the empty desktop")
             BooleanSetting(app, "web_muted", true, "Mute web wallpapers (applies after restarting the app)")
+            var fps by remember { mutableStateOf(app.settings.string("shader_fps", "60")) }
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Shader frame rate (lower saves power)", color = Theme.colors.text, modifier = Modifier.weight(1f))
+                SingleChoiceSegmentedButtonRow {
+                    listOf("30", "60").forEachIndexed { i, value ->
+                        SegmentedButton(fps == value, {
+                            fps = value
+                            app.settings.set("shader_fps", value)
+                            app.runTask { app.changeWallpaper { if (app.wallpapers.state.kind == "shader") app.wallpapers.restartLive() } }
+                        }, SegmentedButtonDefaults.itemShape(i, 2)) { Text("$value fps") }
+                    }
+                }
+            }
             MutedText(
                 when {
                     wpm.engine.Chromium.version() != null -> "Web engine: Chromium ${wpm.engine.Chromium.version()}"

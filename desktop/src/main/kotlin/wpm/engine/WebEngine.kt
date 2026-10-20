@@ -108,13 +108,6 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
         browser?.executeJavaScript(code, source ?: "", 0)
     }
 
-    private fun <T> onEdt(block: () -> T): T {
-        if (SwingUtilities.isEventDispatchThread()) return block()
-        var result: Result<T>? = null
-        SwingUtilities.invokeAndWait { result = runCatching(block) }
-        return result!!.getOrThrow()
-    }
-
     @Synchronized
     override fun play(source: LiveSource) {
         lastError = null
@@ -138,67 +131,21 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
 
     private fun create(app: CefApp, url: String) {
         val monitor = Monitors.primary().bounds
-        onEdt {
-            val newClient = app.createClient()
-            newClient.addLoadHandler(object : CefLoadHandlerAdapter() {
-                override fun onLoadError(b: CefBrowser?, frame: CefFrame?, code: CefLoadHandler.ErrorCode?, text: String?, failed: String?) {
-                    if (frame?.isMain == true && code != CefLoadHandler.ErrorCode.ERR_ABORTED) {
-                        lastError = text?.ifBlank { null } ?: code.toString()
-                        log.warning("Web wallpaper couldn't load $failed: $lastError")
-                    }
-                }
+        val opened = openBrowserWindow(app, url,
+            onTitle = { pageTitle = it },
+            onError = { error, failed ->
+                lastError = error
+                log.warning("Web wallpaper couldn't load $failed: $error")
             })
-            newClient.addDisplayHandler(object : org.cef.handler.CefDisplayHandlerAdapter() {
-                override fun onTitleChange(b: CefBrowser?, title: String?) {
-                    pageTitle = title
-                }
-            })
-            val before = cefBrowserWindows()
-            val newBrowser = newClient.createBrowser(url, false, false)
-            // Without a visible AWT parent, JCEF creates the browser in its own hidden holder window;
-            // we take Chromium's window from there and put it behind the desktop icons ourselves.
-            newBrowser.createImmediately()
-            client = newClient
-            browser = newBrowser
-            before
-        }.let { before ->
-            val deadline = System.currentTimeMillis() + 15_000
-            var found: HWND? = null
-            while (found == null && System.currentTimeMillis() < deadline) {
-                found = (cefBrowserWindows() - before).firstOrNull()?.let { HWND(com.sun.jna.Pointer(it)) }
-                if (found == null) Thread.sleep(50)
-            }
-            val handle = found ?: throw IllegalStateException("The web engine didn't create its window")
-            hwnd = handle
-            parent = attachToWallpaperLayer(handle, monitor)
-            fillChildren(handle, monitor)
-            rect = monitor
-        }
+        client = opened.client
+        browser = opened.browser
+        hwnd = opened.hwnd
+        parent = onEdt { attachToWallpaperLayer(opened.hwnd, monitor) }
+        fillChildren(opened.hwnd, monitor.width, monitor.height)
+        rect = monitor
         forwarder = InputForwarder(monitor) { renderWidget() }.also {
             it.enabled = interactive
             it.start()
-        }
-    }
-
-    /** Chromium's browser windows in this process (JCEF's "CefBrowserWindow"), as handle values. */
-    private fun cefBrowserWindows(): Set<Long> {
-        val own = com.sun.jna.platform.win32.Kernel32.INSTANCE.GetCurrentProcessId()
-        val found = mutableSetOf<Long>()
-        User32.INSTANCE.EnumWindows({ top, _ ->
-            if (windowPid(top) == own) {
-                findChildWindows(top, "CefBrowserWindow").forEach { found += com.sun.jna.Pointer.nativeValue(it.pointer) }
-            }
-            true
-        }, null)
-        return found
-    }
-
-    /** Chromium's own window inside the browser window follows its size. */
-    private fun fillChildren(handle: HWND, size: ScreenRect) {
-        var child = User32.INSTANCE.FindWindowEx(handle, null, null, null)
-        while (child != null) {
-            User32.INSTANCE.SetWindowPos(child, null, 0, 0, size.width, size.height, 0x0004 or 0x0010) // NOZORDER | NOACTIVATE
-            child = User32.INSTANCE.FindWindowEx(handle, child, null, null)
         }
     }
 
@@ -278,7 +225,7 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
         val p = parent ?: return
         if (monitor != rect && isHealthy()) {
             moveInWallpaperLayer(h, p, monitor)
-            fillChildren(h, monitor)
+            fillChildren(h, monitor.width, monitor.height)
             rect = monitor
             forwarder?.monitor = monitor
         }
@@ -305,5 +252,72 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
         }
         source = null
         paused = false
+    }
+}
+
+internal fun <T> onEdt(block: () -> T): T {
+    if (SwingUtilities.isEventDispatchThread()) return block()
+    var result: Result<T>? = null
+    SwingUtilities.invokeAndWait { result = runCatching(block) }
+    return result!!.getOrThrow()
+}
+
+/** A Chromium browser and the native window it draws into. */
+class BrowserWindow(val client: CefClient, val browser: CefBrowser, val hwnd: HWND) {
+    fun close() = onEdt {
+        browser.close(true)
+        client.dispose()
+    }
+}
+
+/**
+ * Opens a page in a new Chromium window that isn't inside any AWT component. JCEF parks such
+ * browsers in a hidden holder window; we find Chromium's window there so the caller can put it
+ * where it wants (behind the desktop icons, or inside a preview area).
+ */
+fun openBrowserWindow(app: CefApp, url: String, onTitle: (String?) -> Unit = {}, onError: (String, String?) -> Unit = { _, _ -> }): BrowserWindow {
+    val (client, browser, before) = onEdt {
+        val client = app.createClient()
+        client.addLoadHandler(object : CefLoadHandlerAdapter() {
+            override fun onLoadError(b: CefBrowser?, frame: CefFrame?, code: CefLoadHandler.ErrorCode?, text: String?, failed: String?) {
+                if (frame?.isMain == true && code != CefLoadHandler.ErrorCode.ERR_ABORTED) onError(text?.ifBlank { null } ?: code.toString(), failed)
+            }
+        })
+        client.addDisplayHandler(object : org.cef.handler.CefDisplayHandlerAdapter() {
+            override fun onTitleChange(b: CefBrowser?, title: String?) = onTitle(title)
+        })
+        val before = cefBrowserWindows()
+        val browser = client.createBrowser(url, false, false)
+        browser.createImmediately()
+        Triple(client, browser, before)
+    }
+    val deadline = System.currentTimeMillis() + 15_000
+    while (System.currentTimeMillis() < deadline) {
+        (cefBrowserWindows() - before).firstOrNull()?.let { return BrowserWindow(client, browser, HWND(com.sun.jna.Pointer(it))) }
+        Thread.sleep(50)
+    }
+    onEdt { browser.close(true); client.dispose() }
+    throw IllegalStateException("The web engine didn't create its window")
+}
+
+/** Chromium's browser windows in this process (JCEF's "CefBrowserWindow"), as handle values. */
+private fun cefBrowserWindows(): Set<Long> {
+    val own = com.sun.jna.platform.win32.Kernel32.INSTANCE.GetCurrentProcessId()
+    val found = mutableSetOf<Long>()
+    User32.INSTANCE.EnumWindows({ top, _ ->
+        if (windowPid(top) == own) {
+            findChildWindows(top, "CefBrowserWindow").forEach { found += com.sun.jna.Pointer.nativeValue(it.pointer) }
+        }
+        true
+    }, null)
+    return found
+}
+
+/** Sizes a browser window's direct children (Chromium's own window) to fill it. */
+fun fillChildren(handle: HWND, width: Int, height: Int) {
+    var child = User32.INSTANCE.FindWindowEx(handle, null, null, null)
+    while (child != null) {
+        User32.INSTANCE.SetWindowPos(child, null, 0, 0, width, height, 0x0004 or 0x0010) // NOZORDER | NOACTIVATE
+        child = User32.INSTANCE.FindWindowEx(handle, child, null, null)
     }
 }

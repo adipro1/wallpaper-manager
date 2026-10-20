@@ -176,6 +176,24 @@ fun attachToWallpaperLayer(hwnd: HWND, screenRect: ScreenRect): HWND {
     return parent
 }
 
+/** Makes [child] a child window filling [parent] (e.g. a browser inside a preview area of our UI). */
+fun embedWindow(child: HWND, parent: HWND) {
+    val style = user32.GetWindowLong(child, GWL_STYLE)
+    user32.SetWindowLong(child, GWL_STYLE, (style and (WS_POPUP or WS_CAPTION or WS_THICKFRAME).inv()) or WS_CHILD or WS_VISIBLE)
+    user32.SetParent(child, parent)
+    fitToParent(child, parent)
+}
+
+/** Resizes [child] to cover its parent's client area; returns that size. */
+fun fitToParent(child: HWND, parent: HWND): Pair<Int, Int> {
+    val rect = WinDef.RECT()
+    user32.GetClientRect(parent, rect)
+    val w = rect.right - rect.left
+    val h = rect.bottom - rect.top
+    user32.SetWindowPos(child, null, 0, 0, w, h, SWP_NOZORDER or SWP_NOACTIVATE or SWP_SHOWWINDOW)
+    return w to h
+}
+
 /** Moves an attached child window to cover [screenRect]. */
 fun moveInWallpaperLayer(hwnd: HWND, parent: HWND, screenRect: ScreenRect) {
     val client = toClient(parent, screenRect)

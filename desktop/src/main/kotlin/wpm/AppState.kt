@@ -29,6 +29,8 @@ import wpm.engine.LiveRouter
 import wpm.engine.LiveSource
 import wpm.engine.MpvLivePlayer
 import wpm.engine.WebLivePlayer
+import wpm.media.SHADER_EXTENSIONS
+import wpm.media.Shaders
 import wpm.media.WebWallpapers
 import wpm.media.VideoReader
 import wpm.media.UrlImporter
@@ -60,6 +62,7 @@ enum class Page(val label: String) {
     Library("Library"),
     Playlists("Playlists"),
     Schedule("Schedule"),
+    Customize("Customize"),
     Settings("Settings"),
 }
 
@@ -93,6 +96,13 @@ class AppState(
     var webEngineStatus by mutableStateOf<String?>(null)
         private set
     val chromiumDir: Path = paths.dataDir.resolve("chromium")
+
+    /** Starts the web engine (downloading it the first time), showing progress. Blocking. */
+    fun startChromium(): org.cef.CefApp = try {
+        wpm.engine.Chromium.get(chromiumDir, settings.boolean("web_muted", true)) { webEngineStatus = it }
+    } finally {
+        webEngineStatus = null
+    }
     val webEngine: WebLivePlayer by lazy { WebLivePlayer(chromiumDir) { webEngineStatus = it } }
     private val livePlayer: LivePlayer = live ?: LiveRouter(MpvLivePlayer()) { webEngine }
     val wallpapers = WallpaperService(db, paths, desktopApi, livePlayer).also {
@@ -100,6 +110,7 @@ class AppState(
         it.sourceFor = ::liveSourceFor
     }
     val web = WebWallpapers(db, library, paths.dataDir.resolve("web"))
+    val shaders = Shaders(db, web, paths.dataDir.resolve("shaders"), paths.cacheDir.resolve("shader-pages")).also { it.cleanPreviews() }
     val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
     val ytDlp = YtDlp(NativeBin.dir.resolve("yt-dlp.exe"))
     val urls = UrlImporter(db, library, ytDlp, downloadFolder())
@@ -251,7 +262,12 @@ class AppState(
 
     /** Imports files and folders (folders recursively), showing progress. Web wallpapers are recognised and added as such. */
     fun import(paths: List<Path>) {
-        val (webItems, media) = paths.partition(WebWallpapers::looksLikeWebWallpaper)
+        val (shaderFiles, rest) = paths.partition { it.toString().substringAfterLast('.').lowercase() in SHADER_EXTENSIONS }
+        if (shaderFiles.isNotEmpty()) runTask("Shader added", "Couldn't add the shader") {
+            shaderFiles.forEach { shaders.import(it) }
+            libraryChanged()
+        }
+        val (webItems, media) = rest.partition(WebWallpapers::looksLikeWebWallpaper)
         if (webItems.isNotEmpty()) importWeb(webItems)
         if (media.isEmpty()) return
         importMedia(media)
@@ -292,7 +308,7 @@ class AppState(
     private fun liveSourceFor(item: MediaItem, style: String): LiveSource = when {
         item.isVideo -> LiveSource(LiveKind.Video, item.source, fill = style == "fill", muted = wallpapers.muted)
         else -> LiveSource(
-            LiveKind.Web, WebWallpapers.pageUrl(item),
+            LiveKind.Web, if (item.isShader) shaders.pageFor(item, settings.string("shader_fps", "60").toIntOrNull() ?: 60) else WebWallpapers.pageUrl(item),
             muted = settings.boolean("web_muted", true),
             interactive = item.interactive && settings.boolean("web_interaction", true),
             audio = item.audio,
