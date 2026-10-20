@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master]
+    branches: [master, kotlin-rewrite]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:  # "Run workflow" button: builds without publishing a release
@@ -10,25 +10,13 @@ on:
 permissions:
   contents: write  # needed to publish releases
 
+defaults:
+  run:
+    working-directory: desktop
+
 jobs:
   test:
     runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check .
-      - run: python -m pytest -q
-
-  desktop:
-    # Wallpaper Manager 2.0 (Kotlin + Compose), see desktop/
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: desktop
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
@@ -36,7 +24,14 @@ jobs:
           distribution: microsoft
           java-version: "21"
           cache: gradle
+      - name: Fetch libmpv (for the video tests)
+        run: ./gradlew getLibmpv --console=plain
       - run: ./gradlew check --console=plain
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: test-reports
+          path: desktop/build/reports/tests
 
   package:
     # Only for version tags (v1.2.3) or a manual run.
@@ -45,23 +40,23 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-java@v5
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements-dev.txt
+          distribution: microsoft
+          java-version: "21"
+          cache: gradle
 
       - name: Check that the tag matches the app version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
-          version=$(python -c "import wallpaper_manager as w; print(w.__version__)")
+          version=$(sed -n 's/^val appVersion = "\(.*\)"$/\1/p' build.gradle.kts)
           [ "v$version" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} != app version $version"; exit 1; }
 
-      - run: python tools/get_libmpv.py
+      - run: ./gradlew getLibmpv getYtDlp --console=plain
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
-      - run: python tools/build.py --zip --installer
+      - run: ./gradlew zipDistributable installer --console=plain
 
       - uses: actions/upload-artifact@v6
         with:
@@ -75,4 +70,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
+        working-directory: .
         run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*-setup.exe --title "Wallpaper Manager ${GITHUB_REF_NAME#v}" --generate-notes

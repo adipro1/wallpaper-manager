@@ -59,6 +59,20 @@ tasks.withType<JavaExec>().configureEach {
     systemProperty("wpm.bin.dir", devBinDir.absolutePath)
 }
 
+// The native helpers ship in the app folder's bin\ (found through compose.application.resources.dir).
+val appResources = layout.buildDirectory.dir("app-resources")
+val prepareNativeHelpers by tasks.registering(Sync::class) {
+    group = "distribution"
+    description = "Copies libmpv-2.dll and yt-dlp.exe from the repo's bin/ folder into the app resources."
+    from(devBinDir) { include("libmpv-2.dll", "yt-dlp.exe") }
+    into(appResources.map { it.dir("common/bin") })
+    doFirst {
+        listOf("libmpv-2.dll", "yt-dlp.exe").forEach {
+            check(devBinDir.resolve(it).exists()) { "bin/$it is missing: run `gradlew getLibmpv getYtDlp` first" }
+        }
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "wpm.MainKt"
@@ -67,7 +81,13 @@ compose.desktop {
             packageName = "WallpaperManager"
             packageVersion = appVersion
             vendor = "adipro1"
-            modules("java.sql", "jdk.unsupported")
+            description = "Wallpaper Manager"
+            // From `gradlew suggestRuntimeModules`, plus what reflection and TLS need (HTTPS, JNA, JCEF).
+            modules(
+                "java.instrument", "java.net.http", "java.sql", "jdk.unsupported",
+                "jdk.crypto.ec", "jdk.charsets", "jdk.zipfs", "jdk.accessibility",
+            )
+            appResourcesRootDir.set(appResources)
             windows {
                 iconFile.set(project.file("src/main/resources/icon.ico"))
                 perUserInstall = true
@@ -75,6 +95,71 @@ compose.desktop {
                 upgradeUuid = "6f1a3c2e-8d4b-4f5a-9c7e-2b1d0e9f8a71"
             }
         }
+    }
+}
+
+afterEvaluate {
+    tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(prepareNativeHelpers) }
+}
+
+val distributableDir = layout.buildDirectory.dir("compose/binaries/main/app/WallpaperManager")
+val distDir = rootDir.resolve("../dist").normalize()
+
+val zipDistributable by tasks.registering(Zip::class) {
+    group = "distribution"
+    description = "Zips the app folder: dist/WallpaperManager-<version>-win64.zip."
+    dependsOn("createDistributable")
+    from(distributableDir) { into("WallpaperManager") }
+    from(rootDir.resolve("../packaging/READ ME FIRST.txt")) { into("WallpaperManager") }
+    archiveFileName.set("WallpaperManager-$appVersion-win64.zip")
+    destinationDirectory.set(distDir)
+}
+
+/** Inno Setup's compiler: on PATH or in its usual install folders. */
+fun findIscc(): String = (System.getenv("PATH") ?: "").split(File.pathSeparator).map { File(it, "ISCC.exe") }
+    .plus(listOfNotNull(System.getenv("ProgramFiles(x86)"), System.getenv("ProgramFiles"), System.getenv("LOCALAPPDATA")?.let { "$it/Programs" })
+        .map { File(it, "Inno Setup 6/ISCC.exe") })
+    .firstOrNull { it.exists() }?.absolutePath ?: error("Inno Setup 6 (ISCC.exe) not found: https://jrsoftware.org/isinfo.php")
+
+val installer by tasks.registering(Exec::class) {
+    group = "distribution"
+    description = "Builds dist/WallpaperManager-<version>-setup.exe with Inno Setup 6."
+    dependsOn("createDistributable")
+    workingDir = rootDir.resolve("../packaging")
+    doFirst { executable = findIscc() }
+    args(
+        "/DAppVersion=$appVersion",
+        "/DSourceDir=${distributableDir.get().asFile.absolutePath}",
+        "/DOutputDir=$distDir", "WallpaperManager.iss",
+    )
+}
+
+// libmpv (video engine): pinned community build, checked with SHA-256, unpacked with Windows' tar.exe.
+val libmpvArchive = "mpv-dev-x86_64-20260921-git-e76a35ec95.7z"
+val libmpvSha256 = "361392d64a231830ac79d1c0f91ddb68c6a709accd282b2c87b13889d382fdec"
+val libmpvUrls = listOf(
+    "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260921/$libmpvArchive",
+    "https://github.com/adipro1/wallpaper-manager/releases/download/libmpv-20260921/$libmpvArchive",
+)
+
+val getLibmpv by tasks.registering {
+    group = "setup"
+    description = "Downloads libmpv-2.dll into the repo's bin/ folder."
+    val target = devBinDir.resolve("libmpv-2.dll")
+    outputs.file(target)
+    onlyIf { !target.exists() }
+    doLast {
+        val bytes = libmpvUrls.firstNotNullOfOrNull { url ->
+            runCatching { URI(url).toURL().openStream().use { it.readBytes() } }.getOrNull()?.takeIf { data ->
+                MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) } == libmpvSha256
+            }
+        } ?: error("Couldn't download libmpv with the expected checksum")
+        val temp = temporaryDir.resolve("mpv-dev.7z").apply { writeBytes(bytes) }
+        val tar = File(System.getenv("SystemRoot") ?: "C:/Windows", "System32/tar.exe")
+        exec { commandLine(tar.absolutePath, "-xf", temp.absolutePath, "-C", temporaryDir.absolutePath, "libmpv-2.dll") }
+        target.parentFile.mkdirs()
+        temporaryDir.resolve("libmpv-2.dll").copyTo(target, overwrite = true)
+        println("Installed $target")
     }
 }
 

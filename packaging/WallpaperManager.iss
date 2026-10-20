@@ -1,9 +1,16 @@
 ; Inno Setup script for Wallpaper Manager.
-; Built by tools/build.py --installer (needs Inno Setup 6: https://jrsoftware.org/isinfo.php).
+; Built by `gradlew installer` in desktop/ (needs Inno Setup 6 on PATH: https://jrsoftware.org/isinfo.php),
+; which passes AppVersion, SourceDir (the app folder from createDistributable) and OutputDir.
 ; Installs for the current user only, so no administrator rights are needed.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
+#endif
+#ifndef SourceDir
+  #define SourceDir "..\desktop\build\compose\binaries\main\app\WallpaperManager"
+#endif
+#ifndef OutputDir
+  #define OutputDir "..\dist"
 #endif
 #define AppName "Wallpaper Manager"
 #define AppExe "WallpaperManager.exe"
@@ -18,9 +25,9 @@ DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-OutputDir=..\dist
+OutputDir={#OutputDir}
 OutputBaseFilename=WallpaperManager-{#AppVersion}-setup
-SetupIconFile=..\wallpaper_manager\assets\icon.ico
+SetupIconFile=..\desktop\src\main\resources\icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2/max
 SolidCompression=yes
@@ -33,8 +40,14 @@ CloseApplications=force
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
+[InstallDelete]
+; Version 1.x was a different program (Python); remove its files so they don't linger next to 2.0.
+Type: filesandordirs; Name: "{app}\_internal"
+Type: files; Name: "{app}\bin\libmpv-2.dll"
+
 [Files]
-Source: "..\dist\WallpaperManager\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "READ ME FIRST.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -44,12 +57,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-; Stop the app so the live wallpaper window goes away and files can be removed.
+; Stop the app so the live wallpaper windows go away and files can be removed.
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM {#AppExe} /F"; Flags: runhidden; RunOnceId: "StopApp"
 
 [Registry]
 ; The app adds this value itself when "Start with Windows" is on; remove it on uninstall.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "WallpaperManager"; Flags: uninsdeletevalue dontcreatekey
 
-; The user's library and settings in %LOCALAPPDATA%\WallpaperManager are kept on purpose,
-; so reinstalling doesn't lose them (see "READ ME FIRST.txt" to remove them by hand).
+; The user's library and settings in %LOCALAPPDATA%\WallpaperManager (including the downloaded
+; web engine) are kept on purpose, so reinstalling doesn't lose them (see "READ ME FIRST.txt").

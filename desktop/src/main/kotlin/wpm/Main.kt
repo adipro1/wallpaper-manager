@@ -53,6 +53,13 @@ fun main(args: Array<String>) {
         JOptionPane.showMessageDialog(null, "${e.message}\n\nPlease install the latest version.", APP_NAME, JOptionPane.ERROR_MESSAGE)
         exitProcess(1)
     }
+    log.info("Native helpers in ${wpm.mpv.NativeBin.dir.toAbsolutePath()}: libmpv=${wpm.mpv.Mpv.available}, " +
+        "yt-dlp=${wpm.mpv.NativeBin.dir.resolve("yt-dlp.exe").toFile().exists()}")
+    if ("--self-test" in args) {
+        val passed = runSelfTest(paths)
+        instance.close()
+        exitProcess(if (passed) 0 else 1)
+    }
     setAppUserModelId(APP_ID)
     val app = AppState(paths, db, startMinimized)
     var showRequests by mutableIntStateOf(0)
