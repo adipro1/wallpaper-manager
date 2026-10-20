@@ -31,6 +31,8 @@ import wpm.ui.components.Card
 import wpm.ui.components.MutedText
 import wpm.ui.components.PageScaffold
 import wpm.ui.components.SectionTitle
+import wpm.mpv.LIBMPV_DLL
+import wpm.mpv.NativeBin
 import wpm.win32.Autostart
 import java.awt.Desktop
 import java.nio.file.Path
@@ -81,6 +83,20 @@ fun SettingsPage(app: AppState) {
         }
 
         Card(Modifier.fillMaxWidth()) {
+            SectionTitle("Live wallpapers")
+            Spacer(Modifier.height(4.dp))
+            MutedText(
+                if (app.videoSupport) "Video engine: libmpv found in ${NativeBin.dir.toAbsolutePath()}"
+                else "Video engine missing: put $LIBMPV_DLL into ${NativeBin.dir.toAbsolutePath()}",
+            )
+            BooleanSetting(app, "resume_live_wallpaper", true, "Start the live wallpaper again when the app starts")
+            BooleanSetting(app, "pause_when_hidden", true, "Pause while the PC is locked or the screen is off")
+            BooleanSetting(app, "pause_on_fullscreen", true, "Pause while a game or video runs full screen")
+            BooleanSetting(app, "pause_when_covered", true, "Pause while maximized windows cover the desktop")
+            BooleanSetting(app, "pause_on_battery", false, "Pause while running on battery")
+        }
+
+        Card(Modifier.fillMaxWidth()) {
             SectionTitle("Storage")
             Spacer(Modifier.height(6.dp))
             MutedText("Library, thumbnails and logs: ${app.paths.dataDir}")
@@ -96,6 +112,15 @@ fun SettingsPage(app: AppState) {
             Spacer(Modifier.height(6.dp))
             MutedText("$APP_NAME $APP_VERSION")
         }
+    }
+}
+
+@Composable
+private fun BooleanSetting(app: AppState, key: String, default: Boolean, label: String) {
+    var value by remember { mutableStateOf(app.settings.boolean(key, default)) }
+    SettingSwitch(label, value) {
+        value = it
+        app.settings.set(key, it)
     }
 }
 

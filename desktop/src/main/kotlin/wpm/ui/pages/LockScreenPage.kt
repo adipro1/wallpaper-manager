@@ -37,6 +37,7 @@ import wpm.ui.Theme
 import wpm.ui.components.Card
 import wpm.ui.components.ChooserCard
 import wpm.ui.components.ConfirmDialog
+import wpm.ui.components.FramePickerDialog
 import wpm.ui.components.MutedText
 import wpm.ui.components.PageScaffold
 import wpm.ui.components.SectionTitle
@@ -53,6 +54,7 @@ fun LockScreenPage(app: AppState) {
     var timestamp by remember { mutableStateOf<Double?>(null) }
     var hasOriginal by remember { mutableStateOf(false) }
     var confirmRestore by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf<MediaItem?>(null) }
     LaunchedEffect(app.wallpaperVersion) {
         loading = true
         withContext(Dispatchers.IO) {
@@ -92,14 +94,21 @@ fun LockScreenPage(app: AppState) {
             }
         }
         ChooserCard(
-            app, "Choose a picture", filter = { !it.isVideo }, highlighted = current?.id,
+            app, if (app.videoSupport) "Choose a picture or a video frame" else "Choose a picture",
+            filter = { !it.isVideo || app.videoSupport }, highlighted = current?.id,
             onPick = { item ->
-                app.runTask("Lock screen updated", "Couldn't set the lock screen") {
-                    app.changeWallpaper { app.lockScreen.setImage(item) }
+                if (item.isVideo) {
+                    picking = item
+                } else {
+                    app.runTask("Lock screen updated", "Couldn't set the lock screen") {
+                        app.changeWallpaper { app.lockScreen.setImage(item) }
+                    }
                 }
             },
         )
     }
+
+    picking?.let { FramePickerDialog(app, it, onClose = { picking = null }) }
 
     if (confirmRestore) {
         ConfirmDialog(

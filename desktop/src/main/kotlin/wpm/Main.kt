@@ -57,6 +57,8 @@ fun main(args: Array<String>) {
     val app = AppState(paths, db, startMinimized)
     var showRequests by mutableIntStateOf(0)
 
+    app.startAutomation()
+
     thread(name = "show-requests", isDaemon = true) {
         while (true) {
             if (instance.waitForShowRequest(1_000)) showRequests++
@@ -67,6 +69,7 @@ fun main(args: Array<String>) {
         application {
             fun exit() {
                 log.info("Exiting")
+                app.shutdown()
                 exitApplication()
             }
 
@@ -81,6 +84,13 @@ fun main(args: Array<String>) {
                     Separator()
                     Item("Next wallpaper", onClick = app::nextWallpaper)
                     Item("Random wallpaper", onClick = app::randomWallpaper)
+                    if (app.videoSupport) {
+                        Separator()
+                        Item("Pause / resume video", onClick = {
+                            app.videoAction { if (app.wallpapers.videoPaused) app.wallpapers.resumeVideo() else app.wallpapers.pauseVideo() }
+                        })
+                        Item("Stop video", onClick = { app.videoAction { app.wallpapers.stopVideo() } })
+                    }
                     Separator()
                     Item("Exit", onClick = ::exit)
                 },

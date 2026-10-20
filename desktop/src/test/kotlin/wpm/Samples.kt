@@ -23,6 +23,25 @@ object Samples {
         return path
     }
 
+    /** An H.264 test pattern video, encoded by libmpv itself. */
+    fun video(path: Path, seconds: Int = 3, width: Int = 320, height: Int = 180): Path {
+        Files.createDirectories(path.parent)
+        wpm.mpv.MpvPlayer(
+            mapOf(
+                "o" to path.toAbsolutePath().toString(), "ovc" to "libx264", "of" to "mp4",
+                "ao" to "null", "aid" to "no", "terminal" to "no", "config" to "no", "idle" to "yes",
+            ),
+        ).use { mpv ->
+            mpv.command("loadfile", "av://lavfi:testsrc=duration=$seconds:size=${width}x$height:rate=25")
+            while (true) {
+                val event = mpv.waitEvent(10.0)
+                if (event.id == wpm.mpv.Mpv.EVENT_END_FILE || event.id == wpm.mpv.Mpv.EVENT_SHUTDOWN || event.id == 0) break
+            }
+        }
+        check(Files.size(path) > 0) { "mpv did not write $path" }
+        return path
+    }
+
     /** A JPEG with EXIF orientation 6 (displayed rotated by 90 degrees). */
     fun rotatedJpeg(path: Path, width: Int = 64, height: Int = 36): Path {
         image(path, width, height)

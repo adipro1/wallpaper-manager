@@ -40,6 +40,15 @@ import wpm.AppState
 import wpm.data.MediaItem
 import wpm.services.DesktopState
 import wpm.services.IMAGE_STYLES
+import wpm.services.PauseReason
+import wpm.services.VIDEO_STYLES
+import wpm.ui.components.MediaThumbnail
+import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.automirrored.outlined.VolumeOff
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import wpm.ui.Theme
 import wpm.ui.components.Card
 import wpm.ui.components.ChooserCard
@@ -57,11 +66,19 @@ fun DesktopPage(app: AppState) {
     var picture by remember { mutableStateOf<Path?>(null) }
     var hasOriginal by remember { mutableStateOf(false) }
     var confirmRestore by remember { mutableStateOf(false) }
+    var live by remember { mutableStateOf(LiveInfo()) }
     LaunchedEffect(app.wallpaperVersion, app.libraryVersion) {
         withContext(Dispatchers.IO) {
             state = app.wallpapers.state
             current = app.wallpapers.currentItem()
             hasOriginal = app.wallpapers.hasOriginal()
+            live = LiveInfo(
+                active = app.wallpapers.videoActive,
+                paused = app.wallpapers.videoPaused,
+                autoReason = app.wallpapers.autoPauseReason,
+                muted = app.wallpapers.muted,
+                competing = app.wallpapers.competingApps(),
+            )
             picture = app.wallpapers.currentPicture()
         }
     }
@@ -73,14 +90,21 @@ fun DesktopPage(app: AppState) {
         Card(Modifier.fillMaxWidth()) {
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 Box(Modifier.width(360.dp).height(203.dp).clip(RoundedCornerShape(6.dp)).background(Theme.colors.previewBg)) {
-                    val preview = rememberPreview(picture, 1000, app.wallpaperVersion)
-                    if (preview != null) Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    val item = current
+                    if (state.kind == "video" && item != null) {
+                        MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
+                    } else {
+                        val preview = rememberPreview(picture, 1000, app.wallpaperVersion)
+                        if (preview != null) Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionTitle("Current wallpaper")
                     Text(current?.filename ?: if (state.kind == null) "Set outside this app" else "Removed from the library",
                         color = Theme.colors.text, fontSize = 15.sp)
-                    if (state.kind == "image" || state.kind == null) {
+                    if (state.kind == "video") {
+                        VideoControls(app, state, live)
+                    } else {
                         MutedText("Position")
                         val style = state.style
                         SingleChoiceSegmentedButtonRow {
@@ -103,7 +127,16 @@ fun DesktopPage(app: AppState) {
             }
         }
 
-        ChooserCard(app, "Choose a wallpaper", onPick = app::setDesktop, filter = { !it.isVideo }, highlighted = state.mediaId)
+        if (live.competing.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Text("${live.competing.joinToString()} is also drawing on the desktop and may cover this wallpaper. " +
+                    "Close it or pause its wallpaper.", color = Theme.colors.danger)
+            }
+        }
+        if (!app.videoSupport) {
+            MutedText("Video wallpapers need libmpv-2.dll in the app's bin folder.")
+        }
+        ChooserCard(app, "Choose a wallpaper", onPick = app::setDesktop, filter = { !it.isVideo || app.videoSupport }, highlighted = state.mediaId)
     }
 
     if (confirmRestore) {
@@ -116,5 +149,49 @@ fun DesktopPage(app: AppState) {
                 }
             },
         )
+    }
+}
+
+private data class LiveInfo(
+    val active: Boolean = false,
+    val paused: Boolean = false,
+    val autoReason: PauseReason? = null,
+    val muted: Boolean = true,
+    val competing: List<String> = emptyList(),
+)
+
+@Composable
+private fun VideoControls(app: AppState, state: DesktopState, live: LiveInfo) {
+    val w = app.wallpapers
+    MutedText(
+        when {
+            !live.active -> "Live wallpaper (not running)"
+            live.autoReason != null -> "Paused because ${live.autoReason.text}"
+            live.paused -> "Paused"
+            else -> "Playing"
+        },
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (live.active && live.paused) {
+            Button(onClick = { app.videoAction { w.resumeVideo() } }) { Icon(Icons.Outlined.PlayArrow, null); Text("  Resume") }
+        } else if (live.active) {
+            OutlinedButton(onClick = { app.videoAction { w.pauseVideo() } }) { Icon(Icons.Outlined.Pause, null); Text("  Pause") }
+        } else {
+            Button(onClick = { app.videoAction { w.currentItem()?.let(w::set) } }) { Icon(Icons.Outlined.PlayArrow, null); Text("  Start") }
+        }
+        OutlinedButton(onClick = { app.videoAction("Back to the picture underneath") { w.stopVideo() } }) {
+            Icon(Icons.Outlined.Stop, null); Text("  Stop")
+        }
+        OutlinedButton(onClick = { app.videoAction { w.setMuted(!live.muted) } }) {
+            Icon(if (live.muted) Icons.AutoMirrored.Outlined.VolumeOff else Icons.AutoMirrored.Outlined.VolumeUp, null)
+            Text(if (live.muted) "  Sound off" else "  Sound on")
+        }
+    }
+    SingleChoiceSegmentedButtonRow {
+        VIDEO_STYLES.forEachIndexed { i, s ->
+            SegmentedButton(state.style == s, { app.videoAction { w.setVideoStyle(s) } }, SegmentedButtonDefaults.itemShape(i, VIDEO_STYLES.size)) {
+                Text(s.replaceFirstChar(Char::uppercase))
+            }
+        }
     }
 }

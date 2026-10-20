@@ -58,7 +58,7 @@ class WallpaperServiceTest {
     private val library = MediaLibrary(db, paths.thumbDir)
     private val original = Samples.image(dir.resolve("original.jpg"))
     private val fake = FakeDesktop(original.toString())
-    private val service = WallpaperService(db, paths, fake)
+    private val service = WallpaperService(db, paths, fake, FakeLivePlayer())
 
     @AfterTest
     fun cleanup() {

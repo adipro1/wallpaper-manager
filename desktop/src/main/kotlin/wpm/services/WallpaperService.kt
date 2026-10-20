@@ -1,16 +1,18 @@
 package wpm.services
 
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import wpm.AppPaths
 import wpm.data.Database
 import wpm.data.MediaItem
 import wpm.data.Settings
+import wpm.engine.LivePlayer
 import wpm.logger
 import wpm.media.Imaging
 import wpm.win32.DesktopWallpaperApi
 import java.io.FileNotFoundException
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import kotlin.io.path.Path
 import kotlin.io.path.exists
@@ -39,51 +41,67 @@ data class StaticWallpaper(val file: String? = null, val style: String = "fill",
 @Serializable
 data class OriginalWallpaper(val path: String? = null, val style: String = "fill")
 
+/** Why a live wallpaper was paused automatically, most important first. */
+enum class PauseReason(val text: String) {
+    Locked("the PC is locked"),
+    ScreenOff("the screen is off"),
+    Fullscreen("a fullscreen app is running"),
+    Covered("windows cover the desktop"),
+    Battery("running on battery"),
+}
+
 /**
- * Applies wallpapers and remembers what is currently set. Converts files Windows
- * can't use directly, backs up the user's original wallpaper before the first change,
- * and saves the current choice so it survives a restart.
+ * Applies wallpapers and remembers what is currently set. Converts files Windows can't
+ * use directly, backs up the user's original wallpaper before the first change, switches
+ * between pictures and live videos, and saves the current choice so it survives a restart.
  *
- * Calls into Windows block briefly: call from a background dispatcher.
+ * Calls into Windows and mpv block briefly: call from a background dispatcher.
  */
-open class WallpaperService(
-    protected val db: Database,
-    protected val paths: AppPaths,
-    protected val windows: DesktopWallpaperApi,
+class WallpaperService(
+    private val db: Database,
+    private val paths: AppPaths,
+    private val windows: DesktopWallpaperApi,
+    private val live: LivePlayer,
 ) {
-    protected val settings = Settings(db)
+    private val settings = Settings(db)
+
+    /** Automatic pausing: the reason we paused, if we did. */
+    @Volatile var autoPauseReason: PauseReason? = null
+        private set
+    /** A reason the user overrode by pressing Resume (we don't fight the user). */
+    private var overriddenReason: PauseReason? = null
 
     // -- state ------------------------------------------------------------------
 
     val state: DesktopState get() = settings.obj("desktop_wallpaper", DesktopState.serializer()) ?: DesktopState()
 
-    protected fun saveState(state: DesktopState) = settings.set("desktop_wallpaper", DesktopState.serializer(), state)
+    private fun saveState(state: DesktopState) = settings.set("desktop_wallpaper", DesktopState.serializer(), state)
 
     fun currentItem(): MediaItem? = state.mediaId?.let(db::getMedia)
 
-    /** The picture Windows shows right now, even if this app didn't set it. */
-    fun currentPicture(): java.nio.file.Path? =
-        currentItem()?.path?.let(::Path)?.takeIf { it.exists() && !currentItem()!!.isVideo }
+    /** The picture Windows shows right now (under any video), even if this app didn't set it. */
+    fun currentPicture(): Path? {
+        val static = settings.obj("static_wallpaper", StaticWallpaper.serializer())?.file?.let(::Path)?.takeIf { it.exists() }
+        return static
             ?: windows.currentWallpaper()?.let(::Path)?.takeIf { it.exists() }
             ?: windows.transcodedWallpaper()
+    }
 
     // -- static images ------------------------------------------------------------
 
     /** Makes an image the desktop wallpaper (stops a live wallpaper). */
-    open fun setImage(item: MediaItem, style: String? = null) {
+    fun setImage(item: MediaItem, style: String? = null) {
         require(!item.isVideo) { "Use setVideo for videos" }
         if (!Path(item.path).exists()) throw FileNotFoundException("File not found: ${item.path}")
         val chosen = style ?: settings.string("image_style", "fill")
         backupOriginal()
         apply(prepareImage(item), chosen, item.id)
-        onStaticApplied() // after applying the image, so the old picture never flashes up
+        live.stop() // after applying the image, so the old picture never flashes up
+        autoPauseReason = null
         settings.set("image_style", chosen)
         saveState(DesktopState("image", item.id, item.path, chosen))
         log.info("Desktop wallpaper set to ${item.path} ($chosen)")
     }
-
-    /** Hook for the live wallpaper engine: a static picture replaced it. */
-    protected open fun onStaticApplied() {}
 
     /** Changes how the current image is positioned (fill, fit, ...). */
     fun setImageStyle(style: String) {
@@ -100,27 +118,145 @@ open class WallpaperService(
         return out.toString()
     }
 
-    protected fun apply(file: String, style: String, mediaId: Long? = null) {
+    private fun apply(file: String, style: String, mediaId: Long? = null) {
         windows.setStyle(style)
         windows.setWallpaper(file)
         settings.set("static_wallpaper", StaticWallpaper.serializer(), StaticWallpaper(file, style, mediaId))
     }
 
     /** Re-applies the static picture so Explorer repaints the area a video covered. */
-    protected fun repaintStatic() {
+    private fun repaintStatic() {
         val static = settings.obj("static_wallpaper", StaticWallpaper.serializer())
         val original = settings.obj("original_wallpaper", OriginalWallpaper.serializer())
         val file = listOfNotNull(static?.file, original?.path).firstOrNull { Path(it).exists() } ?: return
         runCatching { windows.setWallpaper(file, persist = false) }.onFailure { log.warning("Could not repaint the desktop: $it") }
     }
 
-    // -- library shortcuts ---------------------------------------------------------
+    // -- live video -----------------------------------------------------------------
+
+    val muted: Boolean get() = settings.boolean("video_muted", true)
+    val videoActive: Boolean get() = live.active
+    val videoPaused: Boolean get() = live.paused
+
+    /** Plays a video behind the desktop icons. */
+    fun setVideo(item: MediaItem, style: String? = null) {
+        require(item.isVideo) { "Use setImage for images" }
+        if (!Path(item.path).exists()) throw FileNotFoundException("File not found: ${item.path}")
+        val chosen = style ?: settings.string("video_style", "fill")
+        backupOriginal()
+        live.play(item.path, fill = chosen == "fill", muted = muted)
+        autoPauseReason = null // a new video starts playing; the next check re-pauses if needed
+        settings.set("video_style", chosen)
+        saveState(DesktopState("video", item.id, item.path, chosen))
+        log.info("Live wallpaper set to ${item.path} ($chosen)")
+    }
 
     /** Sets any library item as the desktop wallpaper. */
-    open fun set(item: MediaItem) {
-        if (item.isVideo) throw UnsupportedOperationException("Video wallpapers need the video engine")
-        setImage(item)
+    fun set(item: MediaItem) = if (item.isVideo) setVideo(item) else setImage(item)
+
+    fun setVideoStyle(style: String) {
+        settings.set("video_style", style)
+        live.setFill(style == "fill")
+        if (state.kind == "video") saveState(state.copy(style = style))
     }
+
+    fun setMuted(muted: Boolean) {
+        settings.set("video_muted", muted)
+        live.setMuted(muted)
+    }
+
+    /** Pause requested by the user: stays paused until the user resumes. */
+    fun pauseVideo() {
+        live.pause()
+        autoPauseReason = null
+    }
+
+    /** Resume requested by the user, even if an automatic reason still applies. */
+    fun resumeVideo() {
+        live.resume()
+        autoPauseReason?.let { overriddenReason = it }
+        autoPauseReason = null
+    }
+
+    /**
+     * Called every few seconds with why the video should be paused right now, or null.
+     * Only resumes what it paused itself. Returns true if it changed anything.
+     */
+    fun updateAutoPause(reason: PauseReason?): Boolean {
+        if (!live.active) {
+            autoPauseReason = null
+            overriddenReason = null
+            return false
+        }
+        if (reason == null) {
+            overriddenReason = null
+            val was = autoPauseReason ?: return false
+            log.info("Resuming live wallpaper (${was.text} no longer)")
+            autoPauseReason = null
+            live.resume()
+            return true
+        }
+        if (autoPauseReason == null && !live.paused && reason != overriddenReason) {
+            log.info("Pausing live wallpaper automatically (${reason.text})")
+            autoPauseReason = reason
+            live.pause()
+            return true
+        }
+        return false
+    }
+
+    /** Stops the live wallpaper and goes back to the static picture underneath. */
+    fun stopVideo() {
+        if (!live.active && state.kind != "video") return
+        live.stop()
+        autoPauseReason = null
+        repaintStatic()
+        val static = settings.obj("static_wallpaper", StaticWallpaper.serializer())
+        val item = static?.mediaId?.let(db::getMedia)
+        saveState(if (item != null) DesktopState("image", item.id, item.path, static.style) else DesktopState())
+    }
+
+    /** Starts the saved live wallpaper again after the app was restarted. Returns true if started. */
+    fun restoreOnStartup(): Boolean {
+        val saved = state
+        if (saved.kind != "video" || !settings.boolean("resume_live_wallpaper", true)) return false
+        val item = currentItem()
+        if (item == null || !Path(item.path).exists()) {
+            log.warning("Saved live wallpaper is no longer available: ${saved.path}")
+            return false
+        }
+        live.play(item.path, fill = saved.style == "fill", muted = muted)
+        return true
+    }
+
+    /** Called periodically: recovers after an Explorer restart and follows resolution changes. */
+    fun checkLive() {
+        if (!live.active) return
+        if (!live.isHealthy()) {
+            log.warning("Live wallpaper window was lost (Explorer restarted?) - recreating it")
+            val source = live.source
+            val wasPaused = autoPauseReason != null
+            live.stop()
+            if (source != null) {
+                live.play(source, fill = state.style == "fill", muted = muted)
+                if (wasPaused) live.pause()
+            }
+        } else {
+            live.fitToScreen()
+        }
+    }
+
+    fun competingApps(): List<String> = if (live.active) live.competingApps() else emptyList()
+
+    /** The app is closing: removes the video window but keeps the saved choice for next start. */
+    fun shutdown() {
+        if (live.active) {
+            live.stop()
+            repaintStatic()
+        }
+    }
+
+    // -- library shortcuts ---------------------------------------------------------
 
     /** Shows the library item after the current one (newest first, wrapping round). */
     fun nextFromLibrary(): MediaItem? {
@@ -140,7 +276,10 @@ open class WallpaperService(
         return item
     }
 
-    protected open fun playable(item: MediaItem): Boolean = !item.isVideo
+    /** Videos only count when the video engine is available. */
+    var videosAvailable: Boolean = true
+
+    private fun playable(item: MediaItem): Boolean = !item.isVideo || videosAvailable
 
     // -- original wallpaper ----------------------------------------------------------
 
@@ -170,11 +309,12 @@ open class WallpaperService(
 
     fun hasOriginal(): Boolean = db.getSetting("original_wallpaper") != null
 
-    open fun restoreOriginal() {
+    fun restoreOriginal() {
         val original = settings.obj("original_wallpaper", OriginalWallpaper.serializer()) ?: return
         val path = original.path
         if (path != null && Path(path).exists()) apply(path, original.style) else windows.setWallpaper("") // solid colour
-        onStaticApplied()
+        live.stop()
+        autoPauseReason = null
         saveState(DesktopState())
         log.info("Restored the original wallpaper")
     }

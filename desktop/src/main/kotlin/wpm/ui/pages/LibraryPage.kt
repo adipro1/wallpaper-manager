@@ -64,6 +64,8 @@ import wpm.ui.components.AddToPlaylistButton
 import wpm.ui.components.Card
 import wpm.ui.components.ClickKind
 import wpm.ui.components.ConfirmDialog
+import wpm.ui.components.FramePickerDialog
+import wpm.ui.components.VideoView
 import wpm.ui.components.MediaGrid
 import wpm.ui.components.MediaThumbnail
 import wpm.ui.components.MutedText
@@ -96,6 +98,7 @@ fun LibraryPage(app: AppState) {
     var selected by remember { mutableStateOf(emptySet<Long>()) }
     var anchor by remember { mutableStateOf<Long?>(null) }
     var pending by remember { mutableStateOf<PendingAction?>(null) }
+    var pickerOpen by remember { mutableStateOf(false) }
     val searchFocus = remember { FocusRequester() }
 
     LaunchedEffect(search, type, favoritesOnly, sort, app.libraryVersion) {
@@ -176,16 +179,22 @@ fun LibraryPage(app: AppState) {
                     list == null -> {}
                     list.isEmpty() -> EmptyLibrary(filtered = search.isNotBlank() || type != null || favoritesOnly)
                     else -> MediaGrid(list, app.thumbs, selected, ::onTileClick, Modifier.fillMaxSize(),
-                        onDoubleClick = { if (!it.isVideo) app.setDesktop(it) })
+                        onDoubleClick = { if (!it.isVideo || app.videoSupport) app.setDesktop(it) })
                 }
             }
             val single = list?.firstOrNull { selected.size == 1 && it.id in selected }
             if (single != null) {
-                DetailsPanel(app, single, Modifier.width(320.dp).fillMaxHeight(),
+                DetailsPanel(app, single, Modifier.width(320.dp).fillMaxHeight(), showVideo = pending == null && !pickerOpen,
+                    onPickFrame = { pickerOpen = true },
                     onRemove = { pending = PendingAction.Remove(listOf(single.id)) },
                     onDelete = { pending = PendingAction.DeleteFile(single) })
             }
         }
+    }
+
+    if (pickerOpen) {
+        items?.firstOrNull { selected.size == 1 && it.id in selected }?.let { FramePickerDialog(app, it, onClose = { pickerOpen = false }) }
+            ?: run { pickerOpen = false }
     }
 
     when (val action = pending) {
@@ -269,14 +278,26 @@ private fun setFavorites(app: AppState, ids: List<Long>, favorite: Boolean) = ap
 }
 
 @Composable
-private fun DetailsPanel(app: AppState, item: MediaItem, modifier: Modifier, onRemove: () -> Unit, onDelete: () -> Unit) {
+private fun DetailsPanel(
+    app: AppState,
+    item: MediaItem,
+    modifier: Modifier,
+    showVideo: Boolean,
+    onPickFrame: () -> Unit,
+    onRemove: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val exists = remember(item.id, app.libraryVersion) { Path(item.path).exists() }
     Card(modifier) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Theme.colors.previewBg)) {
-                val preview = if (!item.isVideo && exists) rememberPreview(Path(item.path), 900, item.id) else null
-                if (preview != null) Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                else MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
+                if (item.isVideo && exists && app.videoSupport && showVideo) {
+                    VideoView(item.path, Modifier.fillMaxSize())
+                } else {
+                    val preview = if (!item.isVideo && exists) rememberPreview(Path(item.path), 900, item.id) else null
+                    if (preview != null) Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                    else MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
+                }
             }
             Text(item.filename, color = Theme.colors.text, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             InfoRow("Type", if (item.isVideo) "Video" else "Image")
@@ -288,18 +309,23 @@ private fun DetailsPanel(app: AppState, item: MediaItem, modifier: Modifier, onR
             if (!exists) Text("The file is missing. It may have been moved or deleted.", color = Theme.colors.danger, fontSize = 13.sp)
 
             Spacer(Modifier.height(4.dp))
-            Button(onClick = { app.setDesktop(item) }, enabled = exists && !item.isVideo, modifier = Modifier.fillMaxWidth()) {
-                Text("Set as desktop wallpaper")
+            val usable = exists && (!item.isVideo || app.videoSupport)
+            Button(onClick = { app.setDesktop(item) }, enabled = usable, modifier = Modifier.fillMaxWidth()) {
+                Text(if (item.isVideo) "Set as live wallpaper" else "Set as desktop wallpaper")
             }
             OutlinedButton(
                 onClick = {
-                    app.runTask("Lock screen updated", "Couldn't set the lock screen") {
-                        app.changeWallpaper { app.lockScreen.setImage(item) }
+                    if (item.isVideo) {
+                        onPickFrame()
+                    } else {
+                        app.runTask("Lock screen updated", "Couldn't set the lock screen") {
+                            app.changeWallpaper { app.lockScreen.setImage(item) }
+                        }
                     }
                 },
-                enabled = exists && !item.isVideo, modifier = Modifier.fillMaxWidth(),
-            ) { Text("Set as lock screen") }
-            if (item.isVideo) MutedText("Video wallpapers arrive with the video engine.")
+                enabled = usable, modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (item.isVideo) "Pick a frame for the lock screen…" else "Set as lock screen") }
+            if (item.isVideo && !app.videoSupport) MutedText("Videos need libmpv-2.dll in the app's bin folder.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
                     app.runTask { app.db.setFavorite(item.id, !item.favorite); app.libraryChanged() }

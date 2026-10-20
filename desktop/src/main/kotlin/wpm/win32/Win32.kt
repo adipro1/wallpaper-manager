@@ -3,6 +3,10 @@ package wpm.win32
 import com.sun.jna.Native
 import com.sun.jna.WString
 import com.sun.jna.platform.win32.Advapi32Util
+import com.sun.jna.platform.win32.Guid
+import com.sun.jna.platform.win32.WinDef
+import com.sun.jna.platform.win32.WinNT
+import com.sun.jna.ptr.IntByReference
 import com.sun.jna.platform.win32.WinReg
 import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
@@ -17,6 +21,16 @@ import kotlin.io.path.isRegularFile
 internal interface User32Ex : StdCallLibrary {
     fun SystemParametersInfoW(action: Int, param: Int, value: WString?, flags: Int): Boolean
     fun SystemParametersInfoW(action: Int, param: Int, value: CharArray, flags: Int): Boolean
+    fun MapWindowPoints(from: WinDef.HWND?, to: WinDef.HWND?, points: WinDef.POINT, count: Int): Int
+    fun RegisterPowerSettingNotification(recipient: WinNT.HANDLE, guid: Guid.GUID, flags: Int): WinNT.HANDLE?
+    fun UnregisterPowerSettingNotification(handle: WinNT.HANDLE): Boolean
+    fun IsZoomed(hwnd: WinDef.HWND): Boolean
+    fun IsIconic(hwnd: WinDef.HWND): Boolean
+    fun OpenInputDesktop(flags: Int, inherit: Boolean, access: Int): WinNT.HANDLE?
+    fun CloseDesktop(desktop: WinNT.HANDLE): Boolean
+    fun WindowFromPoint(point: WinDef.POINT.ByValue): WinDef.HWND?
+    fun SendMessageW(hwnd: WinDef.HWND, msg: Int, wParam: WinDef.WPARAM, lParam: WinDef.LPARAM): WinDef.LRESULT
+    fun ScreenToClient(hwnd: WinDef.HWND, point: WinDef.POINT): Boolean
 
     companion object {
         val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java, W32APIOptions.DEFAULT_OPTIONS)
@@ -26,9 +40,28 @@ internal interface User32Ex : StdCallLibrary {
 @Suppress("FunctionName")
 internal interface Shell32Ex : StdCallLibrary {
     fun SetCurrentProcessExplicitAppUserModelID(appId: WString): Int
+    fun SHQueryUserNotificationState(state: IntByReference): Int
 
     companion object {
         val INSTANCE: Shell32Ex = Native.load("shell32", Shell32Ex::class.java, W32APIOptions.DEFAULT_OPTIONS)
+    }
+}
+
+@Suppress("FunctionName")
+internal interface Gdi32Ex : StdCallLibrary {
+    fun GetStockObject(index: Int): WinDef.HBRUSH?
+
+    companion object {
+        val INSTANCE: Gdi32Ex = Native.load("gdi32", Gdi32Ex::class.java, W32APIOptions.DEFAULT_OPTIONS)
+    }
+}
+
+@Suppress("FunctionName")
+internal interface DwmApi : StdCallLibrary {
+    fun DwmGetWindowAttribute(hwnd: WinDef.HWND, attribute: Int, value: IntByReference, size: Int): Int
+
+    companion object {
+        val INSTANCE: DwmApi = Native.load("dwmapi", DwmApi::class.java, W32APIOptions.DEFAULT_OPTIONS)
     }
 }
 

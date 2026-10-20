@@ -23,7 +23,15 @@ import wpm.data.Settings
 import wpm.media.MediaLibrary
 import wpm.media.findMediaFiles
 import wpm.media.mediaTypeFor
+import wpm.engine.LivePlayer
+import wpm.engine.MpvLivePlayer
+import wpm.media.VideoReader
+import wpm.mpv.Mpv
+import wpm.mpv.MpvVideoReader
+import wpm.services.Automation
 import wpm.services.LockScreenApi
+import wpm.services.SystemProbe
+import wpm.services.WindowsSystemProbe
 import wpm.services.LockScreenService
 import wpm.services.PowerShellLockScreen
 import wpm.services.WallpaperService
@@ -62,13 +70,18 @@ class AppState(
     startMinimized: Boolean,
     desktopApi: DesktopWallpaperApi = WindowsDesktop,
     lockScreenApi: LockScreenApi = PowerShellLockScreen(paths.cacheDir),
+    live: LivePlayer = MpvLivePlayer(),
+    videoReader: VideoReader? = if (Mpv.available) MpvVideoReader(paths.cacheDir.resolve("frames")) else null,
+    private val systemProbe: SystemProbe = WindowsSystemProbe,
 ) {
     val settings = Settings(db)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val library = MediaLibrary(db, paths.thumbDir)
-    val wallpapers = WallpaperService(db, paths, desktopApi)
-    val lockScreen = LockScreenService(db, paths, lockScreenApi)
+    val library = MediaLibrary(db, paths.thumbDir, videoReader)
+    val wallpapers = WallpaperService(db, paths, desktopApi, live).also { it.videosAvailable = videoReader != null }
+    val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
+    /** False when libmpv is missing: videos can't be imported or played. */
+    val videoSupport: Boolean = videoReader != null
     val thumbs = ThumbnailCache(library)
 
     /** The main window, for file dialogs. */
@@ -204,6 +217,20 @@ class AppState(
                 importProgress = null
             }
         }
+    }
+
+    /** Starts the background jobs (restore, watchdog, auto-pause). */
+    fun startAutomation() {
+        Automation(scope, wallpapers, settings, systemProbe) { block -> changeWallpaper(block) }.start()
+    }
+
+    fun videoAction(success: String? = null, block: () -> Unit) =
+        runTask(success, "Couldn't control the video") { changeWallpaper(block) }
+
+    /** The app is exiting: stop the live wallpaper (it comes back on next start). */
+    fun shutdown() {
+        scope.cancel()
+        runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
     }
 
     fun close() {

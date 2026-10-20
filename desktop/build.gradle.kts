@@ -44,8 +44,16 @@ val generateAppInfo by tasks.registering {
 }
 kotlin.sourceSets["main"].kotlin.srcDir(generateAppInfo)
 
+// In development, native helpers (libmpv, yt-dlp) come from the repo's bin/ folder.
+val devBinDir = rootDir.resolve("../bin").normalize()
+
 tasks.test {
     useJUnitPlatform()
+    systemProperty("wpm.bin.dir", devBinDir.absolutePath)
+}
+
+tasks.withType<JavaExec>().configureEach {
+    systemProperty("wpm.bin.dir", devBinDir.absolutePath)
 }
 
 compose.desktop {

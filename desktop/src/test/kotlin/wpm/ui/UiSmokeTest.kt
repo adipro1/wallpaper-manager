@@ -12,7 +12,9 @@ import wpm.Samples
 import wpm.Shortcut
 import wpm.data.Database
 import wpm.services.FakeDesktop
+import wpm.services.FakeLivePlayer
 import wpm.services.FakeLockScreen
+import wpm.services.FakeProbe
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -28,6 +30,9 @@ class UiSmokeTest {
         paths, db, startMinimized = false,
         desktopApi = FakeDesktop(),
         lockScreenApi = FakeLockScreen(Samples.image(dir.resolve("lock.png"))),
+        live = FakeLivePlayer(),
+        videoReader = null,
+        systemProbe = FakeProbe(),
     )
 
     init {
