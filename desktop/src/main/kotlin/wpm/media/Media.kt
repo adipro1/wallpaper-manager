@@ -79,7 +79,11 @@ class MediaLibrary(private val db: Database, val thumbDir: Path, var videos: Vid
     /** Thumbnail file name from the media path and modification time, so an edited file gets a fresh one. */
     fun thumbnailName(path: Path): String {
         val mtime = runCatching { path.getLastModifiedTime().toMillis() }.getOrDefault(0)
-        val key = "${path.toAbsolutePath().toString().lowercase()}|$mtime"
+        return thumbnailNameFor("${path.toAbsolutePath().toString().lowercase()}|$mtime")
+    }
+
+    /** Thumbnail file name for any key (e.g. a URL). */
+    fun thumbnailNameFor(key: String): String {
         val digest = MessageDigest.getInstance("SHA-1").digest(key.toByteArray())
         return digest.joinToString("") { "%02x".format(it) }.take(24) + ".jpg"
     }
@@ -101,7 +105,7 @@ class MediaLibrary(private val db: Database, val thumbDir: Path, var videos: Vid
     /** The item's thumbnail, recreated if it was deleted. Null when the media file is missing or unreadable. */
     fun ensureThumbnail(item: MediaItem): Path? {
         item.thumbnail?.let { name -> thumbDir.resolve(name).takeIf { it.exists() }?.let { return it } }
-        val path = Path(item.path)
+        val path = item.localPath ?: return null // streams get their thumbnail when added
         if (!path.exists()) return null
         if (item.isVideo && videos == null) return null
         return try {

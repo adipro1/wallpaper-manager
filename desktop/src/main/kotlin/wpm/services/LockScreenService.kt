@@ -114,13 +114,14 @@ class LockScreenService(
     }
 
     fun setImage(item: MediaItem) {
-        require(!item.isVideo) { "Pick a frame with setVideoFrame for videos" }
-        if (!Path(item.path).exists()) throw FileNotFoundException("File not found: ${item.path}")
+        require(item.isImage) { "Pick a frame with setVideoFrame for videos" }
+        val local = item.localPath ?: throw IllegalArgumentException("Only pictures on this PC can be used")
+        if (!local.exists()) throw FileNotFoundException("File not found: $local")
         backupOriginal()
-        var file = Path(item.path)
+        var file = local
         if (file.extension.lowercase() !in NATIVE_FORMATS) { // WEBP / GIF / BMP -> PNG
             file = folder.resolve("lockscreen-${item.id}.png")
-            Imaging.load(Path(item.path)).use { Imaging.savePng(it, file) }
+            Imaging.load(local).use { Imaging.savePng(it, file) }
         }
         set(file, LockScreenState(item.id, item.path, null))
     }
@@ -128,13 +129,14 @@ class LockScreenService(
     /** Extracts the frame at [seconds] and uses it as the lock screen. Returns the frame file. */
     fun setVideoFrame(item: MediaItem, seconds: Double): Path {
         require(item.isVideo) { "Not a video" }
-        if (!Path(item.path).exists()) throw FileNotFoundException("File not found: ${item.path}")
+        val local = item.localPath ?: throw IllegalArgumentException("Save the video for offline use first")
+        if (!local.exists()) throw FileNotFoundException("File not found: $local")
         val reader = videos ?: throw IllegalStateException("Video playback isn't available")
         backupOriginal()
         Files.createDirectories(folder)
         folder.listDirectoryEntries("frame-*.jpg").forEach { Files.deleteIfExists(it) } // keep only the current frame
         val file = folder.resolve("frame-${item.id}-${(seconds * 1000).toLong()}.jpg")
-        reader.frame(Path(item.path), seconds).use { Imaging.saveJpeg(it, file, 95) }
+        reader.frame(local, seconds).use { Imaging.saveJpeg(it, file, 95) }
         set(file, LockScreenState(item.id, item.path, seconds))
         return file
     }

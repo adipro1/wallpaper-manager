@@ -1,13 +1,16 @@
 package wpm.data
 
+import java.nio.file.Path
 import java.util.Locale
+import kotlin.io.path.Path
+import kotlin.io.path.exists
 import kotlin.math.roundToLong
 
 data class MediaItem(
     val id: Long,
-    val path: String,
-    val filename: String,
-    val mediaType: String, // "image" or "video"
+    val path: String?, // local file or folder; null for streamed URLs and websites
+    val filename: String, // display name
+    val mediaType: String, // "image", "video", "web" or "shader"
     val width: Int?,
     val height: Int?,
     val duration: Double?, // seconds, videos only
@@ -15,8 +18,27 @@ data class MediaItem(
     val favorite: Boolean,
     val dateAdded: String,
     val thumbnail: String?, // file name inside the thumbnail folder
+    val sourceUrl: String? = null, // where a video or website came from
+    val entry: String? = null, // web wallpapers: the page inside the folder
+    val interactive: Boolean = false, // web wallpapers: pass mouse input through
+    val audio: Boolean = false, // web/shader wallpapers: wants system audio levels
 ) {
     val isVideo: Boolean get() = mediaType == "video"
+    val isImage: Boolean get() = mediaType == "image"
+    val isWeb: Boolean get() = mediaType == "web"
+    val isShader: Boolean get() = mediaType == "shader"
+    /** Plays as a live wallpaper (video, web page or shader) rather than a Windows picture. */
+    val isLive: Boolean get() = !isImage
+    /** Streamed from the internet rather than played from a local file or folder. */
+    val isRemote: Boolean get() = path == null
+
+    /** What a player opens: the local file, or the URL. */
+    val source: String get() = path ?: sourceUrl!!
+
+    val localPath: Path? get() = path?.let(::Path)
+
+    /** False when the local file or folder is gone. Streams can't be checked without loading them. */
+    fun available(): Boolean = localPath?.exists() ?: true
 
     val resolutionText: String
         get() = if (width != null && height != null && width > 0 && height > 0) "$width × $height" else "Unknown"
@@ -76,4 +98,4 @@ data class ScheduleRule(
         }
 }
 
-data class MediaStats(val total: Int, val images: Int, val videos: Int, val favorites: Int)
+data class MediaStats(val total: Int, val images: Int, val videos: Int, val favorites: Int, val interactive: Int = 0)

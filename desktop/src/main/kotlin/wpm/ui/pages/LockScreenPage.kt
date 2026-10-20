@@ -95,7 +95,7 @@ fun LockScreenPage(app: AppState) {
         }
         ChooserCard(
             app, if (app.videoSupport) "Choose a picture or a video frame" else "Choose a picture",
-            filter = { !it.isVideo || app.videoSupport }, highlighted = current?.id,
+            filter = { it.isImage || (it.isVideo && !it.isRemote && app.videoSupport) }, highlighted = current?.id,
             onPick = { item ->
                 if (item.isVideo) {
                     picking = item

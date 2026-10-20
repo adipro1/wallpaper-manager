@@ -70,7 +70,38 @@ val MIGRATIONS = listOf(
         CHECK ((media_id IS NULL) != (playlist_id IS NULL))
     );
     """,
+    // 4 (2.0): streamed video URLs, web and shader wallpapers. SQLite can't change a CHECK
+    // constraint, so the media table is rebuilt; ids are kept, so playlists and rules stay valid.
+    """
+    CREATE TABLE media_new (
+        id           INTEGER PRIMARY KEY,
+        path         TEXT UNIQUE COLLATE NOCASE,  -- local file or folder; NULL for streamed URLs and websites
+        source_url   TEXT UNIQUE,                 -- where a video or website came from
+        filename     TEXT NOT NULL,               -- display name
+        media_type   TEXT NOT NULL CHECK (media_type IN ('image', 'video', 'web', 'shader')),
+        width        INTEGER,
+        height       INTEGER,
+        duration     REAL,
+        file_size    INTEGER,
+        favorite     INTEGER NOT NULL DEFAULT 0,
+        date_added   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+        thumbnail    TEXT,
+        entry        TEXT,                        -- web wallpapers: the page inside the folder
+        interactive  INTEGER NOT NULL DEFAULT 0,  -- web wallpapers: pass mouse input through
+        audio        INTEGER NOT NULL DEFAULT 0,  -- web/shader wallpapers: wants system audio levels
+        CHECK (path IS NOT NULL OR source_url IS NOT NULL)
+    );
+    INSERT INTO media_new (id, path, filename, media_type, width, height, duration, file_size, favorite, date_added, thumbnail)
+        SELECT id, path, filename, media_type, width, height, duration, file_size, favorite, date_added, thumbnail FROM media;
+    DROP TABLE media;
+    ALTER TABLE media_new RENAME TO media;
+    CREATE INDEX idx_media_type ON media(media_type);
+    CREATE INDEX idx_media_favorite ON media(favorite);
+    """,
 )
+
+/** Migrations that rebuild a table: foreign keys must be off while they run, or the old table's rows cascade away. */
+private val TABLE_REBUILDS = setOf(4)
 
 private val DEFAULT_SETTINGS: Map<String, JsonElement> = mapOf(
     "appearance_mode" to JsonPrimitive("dark"),
@@ -93,7 +124,7 @@ class DatabaseTooNewException(version: Int) :
  * Thin wrapper around one SQLite connection. The connection is shared between the
  * UI and background workers (e.g. importing), so every call takes a lock.
  */
-class Database(path: String) : AutoCloseable {
+class Database(private val path: String) : AutoCloseable {
     constructor(path: Path) : this(path.toString())
 
     private val lock = Any()
@@ -110,15 +141,36 @@ class Database(path: String) : AutoCloseable {
     private fun migrate() = synchronized(lock) {
         val version = schemaVersion
         if (version > MIGRATIONS.size) throw DatabaseTooNewException(version)
+        if (version in 1 until MIGRATIONS.size) backup(version)
         for (number in version + 1..MIGRATIONS.size) {
             log.info("Applying database migration $number")
-            inTransaction {
-                conn.createStatement().use { st ->
-                    splitStatements(MIGRATIONS[number - 1]).forEach { st.execute(it) }
-                    st.execute("PRAGMA user_version = $number")
+            val rebuild = number in TABLE_REBUILDS
+            conn.createStatement().use { st ->
+                if (rebuild) st.execute("PRAGMA foreign_keys = OFF") // has no effect inside a transaction
+                try {
+                    inTransaction {
+                        splitStatements(MIGRATIONS[number - 1]).forEach { st.execute(it) }
+                        if (rebuild) {
+                            st.executeQuery("PRAGMA foreign_key_check").use { rs ->
+                                if (rs.next()) throw IllegalStateException("Migration $number broke a reference in ${rs.getString(1)}")
+                            }
+                        }
+                        st.execute("PRAGMA user_version = $number")
+                    }
+                } finally {
+                    if (rebuild) st.execute("PRAGMA foreign_keys = ON")
                 }
             }
         }
+    }
+
+    /** Copy of the database before upgrading it, e.g. library.v3.bak.db (older app versions can't read newer schemas). */
+    private fun backup(version: Int) {
+        val target = path.removeSuffix(".db") + ".v$version.bak.db"
+        if (java.io.File(target).exists()) return
+        runCatching { conn.createStatement().use { it.execute("VACUUM INTO '" + target.replace("'", "''") + "'") } }
+            .onSuccess { log.info("Backed up the library database to $target") }
+            .onFailure { log.warning("Could not back up the database before upgrading: $it") }
     }
 
     val schemaVersion: Int
@@ -199,6 +251,7 @@ class Database(path: String) : AutoCloseable {
     private fun mediaFrom(rs: ResultSet) = MediaItem(
         id = rs.getLong("id"),
         path = rs.getString("path"),
+        sourceUrl = rs.getString("source_url"),
         filename = rs.getString("filename"),
         mediaType = rs.getString("media_type"),
         width = rs.getObject("width")?.let { (it as Number).toInt() },
@@ -208,20 +261,51 @@ class Database(path: String) : AutoCloseable {
         favorite = rs.getInt("favorite") != 0,
         dateAdded = rs.getString("date_added"),
         thumbnail = rs.getString("thumbnail"),
+        entry = rs.getString("entry"),
+        interactive = rs.getInt("interactive") != 0,
+        audio = rs.getInt("audio") != 0,
     )
 
     /** Inserts a library entry. Returns the new id, or null if the path is already in the library. */
     fun addMedia(path: String, mediaType: String, width: Int?, height: Int?, duration: Double?,
-                 fileSize: Long?, thumbnail: String?): Long? {
+                 fileSize: Long?, thumbnail: String?, sourceUrl: String? = null): Long? {
         val (changed, id) = execute(
-            "INSERT OR IGNORE INTO media (path, filename, media_type, width, height, duration, file_size, thumbnail)" +
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            path, Path.of(path).name, mediaType, width, height, duration, fileSize, thumbnail,
+            "INSERT OR IGNORE INTO media (path, filename, media_type, width, height, duration, file_size, thumbnail, source_url)" +
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            path, Path.of(path).name, mediaType, width, height, duration, fileSize, thumbnail, sourceUrl,
         )
         return if (changed > 0) id else null
     }
 
+    /**
+     * Inserts an entry that isn't a single local file: a streamed URL (no [path]), a website,
+     * or a web/shader wallpaper folder. Returns the new id, or null if it is already in the library.
+     */
+    fun addItem(
+        name: String, mediaType: String, path: String? = null, sourceUrl: String? = null, entry: String? = null,
+        width: Int? = null, height: Int? = null, duration: Double? = null, fileSize: Long? = null,
+        thumbnail: String? = null, interactive: Boolean = false, audio: Boolean = false,
+    ): Long? {
+        require(path != null || sourceUrl != null) { "An item needs a path or a URL" }
+        val (changed, id) = execute(
+            "INSERT OR IGNORE INTO media (path, source_url, filename, media_type, width, height, duration, file_size, thumbnail," +
+                " entry, interactive, audio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            path, sourceUrl, name, mediaType, width, height, duration, fileSize, thumbnail, entry, interactive, audio,
+        )
+        return if (changed > 0) id else null
+    }
+
+    fun updateItemOptions(mediaId: Long, interactive: Boolean, audio: Boolean) {
+        execute("UPDATE media SET interactive = ?, audio = ? WHERE id = ?", interactive, audio, mediaId)
+    }
+
+    fun rename(mediaId: Long, name: String) {
+        execute("UPDATE media SET filename = ? WHERE id = ?", name, mediaId)
+    }
+
     fun hasMedia(path: String): Boolean = query("SELECT 1 FROM media WHERE path = ?", path) { true }.isNotEmpty()
+
+    fun hasUrl(url: String): Boolean = query("SELECT 1 FROM media WHERE source_url = ?", url) { true }.isNotEmpty()
 
     fun getMedia(mediaId: Long): MediaItem? = query("SELECT * FROM media WHERE id = ?", mediaId, map = ::mediaFrom).firstOrNull()
 
@@ -232,7 +316,9 @@ class Database(path: String) : AutoCloseable {
             clauses += "instr(lower(filename), lower(?)) > 0"
             params += search.trim()
         }
-        if (mediaType != null) {
+        if (mediaType == "interactive") {
+            clauses += "media_type IN ('web', 'shader')"
+        } else if (mediaType != null) {
             clauses += "media_type = ?"
             params += mediaType
         }
@@ -279,8 +365,8 @@ class Database(path: String) : AutoCloseable {
 
     fun mediaStats(): MediaStats = query(
         "SELECT COUNT(*), COALESCE(SUM(media_type = 'image'), 0), COALESCE(SUM(media_type = 'video'), 0)," +
-            " COALESCE(SUM(favorite), 0) FROM media",
-    ) { MediaStats(it.getInt(1), it.getInt(2), it.getInt(3), it.getInt(4)) }.first()
+            " COALESCE(SUM(favorite), 0), COALESCE(SUM(media_type IN ('web', 'shader')), 0) FROM media",
+    ) { MediaStats(it.getInt(1), it.getInt(2), it.getInt(3), it.getInt(4), it.getInt(5)) }.first()
 
     // -- playlists -----------------------------------------------------------------
 

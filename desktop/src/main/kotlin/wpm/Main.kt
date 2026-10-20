@@ -127,7 +127,7 @@ fun main(args: Array<String>) {
                 LaunchedEffect(Unit) {
                     window.minimumSize = Dimension(minOf(980, workArea.width), minOf(620, workArea.height))
                     app.window = window
-                    installFileDrop(window, app::import)
+                    installFileDrop(window, app::import) { app.addUrl = it }
                 }
                 LaunchedEffect(showRequests) {
                     if (showRequests > 0) {

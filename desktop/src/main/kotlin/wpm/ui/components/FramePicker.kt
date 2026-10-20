@@ -44,7 +44,7 @@ fun FramePickerDialog(app: AppState, item: MediaItem, onClose: () -> Unit) {
     ) {
         AppTheme(app.darkTheme) {
             Column(Modifier.fillMaxSize().background(Theme.colors.windowBg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                VideoView(item.path, Modifier.fillMaxWidth().weight(1f), paused = true, loop = false, controller = controller)
+                VideoView(item.source, Modifier.fillMaxWidth().weight(1f), paused = true, loop = false, controller = controller)
                 val duration = controller.duration.takeIf { it > 0 } ?: item.duration ?: 0.0
                 Slider(
                     value = dragging ?: controller.position.toFloat(),
@@ -73,7 +73,7 @@ fun FramePickerDialog(app: AppState, item: MediaItem, onClose: () -> Unit) {
                         val target = Path(dialog.directory, if ('.' in name) name else "$name.png")
                         app.runTask("Frame saved", "Couldn't save the frame") {
                             val reader = app.library.videos ?: error("Video support is unavailable")
-                            reader.frame(Path(item.path), at).use {
+                            reader.frame(item.localPath!!, at).use {
                                 if (target.toString().lowercase().endsWith(".jpg") || target.toString().lowercase().endsWith(".jpeg")) {
                                     Imaging.saveJpeg(it, target, 95)
                                 } else {

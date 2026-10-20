@@ -97,6 +97,20 @@ fun SettingsPage(app: AppState) {
                 if (app.videoSupport) "Video engine: libmpv found in ${NativeBin.dir.toAbsolutePath()}"
                 else "Video engine missing: put $LIBMPV_DLL into ${NativeBin.dir.toAbsolutePath()}",
             )
+            MutedText(if (app.ytDlp.available) "Video links: yt-dlp found" else "Video links need yt-dlp.exe in ${NativeBin.dir.toAbsolutePath()}")
+            if (app.ytDlp.available) {
+                var updating by remember { mutableStateOf(false) }
+                TextButton(onClick = {
+                    updating = true
+                    app.runTask(failure = "Couldn't update yt-dlp") {
+                        try {
+                            app.toast(app.ytDlp.update(), ToastKind.Success)
+                        } finally {
+                            updating = false
+                        }
+                    }
+                }, enabled = !updating) { Text(if (updating) "Updating yt-dlp…" else "Update yt-dlp (if YouTube links stop working)") }
+            }
             BooleanSetting(app, "resume_live_wallpaper", true, "Start the live wallpaper again when the app starts")
             BooleanSetting(app, "pause_when_hidden", true, "Pause while the PC is locked or the screen is off")
             BooleanSetting(app, "pause_on_fullscreen", true, "Pause while a game or video runs full screen")

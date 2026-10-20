@@ -22,6 +22,7 @@ class FakeLivePlayer : LivePlayer {
     var fillOn = true
     var mutedOn = true
     override var source: String? = null
+    override var lastError: String? = null
     override var active = false
     override var paused = false
 

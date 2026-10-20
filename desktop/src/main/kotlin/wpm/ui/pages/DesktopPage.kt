@@ -76,6 +76,7 @@ fun DesktopPage(app: AppState) {
                 active = app.wallpapers.videoActive,
                 paused = app.wallpapers.videoPaused,
                 autoReason = app.wallpapers.autoPauseReason,
+                error = app.wallpapers.liveError,
                 muted = app.wallpapers.muted,
                 competing = app.wallpapers.competingApps(),
             )
@@ -127,6 +128,13 @@ fun DesktopPage(app: AppState) {
             }
         }
 
+        live.error?.let { error ->
+            Card(Modifier.fillMaxWidth()) {
+                Text("Couldn't play this wallpaper: $error. " +
+                    (if (current?.isRemote == true) "The stream may be offline, or the site changed - try “Update yt-dlp” in Settings." else ""),
+                    color = Theme.colors.danger)
+            }
+        }
         if (live.competing.isNotEmpty()) {
             Card(Modifier.fillMaxWidth()) {
                 Text("${live.competing.joinToString()} is also drawing on the desktop and may cover this wallpaper. " +
@@ -158,6 +166,7 @@ private data class LiveInfo(
     val autoReason: PauseReason? = null,
     val muted: Boolean = true,
     val competing: List<String> = emptyList(),
+    val error: String? = null,
 )
 
 @Composable

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
@@ -137,6 +138,7 @@ fun LibraryPage(app: AppState) {
         items?.let { "${it.size} wallpaper${if (it.size == 1) "" else "s"}" + if (selected.size > 1) " · ${selected.size} selected" else "" },
         scroll = false,
         actions = {
+            OutlinedButton(onClick = { app.addUrl = "" }) { Icon(Icons.Outlined.Link, null); Text("  Add from URL") }
             OutlinedButton(onClick = { pickFolder(app.window)?.let { app.import(listOf(it)) } }) {
                 Icon(Icons.Outlined.CreateNewFolder, null); Text("  Import folder")
             }
@@ -226,7 +228,7 @@ fun LibraryPage(app: AppState) {
             onDismiss = { pending = null },
             onConfirm = {
                 app.runTask("Moved to the Recycle Bin", "Couldn't delete the file") {
-                    sendToRecycleBin(action.item.path)
+                    sendToRecycleBin(action.item.path!!)
                     app.library.deleteThumbnail(action.item)
                     app.db.removeMedia(action.item.id)
                     selected = emptySet()
@@ -287,29 +289,34 @@ private fun DetailsPanel(
     onRemove: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val exists = remember(item.id, app.libraryVersion) { Path(item.path).exists() }
+    val exists = remember(item.id, app.libraryVersion) { item.available() }
     Card(modifier) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Theme.colors.previewBg)) {
-                if (item.isVideo && exists && app.videoSupport && showVideo) {
-                    VideoView(item.path, Modifier.fillMaxSize())
+                if (item.isVideo && !item.isRemote && exists && app.videoSupport && showVideo) {
+                    VideoView(item.source, Modifier.fillMaxSize())
                 } else {
-                    val preview = if (!item.isVideo && exists) rememberPreview(Path(item.path), 900, item.id) else null
+                    val preview = if (item.isImage && exists) rememberPreview(item.localPath, 900, item.id) else null
                     if (preview != null) Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                     else MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
                 }
             }
             Text(item.filename, color = Theme.colors.text, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            InfoRow("Type", if (item.isVideo) "Video" else "Image")
+            InfoRow("Type", when {
+                item.isRemote -> "Online video (streamed)"
+                item.isVideo -> "Video"
+                else -> "Image"
+            })
             InfoRow("Resolution", item.resolutionText)
             if (item.isVideo) InfoRow("Duration", item.durationText.ifEmpty { "Unknown" })
-            InfoRow("Size", item.sizeText)
+            if (!item.isRemote) InfoRow("Size", item.sizeText)
             InfoRow("Added", item.dateAdded.take(16))
-            InfoRow("Folder", shortenMiddle(Path(item.path).parent?.pathString ?: "", 40))
+            if (item.path != null) InfoRow("Folder", shortenMiddle(Path(item.path).parent?.pathString ?: "", 40))
+            item.sourceUrl?.let { InfoRow(if (item.isRemote) "Streams from" else "Downloaded from", shortenMiddle(it, 40)) }
             if (!exists) Text("The file is missing. It may have been moved or deleted.", color = Theme.colors.danger, fontSize = 13.sp)
 
             Spacer(Modifier.height(4.dp))
-            val usable = exists && (!item.isVideo || app.videoSupport)
+            val usable = exists && (item.isImage || app.videoSupport)
             Button(onClick = { app.setDesktop(item) }, enabled = usable, modifier = Modifier.fillMaxWidth()) {
                 Text(if (item.isVideo) "Set as live wallpaper" else "Set as desktop wallpaper")
             }
@@ -323,8 +330,9 @@ private fun DetailsPanel(
                         }
                     }
                 },
-                enabled = usable, modifier = Modifier.fillMaxWidth(),
+                enabled = usable && !item.isRemote, modifier = Modifier.fillMaxWidth(),
             ) { Text(if (item.isVideo) "Pick a frame for the lock screen…" else "Set as lock screen") }
+            if (item.isRemote) MutedText("Streams play from the internet; save the video offline to use a frame on the lock screen.")
             if (item.isVideo && !app.videoSupport) MutedText("Videos need libmpv-2.dll in the app's bin folder.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
@@ -335,8 +343,8 @@ private fun DetailsPanel(
                     Text(if (item.favorite) "  Favorite" else "  Add favorite")
                 }
                 OutlinedButton(onClick = {
-                    runCatching { showInExplorer(item.path) }.onFailure { app.toast("Couldn't open Explorer", ToastKind.Error) }
-                }, enabled = exists) { Text("Show in folder") }
+                    runCatching { showInExplorer(item.path!!) }.onFailure { app.toast("Couldn't open Explorer", ToastKind.Error) }
+                }, enabled = exists && !item.isRemote) { Text("Show in folder") }
             }
             AddToPlaylistButton(app, { listOf(item.id) })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

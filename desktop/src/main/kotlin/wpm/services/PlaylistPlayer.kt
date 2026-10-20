@@ -91,7 +91,7 @@ class PlaylistPlayer(
         repeat(items.size) {
             val (item, next) = pickNext(playlist, items, s)
             s = next
-            if (!Path(item.path).exists()) {
+            if (!item.available()) {
                 log.warning("Skipping missing playlist item ${item.path}")
                 return@repeat
             }

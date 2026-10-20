@@ -51,21 +51,31 @@ fun handleShortcut(app: AppState, event: KeyEvent): Boolean {
     }
 }
 
-/** Accepts files and folders dragged from Explorer onto the window. */
-fun installFileDrop(window: Window, onDrop: (List<Path>) -> Unit) {
+/** Accepts files and folders dragged from Explorer, and links dragged from a browser. */
+fun installFileDrop(window: Window, onDrop: (List<Path>) -> Unit, onLink: (String) -> Unit) {
     window.dropTarget = object : DropTarget() {
         override fun dragEnter(event: DropTargetDragEvent) {
-            if (event.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) event.acceptDrag(DnDConstants.ACTION_COPY)
-            else event.rejectDrag()
+            if (event.isDataFlavorSupported(DataFlavor.javaFileListFlavor) || event.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                event.acceptDrag(DnDConstants.ACTION_COPY)
+            } else {
+                event.rejectDrag()
+            }
         }
 
         override fun drop(event: DropTargetDropEvent) {
             try {
                 event.acceptDrop(DnDConstants.ACTION_COPY)
-                @Suppress("UNCHECKED_CAST")
-                val files = event.transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
-                event.dropComplete(true)
-                if (files.isNotEmpty()) onDrop(files.map { it.toPath() })
+                val data = event.transferable
+                if (data.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                    @Suppress("UNCHECKED_CAST")
+                    val files = data.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+                    event.dropComplete(true)
+                    if (files.isNotEmpty()) onDrop(files.map { it.toPath() })
+                } else {
+                    val text = data.getTransferData(DataFlavor.stringFlavor) as String
+                    event.dropComplete(true)
+                    wpm.media.parseVideoUrl(text.lines().first())?.let(onLink)
+                }
             } catch (e: Exception) {
                 log.warning("Drop failed: $e")
                 event.dropComplete(false)

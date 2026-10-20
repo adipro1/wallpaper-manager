@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import wpm.APP_VERSION
 import wpm.AppState
 import wpm.Page
+import wpm.ui.components.AddUrlDialog
 import wpm.ui.components.ToastHost
 import wpm.ui.pages.DesktopPage
 import wpm.ui.pages.HomePage
@@ -77,6 +78,7 @@ fun App(app: AppState) {
                     Page.Schedule -> SchedulePage(app)
                 }
                 ToastHost(app.toast, app::dismissToast, Modifier.align(Alignment.BottomCenter))
+                app.addUrl?.let { url -> AddUrlDialog(app, url, onDismiss = { app.addUrl = null }) }
             }
         }
     }

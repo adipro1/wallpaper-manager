@@ -26,7 +26,10 @@ import wpm.media.mediaTypeFor
 import wpm.engine.LivePlayer
 import wpm.engine.MpvLivePlayer
 import wpm.media.VideoReader
+import wpm.media.UrlImporter
+import wpm.media.YtDlp
 import wpm.mpv.Mpv
+import wpm.mpv.NativeBin
 import wpm.mpv.MpvVideoReader
 import wpm.services.Automation
 import wpm.services.LockScreenApi
@@ -83,6 +86,8 @@ class AppState(
     val library = MediaLibrary(db, paths.thumbDir, videoReader)
     val wallpapers = WallpaperService(db, paths, desktopApi, live).also { it.videosAvailable = videoReader != null }
     val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
+    val ytDlp = YtDlp(NativeBin.dir.resolve("yt-dlp.exe"))
+    val urls = UrlImporter(db, library, ytDlp, downloadFolder())
     val playlists = PlaylistPlayer(db, wallpapers)
     val scheduler = Scheduler(db, wallpapers, playlists)
     val updates = UpdateChecker(db)
@@ -112,6 +117,8 @@ class AppState(
         private set
     var importProgress by mutableStateOf<ImportProgress?>(null)
         private set
+    /** Non-null while the "add a video from the internet" dialog is open (with this link). */
+    var addUrl by mutableStateOf<String?>(null)
 
     private val _shortcuts = MutableSharedFlow<Shortcut>(extraBufferCapacity = 8)
     val shortcuts: SharedFlow<Shortcut> = _shortcuts
@@ -248,6 +255,14 @@ class AppState(
     fun close() {
         scope.cancel()
     }
+}
+
+/** Offline copies of online videos go where people look for videos: Videos\Wallpapers. */
+private fun downloadFolder(): Path {
+    val videos = runCatching {
+        com.sun.jna.platform.win32.Shell32Util.getKnownFolderPath(com.sun.jna.platform.win32.KnownFolders.FOLDERID_Videos)
+    }.getOrNull() ?: Path.of(System.getProperty("user.home"), "Videos").toString()
+    return Path.of(videos, "Wallpapers")
 }
 
 private fun systemUsesDarkTheme(): Boolean = try {

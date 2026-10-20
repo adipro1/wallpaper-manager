@@ -1,3 +1,5 @@
+import java.net.URI
+import java.security.MessageDigest
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -72,5 +74,27 @@ compose.desktop {
                 upgradeUuid = "6f1a3c2e-8d4b-4f5a-9c7e-2b1d0e9f8a71"
             }
         }
+    }
+}
+
+// yt-dlp (video URLs from YouTube and other sites): pinned build, checked with SHA-256.
+// Run `gradlew getYtDlp` once; sites change often, so the app can also update it later.
+val ytDlpVersion = "2026.08.19"
+val ytDlpSha256 = "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+
+val getYtDlp by tasks.registering {
+    group = "setup"
+    description = "Downloads yt-dlp.exe into the repo's bin/ folder."
+    val target = devBinDir.resolve("yt-dlp.exe")
+    outputs.file(target)
+    onlyIf { !target.exists() }
+    doLast {
+        val url = "https://github.com/yt-dlp/yt-dlp/releases/download/$ytDlpVersion/yt-dlp.exe"
+        val bytes = URI(url).toURL().openStream().use { it.readBytes() }
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        check(digest == ytDlpSha256) { "yt-dlp.exe checksum mismatch: $digest" }
+        target.parentFile.mkdirs()
+        target.writeBytes(bytes)
+        println("Installed $target")
     }
 }

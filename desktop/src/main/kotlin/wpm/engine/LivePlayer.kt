@@ -3,6 +3,7 @@ package wpm.engine
 import wpm.logger
 import wpm.mpv.Mpv
 import wpm.mpv.MpvPlayer
+import wpm.mpv.NativeBin
 import wpm.win32.DesktopHost
 import wpm.win32.Monitors
 import wpm.win32.windowProcessName
@@ -13,6 +14,8 @@ interface LivePlayer {
     val paused: Boolean
     /** What is playing: a file path or URL. */
     val source: String?
+    /** Why the last source couldn't be played (e.g. a stream is offline), or null. */
+    val lastError: String?
 
     /** Starts (or switches to) a video. Switching reuses the window, so there is no flicker. */
     fun play(source: String, fill: Boolean, muted: Boolean)
@@ -40,6 +43,8 @@ class MpvLivePlayer : LivePlayer {
     private var mpv: MpvPlayer? = null
     @Volatile override var source: String? = null
         private set
+    @Volatile override var lastError: String? = null
+        private set
 
     override val active: Boolean get() = mpv != null
     override val paused: Boolean get() = mpv?.get("pause") == "yes"
@@ -51,6 +56,7 @@ class MpvLivePlayer : LivePlayer {
         player["panscan"] = if (fill) "1.0" else "0.0" // 1.0 = crop to fill the screen, 0 = letterbox
         player["mute"] = if (muted) "yes" else "no"
         player["pause"] = "no"
+        lastError = null
         player.command("loadfile", source)
         this.source = source
         log.info("Live wallpaper playing $source")
@@ -58,7 +64,8 @@ class MpvLivePlayer : LivePlayer {
 
     private fun create() {
         stopLocked()
-        val newHost = DesktopHost(Monitors.primary().bounds)
+        val monitor = Monitors.primary().bounds
+        val newHost = DesktopHost(monitor)
         newHost.start()
         try {
             mpv = MpvPlayer(
@@ -71,9 +78,21 @@ class MpvLivePlayer : LivePlayer {
                     "osc" to "no", "osd-level" to "0", // no on-screen controls or messages
                     "input-default-bindings" to "no", "input-vo-keyboard" to "no", "input-cursor" to "no",
                     "cursor-autohide" to "always",
-                    "idle" to "yes", "config" to "no", "terminal" to "no", "ytdl" to "no",
+                    "idle" to "yes", "config" to "no", "terminal" to "no",
+                    // Video pages (YouTube etc.) through yt-dlp, never fetching more than the screen can show.
+                    "ytdl" to "yes",
+                    "script-opts" to "ytdl_hook-ytdl_path=${NativeBin.dir.resolve("yt-dlp.exe").toAbsolutePath()}",
+                    "ytdl-format" to "bv*[height<=?${monitor.height}]+ba/b[height<=?${monitor.height}]/bv*+ba/b",
+                    "cache" to "yes", "demuxer-max-bytes" to "150MiB", "demuxer-max-back-bytes" to "50MiB",
                 ),
-            ).also { it.startEventThread("mpv-live") }
+            ).also { player ->
+                player.startEventThread("mpv-live") { event ->
+                    if (event.id == Mpv.EVENT_END_FILE && event.endReason == Mpv.END_ERROR) {
+                        lastError = player.errorString(event.endError)
+                        log.warning("Live wallpaper couldn't play $source: $lastError")
+                    }
+                }
+            }
             host = newHost
         } catch (e: Exception) {
             newHost.close()

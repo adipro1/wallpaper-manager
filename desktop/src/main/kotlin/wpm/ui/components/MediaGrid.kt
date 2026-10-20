@@ -105,6 +105,7 @@ fun MediaTile(item: MediaItem, thumbs: ThumbnailCache, selected: Boolean, onClic
                 Icon(Icons.Filled.Star, "Favorite", tint = Theme.colors.star, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp))
             }
             val badge = when {
+                item.isRemote -> "Stream" + item.durationText.let { if (it.isEmpty()) "" else " · $it" }
                 item.isVideo -> item.durationText.ifEmpty { "Video" }
                 item.filename.endsWith(".gif", ignoreCase = true) -> "GIF"
                 else -> null
@@ -124,7 +125,7 @@ fun MediaThumbnail(item: MediaItem, thumbs: ThumbnailCache, modifier: Modifier =
     Box(modifier, contentAlignment = Alignment.Center) {
         when {
             bitmap != null -> Image(bitmap, item.filename, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            !Path(item.path).exists() -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            !item.available() -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Outlined.BrokenImage, null, tint = Color.Gray)
                 Text("File missing", color = Color.Gray, fontSize = 12.sp)
             }

@@ -91,11 +91,12 @@ class WallpaperService(
 
     /** Makes an image the desktop wallpaper (stops a live wallpaper). */
     fun setImage(item: MediaItem, style: String? = null) {
-        require(!item.isVideo) { "Use setVideo for videos" }
-        if (!Path(item.path).exists()) throw FileNotFoundException("File not found: ${item.path}")
+        require(item.isImage) { "Use setVideo for videos" }
+        val local = item.localPath ?: throw IllegalArgumentException("Pictures must be on this PC")
+        if (!local.exists()) throw FileNotFoundException("File not found: $local")
         val chosen = style ?: settings.string("image_style", "fill")
         backupOriginal()
-        apply(prepareImage(item), chosen, item.id)
+        apply(prepareImage(item, local), chosen, item.id)
         live.stop() // after applying the image, so the old picture never flashes up
         autoPauseReason = null
         settings.set("image_style", chosen)
@@ -110,11 +111,11 @@ class WallpaperService(
     }
 
     /** A file Windows can use: the original for JPG/PNG/BMP, otherwise a PNG copy (first frame for GIFs). */
-    private fun prepareImage(item: MediaItem): String {
-        if (Path(item.path).extension.lowercase() in NATIVE_WALLPAPER_FORMATS) return item.path
+    private fun prepareImage(item: MediaItem, local: Path): String {
+        if (local.extension.lowercase() in NATIVE_WALLPAPER_FORMATS) return local.toString()
         // One file per item, so a converted copy is never overwritten while Windows still reads it.
         val out = paths.cacheDir.resolve("desktop-${item.id}.png")
-        Imaging.load(Path(item.path)).use { Imaging.savePng(it, out) }
+        Imaging.load(local).use { Imaging.savePng(it, out) }
         return out.toString()
     }
 
@@ -137,18 +138,20 @@ class WallpaperService(
     val muted: Boolean get() = settings.boolean("video_muted", true)
     val videoActive: Boolean get() = live.active
     val videoPaused: Boolean get() = live.paused
+    /** Why the live wallpaper couldn't play (e.g. a stream is offline), or null. */
+    val liveError: String? get() = live.lastError
 
     /** Plays a video behind the desktop icons. */
     fun setVideo(item: MediaItem, style: String? = null) {
         require(item.isVideo) { "Use setImage for images" }
-        if (!Path(item.path).exists()) throw FileNotFoundException("File not found: ${item.path}")
+        if (!item.available()) throw FileNotFoundException("File not found: ${item.path}")
         val chosen = style ?: settings.string("video_style", "fill")
         backupOriginal()
-        live.play(item.path, fill = chosen == "fill", muted = muted)
+        live.play(item.source, fill = chosen == "fill", muted = muted)
         autoPauseReason = null // a new video starts playing; the next check re-pauses if needed
         settings.set("video_style", chosen)
-        saveState(DesktopState("video", item.id, item.path, chosen))
-        log.info("Live wallpaper set to ${item.path} ($chosen)")
+        saveState(DesktopState("video", item.id, item.source, chosen))
+        log.info("Live wallpaper set to ${item.source} ($chosen)")
     }
 
     /** Sets any library item as the desktop wallpaper. */
@@ -221,11 +224,11 @@ class WallpaperService(
         val saved = state
         if (saved.kind != "video" || !settings.boolean("resume_live_wallpaper", true)) return false
         val item = currentItem()
-        if (item == null || !Path(item.path).exists()) {
+        if (item == null || !item.available()) {
             log.warning("Saved live wallpaper is no longer available: ${saved.path}")
             return false
         }
-        live.play(item.path, fill = saved.style == "fill", muted = muted)
+        live.play(item.source, fill = saved.style == "fill", muted = muted)
         return true
     }
 
@@ -271,7 +274,7 @@ class WallpaperService(
     /** Shows a random library item other than the current one. */
     fun randomFromLibrary(): MediaItem? {
         val current = state.mediaId
-        val item = db.listMedia().filter { it.id != current && playable(it) && Path(it.path).exists() }.randomOrNull() ?: return null
+        val item = db.listMedia().filter { it.id != current && playable(it) && it.available() }.randomOrNull() ?: return null
         set(item)
         return item
     }
