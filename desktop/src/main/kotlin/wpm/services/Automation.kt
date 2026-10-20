@@ -45,15 +45,22 @@ fun pauseReason(settings: Settings, probe: SystemProbe): PauseReason? {
 /**
  * Background jobs while the app runs:
  * - start the saved live wallpaper after launch, and keep its window alive (watchdog)
+ * - apply due schedule rules and advance the running playlist
  * - pause the live wallpaper while nobody can see it, and resume it afterwards
+ * - check for a newer release once a day
  */
 class Automation(
     private val scope: CoroutineScope,
     private val wallpapers: WallpaperService,
+    private val playlists: PlaylistPlayer,
+    private val scheduler: Scheduler,
+    private val updates: UpdateChecker,
     private val settings: Settings,
     private val probe: SystemProbe,
     /** Runs a wallpaper change exclusively (shared with the UI) and refreshes the pages. */
     private val exclusive: suspend (() -> Unit) -> Unit,
+    /** Shows a tray notification. */
+    private val notify: (String) -> Unit,
 ) {
     fun start() {
         DisplayState.start()
@@ -64,6 +71,25 @@ class Automation(
         }
         every(3_000) {
             if (wallpapers.videoActive) exclusive { wallpapers.checkLive() }
+        }
+        // Schedule and playlist changes, one at a time (the schedule wins when both are due).
+        every(5_000) {
+            when {
+                scheduler.isDue() -> exclusive { runCatching { scheduler.applyDue() }.onFailure { log.warning("Schedule change failed: $it") } }
+                playlists.isDue() -> exclusive { runCatching { playlists.advance() }.onFailure { log.warning("Playlist change failed: $it") } }
+            }
+        }
+        scope.launch(Dispatchers.IO) {
+            delay(15_000) // look for updates shortly after start, not during it
+            while (isActive) {
+                runCatching { updates.checkIfDue() }.getOrNull()?.let { version ->
+                    if (settings.string("notified_version", "") != version) {
+                        settings.set("notified_version", version)
+                        notify("Version $version is available. Open Settings to download it.")
+                    }
+                }
+                delay(3_600_000)
+            }
         }
         every(2_000) {
             if (wallpapers.videoActive) {

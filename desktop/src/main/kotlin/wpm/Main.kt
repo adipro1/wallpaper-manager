@@ -74,6 +74,7 @@ fun main(args: Array<String>) {
             }
 
             val trayState = rememberTrayState()
+            app.notify = { trayState.sendNotification(androidx.compose.ui.window.Notification(APP_NAME, it)) }
             Tray(
                 icon = painterResource("icon.png"),
                 state = trayState,

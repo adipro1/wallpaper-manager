@@ -33,7 +33,15 @@ import wpm.ui.components.PageScaffold
 import wpm.ui.components.SectionTitle
 import wpm.mpv.LIBMPV_DLL
 import wpm.mpv.NativeBin
+import wpm.services.RELEASES_PAGE
+import wpm.services.REPO
+import wpm.services.saveDiagnostics
 import wpm.win32.Autostart
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import java.awt.FileDialog
+import java.awt.Frame
+import java.time.LocalDate
 import java.awt.Desktop
 import java.nio.file.Path
 
@@ -108,9 +116,54 @@ fun SettingsPage(app: AppState) {
         }
 
         Card(Modifier.fillMaxWidth()) {
+            SectionTitle("Updates")
+            BooleanSetting(app, "check_for_updates", true, "Check for new versions once a day")
+            var available by remember { mutableStateOf(app.updates.availableVersion()) }
+            var checking by remember { mutableStateOf(false) }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MutedText(available?.let { "Version $it is available (you have $APP_VERSION)." } ?: "You have version $APP_VERSION.")
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = {
+                    checking = true
+                    app.runTask(failure = "Couldn't check for updates") {
+                        try {
+                            available = app.updates.checkIfDue(force = true)
+                            app.toast(available?.let { "Version $it is available" } ?: "You have the latest version", ToastKind.Success)
+                        } finally {
+                            checking = false
+                        }
+                    }
+                }, enabled = !checking) { Text(if (checking) "Checking…" else "Check now") }
+                if (available != null) {
+                    Button(onClick = { openLink(app, RELEASES_PAGE) }) { Text("Download") }
+                }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            SectionTitle("Diagnostics")
+            Spacer(Modifier.height(6.dp))
+            MutedText("If something doesn't work, save a diagnostics file and attach it to a bug report. It contains logs and settings, no pictures.")
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = {
+                val dialog = FileDialog(app.window as? Frame, "Save diagnostics", FileDialog.SAVE).apply {
+                    file = "WallpaperManager-diagnostics-${LocalDate.now()}.zip"
+                }
+                dialog.isVisible = true
+                val name = dialog.file ?: return@OutlinedButton
+                val target = Path.of(dialog.directory, if (name.endsWith(".zip")) name else "$name.zip")
+                app.runTask("Diagnostics saved", "Couldn't save diagnostics") {
+                    saveDiagnostics(target, app.db, app.paths, app.wallpapers)
+                }
+            }) { Text("Save diagnostics…") }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
             SectionTitle("About")
             Spacer(Modifier.height(6.dp))
             MutedText("$APP_NAME $APP_VERSION")
+            TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text("Project page") }
         }
     }
 }
@@ -133,6 +186,14 @@ private fun SettingSwitch(label: String, checked: Boolean, enabled: Boolean = tr
             if (hint != null) MutedText(hint)
         }
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+
+private fun openLink(app: AppState, url: String) {
+    try {
+        Desktop.getDesktop().browse(java.net.URI(url))
+    } catch (e: Exception) {
+        app.toast("Couldn't open the browser: ${e.message}", ToastKind.Error)
     }
 }
 

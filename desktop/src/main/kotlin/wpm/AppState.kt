@@ -30,6 +30,9 @@ import wpm.mpv.Mpv
 import wpm.mpv.MpvVideoReader
 import wpm.services.Automation
 import wpm.services.LockScreenApi
+import wpm.services.PlaylistPlayer
+import wpm.services.Scheduler
+import wpm.services.UpdateChecker
 import wpm.services.SystemProbe
 import wpm.services.WindowsSystemProbe
 import wpm.services.LockScreenService
@@ -80,6 +83,11 @@ class AppState(
     val library = MediaLibrary(db, paths.thumbDir, videoReader)
     val wallpapers = WallpaperService(db, paths, desktopApi, live).also { it.videosAvailable = videoReader != null }
     val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
+    val playlists = PlaylistPlayer(db, wallpapers)
+    val scheduler = Scheduler(db, wallpapers, playlists)
+    val updates = UpdateChecker(db)
+    /** Shows a tray notification (set by the window code). */
+    var notify: (String) -> Unit = {}
     /** False when libmpv is missing: videos can't be imported or played. */
     val videoSupport: Boolean = videoReader != null
     val thumbs = ThumbnailCache(library)
@@ -173,8 +181,12 @@ class AppState(
         withContext(Dispatchers.IO) { block() }.also { wallpaperChanged() }
     }
 
+    /** Picking a wallpaper by hand stops the running playlist. */
     fun setDesktop(item: MediaItem) = runTask("Desktop wallpaper set", "Couldn't set the wallpaper") {
-        changeWallpaper { wallpapers.set(item) }
+        changeWallpaper {
+            playlists.stop()
+            wallpapers.set(item)
+        }
     }
 
     fun nextWallpaper() = runTask(failure = "Couldn't change the wallpaper") {
@@ -221,7 +233,7 @@ class AppState(
 
     /** Starts the background jobs (restore, watchdog, auto-pause). */
     fun startAutomation() {
-        Automation(scope, wallpapers, settings, systemProbe) { block -> changeWallpaper(block) }.start()
+        Automation(scope, wallpapers, playlists, scheduler, updates, settings, systemProbe, { block -> changeWallpaper(block) }, { notify(it) }).start()
     }
 
     fun videoAction(success: String? = null, block: () -> Unit) =

@@ -42,13 +42,13 @@ import androidx.compose.ui.unit.sp
 import wpm.APP_VERSION
 import wpm.AppState
 import wpm.Page
-import wpm.ui.components.ComingSoon
-import wpm.ui.components.PageScaffold
 import wpm.ui.components.ToastHost
 import wpm.ui.pages.DesktopPage
 import wpm.ui.pages.HomePage
 import wpm.ui.pages.LibraryPage
 import wpm.ui.pages.LockScreenPage
+import wpm.ui.pages.PlaylistsPage
+import wpm.ui.pages.SchedulePage
 import wpm.ui.pages.SettingsPage
 
 private fun Page.icon(): ImageVector = when (this) {
@@ -73,8 +73,8 @@ fun App(app: AppState) {
                     Page.Desktop -> DesktopPage(app)
                     Page.LockScreen -> LockScreenPage(app)
                     Page.Library -> LibraryPage(app)
-                    Page.Playlists -> PageScaffold("Playlists") { ComingSoon("Playlists (step 4).") }
-                    Page.Schedule -> PageScaffold("Schedule") { ComingSoon("Daily schedule (step 4).") }
+                    Page.Playlists -> PlaylistsPage(app)
+                    Page.Schedule -> SchedulePage(app)
                 }
                 ToastHost(app.toast, app::dismissToast, Modifier.align(Alignment.BottomCenter))
             }
