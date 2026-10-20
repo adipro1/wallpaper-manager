@@ -83,7 +83,12 @@ object Chromium {
  * the wallpaper layer (the same layer the video window uses); mouse input over the empty
  * desktop is forwarded to it by [InputForwarder].
  */
-class WebLivePlayer(private val installDir: Path, private val onStatus: (String?) -> Unit = {}) : LivePlayer {
+class WebLivePlayer(
+    private val installDir: Path,
+    private val onStatus: (String?) -> Unit = {},
+    /** The display area this player covers (looked up again when displays change). */
+    private val area: () -> ScreenRect = { Monitors.primary().bounds },
+) : LivePlayer {
     private var client: CefClient? = null
     private var browser: CefBrowser? = null
     private var hwnd: HWND? = null
@@ -144,7 +149,7 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
     }
 
     private fun create(app: CefApp, url: String) {
-        val monitor = Monitors.primary().bounds
+        val monitor = area()
         val opened = openBrowserWindow(app, url,
             onTitle = { pageTitle = it },
             onError = { error, failed ->
@@ -234,7 +239,7 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
 
     @Synchronized
     override fun fitToScreen() {
-        val monitor = Monitors.primary().bounds
+        val monitor = area()
         val h = hwnd ?: return
         val p = parent ?: return
         if (monitor != rect && isHealthy()) {

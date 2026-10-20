@@ -29,6 +29,8 @@ import wpm.engine.LivePlayer
 import wpm.engine.LiveRouter
 import wpm.engine.LiveSource
 import wpm.engine.MpvLivePlayer
+import wpm.engine.MultiLive
+import wpm.win32.Monitors
 import wpm.engine.WebLivePlayer
 import wpm.media.SHADER_EXTENSIONS
 import wpm.media.Shaders
@@ -104,11 +106,19 @@ class AppState(
     } finally {
         webEngineStatus = null
     }
-    @Volatile private var webEngineCreated = false
-    val webEngine: WebLivePlayer by lazy { webEngineCreated = true; WebLivePlayer(chromiumDir) { webEngineStatus = it } }
+    /** One player per display: mpv for videos, Chromium for pages and shaders (created when first needed). */
+    private val displays: MultiLive? = if (live == null) MultiLive(Monitors::all) { display ->
+        val area = { Monitors.all().firstOrNull { it.id == display.id }?.bounds ?: display.bounds }
+        LiveRouter(MpvLivePlayer(area)) { WebLivePlayer(chromiumDir, { webEngineStatus = it }, area) }
+    }.also { it.allDisplays = settings.boolean("live_all_displays", true) } else null
+    private val livePlayer: LivePlayer = live ?: displays!!
+
+    /** Web engines that exist right now (one per display showing a page or shader). */
+    fun webEngines(): List<WebLivePlayer> =
+        displays?.players()?.values?.mapNotNull { (it as? LiveRouter)?.web as? WebLivePlayer } ?: emptyList()
+
     /** System audio levels for audio-reactive wallpapers (runs only while one is showing). */
-    val audio = AudioCapture { levels -> if (webEngineCreated) webEngine.deliverAudio(levels) }
-    private val livePlayer: LivePlayer = live ?: LiveRouter(MpvLivePlayer()) { webEngine }
+    val audio = AudioCapture { levels -> webEngines().forEach { if (it.wantsAudio) it.deliverAudio(levels) } }
     val wallpapers = WallpaperService(db, paths, desktopApi, livePlayer).also {
         it.videosAvailable = videoReader != null
         it.sourceFor = ::liveSourceFor
@@ -227,6 +237,11 @@ class AppState(
         refreshWebThumbnail(item)
     }
 
+    /** Gives one display its own wallpaper. */
+    fun setOnDisplay(display: wpm.win32.Monitor, item: MediaItem) = runTask("${display.label} updated", "Couldn't set the wallpaper") {
+        changeWallpaper { wallpapers.setOnDisplay(display, item) }
+    }
+
     fun nextWallpaper() = runTask(failure = "Couldn't change the wallpaper") {
         val item = changeWallpaper { wallpapers.nextFromLibrary() }
         toast(item?.let { "Showing ${it.filename}" } ?: "Your library is empty", if (item != null) ToastKind.Success else ToastKind.Info)
@@ -254,7 +269,8 @@ class AppState(
         scope.launch(Dispatchers.IO) {
             delay(6_000)
             if (wallpapers.state.mediaId != item.id || wallpapers.videoPaused) return@launch
-            val shot = webEngine.snapshot() ?: return@launch
+            val engine = (displays?.primaryPlayer() as? LiveRouter)?.web as? WebLivePlayer ?: return@launch
+            val shot = engine.snapshot() ?: return@launch
             runCatching {
                 val name = web.saveSnapshot(shot, item.id)
                 db.setThumbnail(item.id, name)
@@ -321,7 +337,7 @@ class AppState(
 
     /** Listens to system audio only while a visible wallpaper wants it. */
     private fun updateAudio() {
-        val wanted = webEngineCreated && webEngine.active && webEngine.wantsAudio && !webEngine.paused
+        val wanted = webEngines().any { it.active && it.wantsAudio && !it.paused }
         if (wanted && !audio.active) audio.start() else if (!wanted && audio.active) audio.stop()
     }
 
@@ -333,7 +349,12 @@ class AppState(
                 runCatching { updateAudio() }
             }
         }
-        Automation(scope, wallpapers, playlists, scheduler, updates, settings, systemProbe, { block -> changeWallpaper(block) }, { notify(it) }).start()
+        Automation(
+            scope, wallpapers, playlists, scheduler, updates, settings, systemProbe,
+            exclusive = { block -> changeWallpaper(block) },
+            notify = { notify(it) },
+            liveDisplays = { displays?.players()?.filterValues { it.active }?.keys ?: emptySet() },
+        ).start()
     }
 
     fun videoAction(success: String? = null, block: () -> Unit) =

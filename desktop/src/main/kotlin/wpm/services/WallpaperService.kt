@@ -2,6 +2,7 @@ package wpm.services
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.serializer
 import wpm.AppPaths
 import wpm.data.Database
 import wpm.data.MediaItem
@@ -9,6 +10,8 @@ import wpm.data.Settings
 import wpm.engine.LiveKind
 import wpm.engine.LivePlayer
 import wpm.engine.LiveSource
+import wpm.engine.MultiLive
+import wpm.win32.Monitor
 import wpm.logger
 import wpm.media.Imaging
 import wpm.win32.DesktopWallpaperApi
@@ -44,6 +47,17 @@ data class StaticWallpaper(val file: String? = null, val style: String = "fill",
 @Serializable
 data class OriginalWallpaper(val path: String? = null, val style: String = "fill")
 
+/** A wallpaper chosen for one display only (stored by display id, e.g. \\.\DISPLAY2). */
+@Serializable
+data class DisplayChoice(
+    val kind: String,
+    @SerialName("media_id") val mediaId: Long,
+    val path: String? = null,
+    val style: String = "fill",
+)
+
+private val displayChoicesSerializer = kotlinx.serialization.builtins.MapSerializer(String.serializer(), DisplayChoice.serializer())
+
 /** Why a live wallpaper was paused automatically, most important first. */
 enum class PauseReason(val text: String) {
     Locked("the PC is locked"),
@@ -67,6 +81,7 @@ class WallpaperService(
     private val live: LivePlayer,
 ) {
     private val settings = Settings(db)
+    private val multi: MultiLive? get() = live as? MultiLive
 
     /** Automatic pausing: the reason we paused, if we did. */
     @Volatile var autoPauseReason: PauseReason? = null
@@ -101,6 +116,7 @@ class WallpaperService(
         backupOriginal()
         apply(prepareImage(item, local), chosen, item.id)
         live.stop() // after applying the image, so the old picture never flashes up
+        clearDisplayChoices()
         autoPauseReason = null
         settings.set("image_style", chosen)
         saveState(DesktopState("image", item.id, item.path, chosen))
@@ -155,6 +171,11 @@ class WallpaperService(
         if (!item.available()) throw FileNotFoundException("Not found: ${item.path}")
         val chosen = style ?: settings.string("video_style", "fill")
         backupOriginal()
+        if (displayChoices().isNotEmpty()) {
+            // "All displays" replaces wallpapers chosen for single displays.
+            clearDisplayChoices()
+            live.stop()
+        }
         live.play(sourceFor(item, chosen))
         autoPauseReason = null // a new wallpaper starts playing; the next check re-pauses if needed
         if (item.isVideo) settings.set("video_style", chosen)
@@ -237,21 +258,36 @@ class WallpaperService(
 
     /** Starts the saved live wallpaper again after the app was restarted. Returns true if started. */
     fun restoreOnStartup(): Boolean {
+        if (!settings.boolean("resume_live_wallpaper", true)) return false
+        var started = false
         val saved = state
-        if (saved.kind !in LIVE_KINDS || !settings.boolean("resume_live_wallpaper", true)) return false
-        val item = currentItem()
-        if (item == null || !item.available() || !playable(item)) {
-            log.warning("Saved live wallpaper is no longer available: ${saved.path}")
-            return false
+        if (saved.kind in LIVE_KINDS) {
+            val item = currentItem()
+            if (item == null || !item.available() || !playable(item)) {
+                log.warning("Saved live wallpaper is no longer available: ${saved.path}")
+            } else {
+                live.play(sourceFor(item, saved.style))
+                started = true
+            }
         }
-        live.play(sourceFor(item, saved.style))
-        return true
+        val displays = multi ?: return started
+        for ((displayId, choice) in displayChoices()) {
+            if (choice.kind !in LIVE_KINDS) continue
+            val item = db.getMedia(choice.mediaId)?.takeIf { it.available() && playable(it) } ?: continue
+            runCatching { displays.playOn(displayId, sourceFor(item, choice.style)) }
+                .onSuccess { started = true }
+                .onFailure { log.warning("Couldn't restore the wallpaper on $displayId: $it") }
+        }
+        return started
     }
 
     /** Called periodically: recovers after an Explorer restart and follows resolution changes. */
     fun checkLive() {
         if (!live.active) return
-        if (!live.isHealthy()) {
+        if (!live.isHealthy() && multi != null) {
+            log.warning("Live wallpaper window was lost (Explorer restarted?) - recreating it")
+            multi!!.recover()
+        } else if (!live.isHealthy()) {
             log.warning("Live wallpaper window was lost (Explorer restarted?) - recreating it")
             val wasPaused = autoPauseReason != null
             val item = currentItem()
@@ -266,6 +302,60 @@ class WallpaperService(
     }
 
     fun competingApps(): List<String> = if (live.active) live.competingApps() else emptyList()
+
+    // -- one display at a time ---------------------------------------------------------
+
+    fun displayChoices(): Map<String, DisplayChoice> = settings.obj("display_wallpapers", displayChoicesSerializer) ?: emptyMap()
+
+    private fun saveDisplayChoices(choices: Map<String, DisplayChoice>) = settings.set("display_wallpapers", displayChoicesSerializer, choices)
+
+    private fun clearDisplayChoices() {
+        if (displayChoices().isNotEmpty()) saveDisplayChoices(emptyMap())
+    }
+
+    /** Gives one display its own wallpaper (a picture through Windows, or a live wallpaper window). */
+    fun setOnDisplay(display: Monitor, item: MediaItem, style: String? = null) {
+        if (!item.available()) throw FileNotFoundException("Not found: ${item.path}")
+        backupOriginal()
+        val chosen = style ?: settings.string(if (item.isImage) "image_style" else "video_style", "fill")
+        if (item.isImage) {
+            val local = item.localPath ?: throw IllegalArgumentException("Pictures must be on this PC")
+            windows.setWallpaperFor(display, prepareImage(item, local), chosen)
+            multi?.stopOn(display.id)
+        } else {
+            val displays = multi ?: throw IllegalStateException("Live wallpapers per display aren't available")
+            displays.playOn(display.id, sourceFor(item, chosen))
+        }
+        saveDisplayChoices(displayChoices() + (display.id to DisplayChoice(item.mediaType, item.id, item.source, chosen)))
+        log.info("Display ${display.id} set to ${item.source}")
+    }
+
+    /** The display shows the "all displays" wallpaper again. */
+    fun clearDisplay(display: Monitor) {
+        saveDisplayChoices(displayChoices() - display.id)
+        multi?.stopOn(display.id)
+        val item = currentItem()
+        when {
+            item != null && item.isLive && state.kind in LIVE_KINDS -> live.play(sourceFor(item, state.style))
+            else -> settings.obj("static_wallpaper", StaticWallpaper.serializer())?.file?.takeIf { Path(it).exists() }?.let {
+                runCatching { windows.setWallpaperFor(display, it, state.style) }
+            }
+        }
+    }
+
+    /** Live wallpapers on every display (true) or only the main one. */
+    fun setAllDisplays(all: Boolean) {
+        settings.set("live_all_displays", all)
+        val displays = multi ?: return
+        displays.allDisplays = all
+        val item = currentItem()
+        if (item != null && item.isLive && state.kind in LIVE_KINDS) displays.play(sourceFor(item, state.style))
+    }
+
+    /** Pauses live wallpapers only on the displays nobody can see. */
+    fun hideDisplays(ids: Set<String>) {
+        multi?.hideDisplays(ids)
+    }
 
     /** The app is closing: removes the video window but keeps the saved choice for next start. */
     fun shutdown() {

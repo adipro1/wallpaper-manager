@@ -82,6 +82,8 @@ interface DesktopWallpaperApi {
     fun setWallpaper(path: String, persist: Boolean = true)
     fun style(): String
     fun setStyle(style: String)
+    /** Shows [path] on one display only. */
+    fun setWallpaperFor(display: Monitor, path: String, style: String)
 }
 
 /** How Windows positions the picture: (WallpaperStyle, TileWallpaper) under HKCU\Control Panel\Desktop. */
@@ -125,6 +127,9 @@ object WindowsDesktop : DesktopWallpaperApi {
     } catch (e: Exception) {
         "fill"
     }
+
+    override fun setWallpaperFor(display: Monitor, path: String, style: String) =
+        DesktopWallpaperCom.setWallpaper(display.bounds, path, style)
 
     /** Takes effect the next time the wallpaper is set. */
     override fun setStyle(style: String) {

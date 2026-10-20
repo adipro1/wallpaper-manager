@@ -9,6 +9,8 @@ import wpm.data.Settings
 import wpm.logger
 import wpm.win32.DisplayState
 import wpm.win32.Monitors
+import wpm.win32.Monitor
+import wpm.win32.ScreenRect
 import wpm.win32.SystemState
 
 private val log = logger("automation")
@@ -17,30 +19,51 @@ private val log = logger("automation")
 interface SystemProbe {
     fun sessionLocked(): Boolean
     fun screenOff(): Boolean
-    fun fullscreenOnWallpaperMonitor(): Boolean
-    fun wallpaperMonitorCovered(): Boolean
+    /** The display a game or video runs full screen on, if any. */
+    fun fullscreenDisplay(): ScreenRect?
+    /** Displays whose desktop is hidden by maximized windows. */
+    fun coveredDisplays(): Set<ScreenRect>
     fun onBattery(): Boolean
+    fun displays(): List<Monitor>
 }
 
 object WindowsSystemProbe : SystemProbe {
     override fun sessionLocked() = SystemState.sessionLocked()
     override fun screenOff() = !DisplayState.isOn
-    override fun fullscreenOnWallpaperMonitor() = SystemState.fullscreenMonitor() == Monitors.primary().bounds
-    override fun wallpaperMonitorCovered() = Monitors.primary().bounds in SystemState.coveredMonitors()
+    override fun fullscreenDisplay() = SystemState.fullscreenMonitor()
+    override fun coveredDisplays() = SystemState.coveredMonitors()
     override fun onBattery() = SystemState.onBattery()
+    override fun displays() = Monitors.all()
 }
 
-/** Why the live wallpaper should be paused right now (most important first), or null. */
-fun pauseReason(settings: Settings, probe: SystemProbe): PauseReason? {
+/** What the auto-pause check decided: a reason for pausing everything, and displays nobody can see. */
+data class PauseDecision(val reason: PauseReason?, val hiddenDisplays: Set<String> = emptySet())
+
+/**
+ * Why live wallpapers should be paused right now (most important first). A fullscreen app or
+ * maximized windows pause everything only when they hide every display showing a live
+ * wallpaper ([liveDisplays]); otherwise just the hidden displays pause.
+ */
+fun pauseDecision(settings: Settings, probe: SystemProbe, liveDisplays: Set<String>): PauseDecision {
     if (settings.boolean("pause_when_hidden", true)) {
-        if (probe.sessionLocked()) return PauseReason.Locked
-        if (probe.screenOff()) return PauseReason.ScreenOff
+        if (probe.sessionLocked()) return PauseDecision(PauseReason.Locked)
+        if (probe.screenOff()) return PauseDecision(PauseReason.ScreenOff)
     }
-    if (settings.boolean("pause_on_fullscreen", true) && probe.fullscreenOnWallpaperMonitor()) return PauseReason.Fullscreen
-    if (settings.boolean("pause_when_covered", true) && probe.wallpaperMonitorCovered()) return PauseReason.Covered
-    if (settings.boolean("pause_on_battery", false) && probe.onBattery()) return PauseReason.Battery
-    return null
+    val displays = probe.displays()
+    fun idsOf(rects: Set<ScreenRect>) = displays.filter { it.bounds in rects }.map { it.id }.toSet()
+    val fullscreen = if (settings.boolean("pause_on_fullscreen", true)) idsOf(setOfNotNull(probe.fullscreenDisplay())) else emptySet()
+    val covered = if (settings.boolean("pause_when_covered", true)) idsOf(probe.coveredDisplays()) else emptySet()
+    val hidden = fullscreen + covered
+    val showing = liveDisplays.ifEmpty { displays.filter { it.primary }.map { it.id }.toSet() }
+    if (showing.isNotEmpty() && hidden.containsAll(showing)) {
+        return PauseDecision(if (showing.any { it in fullscreen }) PauseReason.Fullscreen else PauseReason.Covered)
+    }
+    if (settings.boolean("pause_on_battery", false) && probe.onBattery()) return PauseDecision(PauseReason.Battery)
+    return PauseDecision(null, hidden)
 }
+
+/** Why live wallpapers should be paused everywhere right now, or null (single display, as in 1.x). */
+fun pauseReason(settings: Settings, probe: SystemProbe): PauseReason? = pauseDecision(settings, probe, emptySet()).reason
 
 /**
  * Background jobs while the app runs:
@@ -61,6 +84,8 @@ class Automation(
     private val exclusive: suspend (() -> Unit) -> Unit,
     /** Shows a tray notification. */
     private val notify: (String) -> Unit,
+    /** Displays that currently show a live wallpaper. */
+    private val liveDisplays: () -> Set<String> = { emptySet() },
 ) {
     fun start() {
         DisplayState.start()
@@ -93,8 +118,9 @@ class Automation(
         }
         every(2_000) {
             if (wallpapers.videoActive) {
-                val reason = runCatching { pauseReason(settings, probe) }.getOrNull()
-                if (wallpapers.updateAutoPause(reason)) exclusive {}
+                val decision = runCatching { pauseDecision(settings, probe, liveDisplays()) }.getOrNull() ?: PauseDecision(null)
+                wallpapers.hideDisplays(decision.hiddenDisplays)
+                if (wallpapers.updateAutoPause(decision.reason)) exclusive {}
             }
         }
     }

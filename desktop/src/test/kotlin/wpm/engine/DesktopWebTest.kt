@@ -39,7 +39,7 @@ class DesktopWebTest {
             </script></body></html>
             """.trimIndent(),
         )
-        val player = WebLivePlayer(Path.of("build/chromium-test").toAbsolutePath()) { println(it ?: "ready") }
+        val player = WebLivePlayer(Path.of("build/chromium-test").toAbsolutePath(), onStatus = { println(it ?: "ready") })
         try {
             player.play(LiveSource(LiveKind.Web, page.toUri().toString(), interactive = true))
             Thread.sleep(4_000)

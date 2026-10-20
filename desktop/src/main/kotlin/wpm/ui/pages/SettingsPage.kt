@@ -112,6 +112,11 @@ fun SettingsPage(app: AppState) {
                 }, enabled = !updating) { Text(if (updating) "Updating yt-dlp…" else "Update yt-dlp (if YouTube links stop working)") }
             }
             BooleanSetting(app, "resume_live_wallpaper", true, "Start the live wallpaper again when the app starts")
+            var allDisplays by remember { mutableStateOf(app.settings.boolean("live_all_displays", true)) }
+            SettingSwitch("Show live wallpapers on every display (otherwise only the main one)", allDisplays) { on ->
+                allDisplays = on
+                app.runTask { app.changeWallpaper { app.wallpapers.setAllDisplays(on) } }
+            }
             BooleanSetting(app, "web_interaction", true, "Web wallpapers react to the mouse on the empty desktop")
             BooleanSetting(app, "web_muted", true, "Mute web wallpapers (applies after restarting the app)")
             BooleanSetting(app, "audio_reactive", true, "Audio-reactive wallpapers may listen to what your PC plays (analysed live, never recorded)")

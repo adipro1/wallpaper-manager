@@ -60,11 +60,27 @@ class FakeProbe(
     var covered: Boolean = false,
     var battery: Boolean = false,
 ) : SystemProbe {
+    /** Extra displays next to the main one (the main one is 1920x1080 at 0,0). */
+    var extraDisplays: List<wpm.win32.Monitor> = emptyList()
+    /** Displays (by id) with a fullscreen app / maximized windows, in addition to the flags above. */
+    var fullscreenOn: String? = null
+    var coveredOn: Set<String> = emptySet()
+
     override fun sessionLocked() = locked
     override fun screenOff() = screenOff
-    override fun fullscreenOnWallpaperMonitor() = fullscreen
-    override fun wallpaperMonitorCovered() = covered
+    override fun fullscreenDisplay() = when {
+        fullscreen -> MAIN.bounds
+        fullscreenOn != null -> displays().first { it.id == fullscreenOn }.bounds
+        else -> null
+    }
+    override fun coveredDisplays() = (if (covered) setOf(MAIN.bounds) else emptySet()) +
+        displays().filter { it.id in coveredOn }.map { it.bounds }
     override fun onBattery() = battery
+    override fun displays() = listOf(MAIN) + extraDisplays
+
+    companion object {
+        val MAIN = wpm.win32.Monitor("""\\.\DISPLAY1""", wpm.win32.ScreenRect(0, 0, 1920, 1080), true)
+    }
 }
 
 class LiveWallpaperTest {

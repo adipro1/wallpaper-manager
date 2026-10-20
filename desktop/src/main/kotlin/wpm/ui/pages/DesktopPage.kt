@@ -39,6 +39,9 @@ import kotlinx.coroutines.withContext
 import wpm.AppState
 import wpm.data.MediaItem
 import wpm.services.DesktopState
+import wpm.services.DisplayChoice
+import wpm.win32.Monitor
+import wpm.win32.Monitors
 import wpm.services.IMAGE_STYLES
 import wpm.services.PauseReason
 import wpm.services.VIDEO_STYLES
@@ -67,11 +70,16 @@ fun DesktopPage(app: AppState) {
     var hasOriginal by remember { mutableStateOf(false) }
     var confirmRestore by remember { mutableStateOf(false) }
     var live by remember { mutableStateOf(LiveInfo()) }
+    var displays by remember { mutableStateOf(emptyList<Monitor>()) }
+    var choices by remember { mutableStateOf(emptyMap<String, DisplayChoice>()) }
+    var target by remember { mutableStateOf<String?>(null) } // null = all displays
     LaunchedEffect(app.wallpaperVersion, app.libraryVersion) {
         withContext(Dispatchers.IO) {
             state = app.wallpapers.state
             current = app.wallpapers.currentItem()
             hasOriginal = app.wallpapers.hasOriginal()
+            displays = Monitors.all()
+            choices = app.wallpapers.displayChoices()
             live = LiveInfo(
                 active = app.wallpapers.videoActive,
                 paused = app.wallpapers.videoPaused,
@@ -144,7 +152,42 @@ fun DesktopPage(app: AppState) {
         if (!app.videoSupport) {
             MutedText("Video wallpapers need libmpv-2.dll in the app's bin folder.")
         }
-        ChooserCard(app, "Choose a wallpaper", onPick = app::setDesktop, filter = { !it.isVideo || app.videoSupport }, highlighted = state.mediaId)
+        if (displays.size > 1) {
+            Card(Modifier.fillMaxWidth()) {
+                SectionTitle("Displays")
+                Spacer(Modifier.height(8.dp))
+                val options = listOf<Pair<String?, String>>(null to "All displays") + displays.map { it.id to it.label + if (it.primary) " (main)" else "" }
+                SingleChoiceSegmentedButtonRow {
+                    options.forEachIndexed { i, (id, label) ->
+                        SegmentedButton(target == id, { target = id }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                val chosen = target?.let(choices::get)
+                val targetDisplay = displays.firstOrNull { it.id == target }
+                when {
+                    targetDisplay == null -> MutedText(
+                        if (choices.isEmpty()) "Pick a wallpaper below to show it on every display."
+                        else "${choices.size} display(s) have their own wallpaper. Picking one below for all displays replaces them.",
+                    )
+                    chosen == null -> MutedText("${targetDisplay.label} shows the same wallpaper as the others. Pick one below to give it its own.")
+                    else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        MutedText("${targetDisplay.label} has its own wallpaper: ${app.db.getMedia(chosen.mediaId)?.filename ?: "removed"}",
+                            Modifier.weight(1f))
+                        TextButton(onClick = {
+                            app.runTask(failure = "Couldn't change the display") { app.changeWallpaper { app.wallpapers.clearDisplay(targetDisplay) } }
+                        }) { Text("Use the shared wallpaper") }
+                    }
+                }
+            }
+        }
+        val pickTarget = displays.firstOrNull { it.id == target }
+        ChooserCard(
+            app, if (pickTarget == null) "Choose a wallpaper" else "Choose a wallpaper for ${pickTarget.label}",
+            onPick = { item -> if (pickTarget == null) app.setDesktop(item) else app.setOnDisplay(pickTarget, item) },
+            filter = { !it.isVideo || app.videoSupport },
+            highlighted = pickTarget?.let { choices[it.id]?.mediaId } ?: state.mediaId,
+        )
     }
 
     if (confirmRestore) {

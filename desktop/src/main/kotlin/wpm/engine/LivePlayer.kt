@@ -6,6 +6,7 @@ import wpm.mpv.MpvPlayer
 import wpm.mpv.NativeBin
 import wpm.win32.DesktopHost
 import wpm.win32.Monitors
+import wpm.win32.ScreenRect
 import wpm.win32.windowProcessName
 
 enum class LiveKind { Video, Web }
@@ -52,7 +53,10 @@ interface LivePlayer {
  * where possible and draws straight into the window, so a looping 1080p video costs
  * very little CPU. Thread-safe: play/stop run on workers while the watchdog checks health.
  */
-class MpvLivePlayer : LivePlayer {
+class MpvLivePlayer(
+    /** The display area this player covers (looked up again when displays change). */
+    private val area: () -> ScreenRect = { Monitors.primary().bounds },
+) : LivePlayer {
     private val log = logger("live")
     private var host: DesktopHost? = null
     private var mpv: MpvPlayer? = null
@@ -79,7 +83,7 @@ class MpvLivePlayer : LivePlayer {
 
     private fun create() {
         stopLocked()
-        val monitor = Monitors.primary().bounds
+        val monitor = area()
         val newHost = DesktopHost(monitor)
         newHost.start()
         try {
@@ -127,7 +131,7 @@ class MpvLivePlayer : LivePlayer {
 
     @Synchronized
     override fun fitToScreen() {
-        host?.moveTo(Monitors.primary().bounds)
+        host?.moveTo(area())
     }
 
     @Synchronized
@@ -155,7 +159,9 @@ class MpvLivePlayer : LivePlayer {
  * The web engine is created on first use (it may have to download Chromium).
  */
 class LiveRouter(private val video: LivePlayer, private val webFactory: () -> LivePlayer) : LivePlayer {
-    private var web: LivePlayer? = null
+    /** The web engine, once it has been needed. */
+    var web: LivePlayer? = null
+        private set
     @Volatile private var current: LivePlayer? = null
 
     private fun engineFor(kind: LiveKind): LivePlayer = when (kind) {

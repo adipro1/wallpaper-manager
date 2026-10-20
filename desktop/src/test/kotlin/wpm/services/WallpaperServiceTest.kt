@@ -33,6 +33,10 @@ class FakeDesktop(var current: String? = null) : DesktopWallpaperApi {
     override fun setStyle(style: String) {
         currentStyle = style
     }
+    val perDisplay = mutableMapOf<String, String>()
+    override fun setWallpaperFor(display: wpm.win32.Monitor, path: String, style: String) {
+        perDisplay[display.id] = path
+    }
 }
 
 class FakeLockScreen(private val source: Path) : LockScreenApi {
