@@ -7,7 +7,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,8 +25,8 @@ fun AddToPlaylistButton(app: AppState, mediaIds: () -> List<Long>, modifier: Mod
     var naming by remember { mutableStateOf(false) }
     Box(modifier) {
         OutlinedButton(onClick = { playlists = app.db.listPlaylists(); open = true }) {
-            Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, null)
-            Text("  Add to playlist")
+            ButtonIcon(Icons.AutoMirrored.Outlined.PlaylistAdd)
+            Text("Add to playlist")
         }
         DropdownMenu(open, onDismissRequest = { open = false }) {
             playlists.forEach { playlist ->

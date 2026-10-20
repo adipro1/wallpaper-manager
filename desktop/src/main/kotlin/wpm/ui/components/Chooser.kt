@@ -6,11 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,12 +39,14 @@ fun ChooserCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionTitle(title)
             Spacer(Modifier.weight(1f))
-            OutlinedTextField(search, { search = it }, singleLine = true, placeholder = { Text("Search") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) }, modifier = Modifier.width(240.dp))
+            SearchField(search, { search = it }, Modifier.width(240.dp))
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
         if (items.isEmpty()) {
-            MutedText(if (search.isBlank()) "Nothing in your library yet. Import wallpapers on the Library page." else "Nothing matches.")
+            EmptyState(
+                if (search.isBlank()) "Nothing here yet" else "Nothing matches",
+                if (search.isBlank()) "Import wallpapers on the Library page." else "Try a different search.",
+            )
         } else {
             MediaGrid(items, app.thumbs, setOfNotNull(highlighted), { item, _ -> onPick(item) },
                 Modifier.fillMaxWidth().heightIn(max = 560.dp), minTileWidth = 170)

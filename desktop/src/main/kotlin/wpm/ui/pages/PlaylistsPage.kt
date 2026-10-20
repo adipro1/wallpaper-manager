@@ -1,7 +1,17 @@
 package wpm.ui.pages
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.font.FontWeight
+import wpm.ui.components.EmptyState
+import wpm.ui.components.FoldShape
+import wpm.ui.components.ListEntry
+import wpm.ui.components.NumberField
+import wpm.ui.components.Tag
+import wpm.ui.components.foldedShape
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +27,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -25,16 +34,16 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
-import androidx.compose.material3.Button
+import wpm.ui.components.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import wpm.ui.components.IconButton
+import wpm.ui.components.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import wpm.ui.components.SegmentedButton
+import wpm.ui.components.SegmentedButtonDefaults
+import wpm.ui.components.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import wpm.ui.components.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +64,7 @@ import wpm.data.MediaItem
 import wpm.data.Playlist
 import wpm.services.MIN_INTERVAL_SECONDS
 import wpm.ui.Theme
+import wpm.ui.components.ButtonIcon
 import wpm.ui.components.Card
 import wpm.ui.components.ConfirmDialog
 import wpm.ui.components.MediaPickerDialog
@@ -74,6 +84,7 @@ fun formatCountdown(seconds: Double): String {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlaylistsPage(app: AppState) {
     var playlists by remember { mutableStateOf(emptyList<Playlist>()) }
@@ -97,31 +108,29 @@ fun PlaylistsPage(app: AppState) {
     }
 
     PageScaffold("Playlists", "Change the wallpaper automatically at an interval.", scroll = false, actions = {
-        Button(onClick = { creating = true }) { Icon(Icons.Outlined.Add, null); Text("  New playlist") }
+        Button(onClick = { creating = true }) { ButtonIcon(Icons.Outlined.Add); Text("New playlist") }
     }) {
         if (playlists.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
-                SectionTitle("No playlists yet")
-                Spacer(Modifier.height(6.dp))
-                MutedText("Create one, add wallpapers, choose an interval and press Play.")
+                EmptyState("No playlists yet", "Create one, add wallpapers, choose an interval and press Play.") {
+                    Button(onClick = { creating = true }) { ButtonIcon(Icons.Outlined.Add); Text("New playlist") }
+                }
             }
             return@PageScaffold
         }
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Card(Modifier.width(260.dp).fillMaxHeight(), padding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
-                LazyColumn {
+            Card(Modifier.width(270.dp).fillMaxHeight(), padding = androidx.compose.foundation.layout.PaddingValues(10.dp), fold = 14.dp) {
+                Text("YOUR PLAYLISTS", color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 10.dp))
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(playlists, key = { it.id }) { p ->
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
-                                .background(if (p.id == selectedId) Theme.colors.navSelected else androidx.compose.ui.graphics.Color.Transparent)
-                                .clickable { selectedId = p.id }.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        ListEntry(p.id == selectedId, { selectedId = p.id }) {
                             Column(Modifier.weight(1f)) {
-                                Text(p.name, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(p.name, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    fontWeight = if (p.id == selectedId) FontWeight.SemiBold else FontWeight.Normal)
                                 Text("${p.itemCount} wallpapers · ${p.intervalText}", color = Theme.colors.textMuted, fontSize = 12.sp)
                             }
-                            if (p.id == activeId) Icon(Icons.Outlined.PlayArrow, "Playing", tint = Theme.colors.accent, modifier = Modifier.size(18.dp))
+                            if (p.id == activeId) Tag("Playing", Theme.colors.teal)
                         }
                     }
                 }
@@ -143,6 +152,7 @@ fun PlaylistsPage(app: AppState) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, countdown: Double?, modifier: Modifier) {
     var items by remember(playlist.id) { mutableStateOf(emptyList<MediaItem>()) }
@@ -162,25 +172,26 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
         app.runTask { app.db.updatePlaylist(playlist.id, intervalSeconds = seconds); app.libraryChanged() }
     }
 
-    Card(modifier) {
+    Card(modifier, fold = 22.dp) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }, modifier = Modifier.weight(1f),
+                textStyle = MaterialTheme.typography.titleLarge)
             if (name.isNotBlank() && name != playlist.name) {
                 TextButton(onClick = { app.runTask { app.db.updatePlaylist(playlist.id, name = name.trim()); app.libraryChanged() } }) { Text("Rename") }
             }
             if (playing) {
                 OutlinedButton(onClick = { app.runTask("Playlist stopped") { app.playlists.stop(); app.wallpaperChanged() } }) {
-                    Icon(Icons.Outlined.Stop, null); Text("  Stop")
+                    ButtonIcon(Icons.Outlined.Stop); Text("Stop")
                 }
             } else {
                 Button(onClick = {
                     app.runTask("Playing ${playlist.name}", "Couldn't start the playlist") { app.changeWallpaper { app.playlists.start(playlist.id) } }
-                }, enabled = items.isNotEmpty()) { Icon(Icons.Outlined.PlayArrow, null); Text("  Play") }
+                }, enabled = items.isNotEmpty()) { ButtonIcon(Icons.Outlined.PlayArrow); Text("Play") }
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MutedText("Order")
+        Spacer(Modifier.height(16.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("ORDER", color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
             val modes = listOf("sequential" to "In order", "random" to "Shuffle")
             SingleChoiceSegmentedButtonRow {
                 modes.forEachIndexed { i, (key, label) ->
@@ -190,8 +201,8 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
                 }
             }
             Spacer(Modifier.width(12.dp))
-            MutedText("Change every")
-            OutlinedTextField(amount, { amount = it.filter(Char::isDigit).take(4); saveInterval(amount) }, singleLine = true, modifier = Modifier.width(80.dp))
+            Text("CHANGE EVERY", color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
+            NumberField(amount, { amount = it.filter(Char::isDigit).take(4); saveInterval(amount) })
             SingleChoiceSegmentedButtonRow {
                 listOf(false to "min", true to "h").forEachIndexed { i, (inHours, label) ->
                     SegmentedButton(unitHours == inHours, { unitHours = inHours; saveInterval(inHours = inHours) },
@@ -201,20 +212,31 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
         }
         if (playing) {
             Spacer(Modifier.height(8.dp))
-            Text("Playing · next change ${countdown?.let(::formatCountdown) ?: "soon"}", color = Theme.colors.accent)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tag("Playing", Theme.colors.teal)
+                Text("Next change ${countdown?.let(::formatCountdown) ?: "soon"}", color = Theme.colors.accent)
+            }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(18.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionTitle("${items.size} wallpapers")
             Spacer(Modifier.weight(1f))
-            OutlinedButton(onClick = { adding = true }) { Icon(Icons.Outlined.Add, null); Text("  Add wallpapers") }
+            OutlinedButton(onClick = { adding = true }) { ButtonIcon(Icons.Outlined.Add); Text("Add wallpapers") }
         }
         Spacer(Modifier.height(8.dp))
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (items.isEmpty()) {
+            EmptyState("Nothing to play yet", "Add wallpapers from your library, then press Play.", Modifier.weight(1f))
+        }
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(items, key = { _, it -> it.id }) { index, item ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("${index + 1}", color = Theme.colors.textSubtle, modifier = Modifier.width(24.dp))
-                    Box(Modifier.width(96.dp).height(54.dp).clip(RoundedCornerShape(4.dp)).background(Theme.colors.previewBg)) {
+                Row(
+                    Modifier.fillMaxWidth().background(if (index % 2 == 0) Theme.colors.inset.copy(alpha = 0.5f) else androidx.compose.ui.graphics.Color.Transparent,
+                        foldedShape(6.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("%02d".format(index + 1), color = Theme.colors.accent, fontFamily = wpm.ui.DisplayFont, fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.width(26.dp))
+                    Box(Modifier.width(96.dp).height(54.dp).clip(FoldShape(10.dp, 3.dp)).background(Theme.colors.previewBg)) {
                         MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
                     }
                     Column(Modifier.weight(1f)) {
@@ -235,7 +257,7 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
         }
         Row {
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { confirmDelete = true }) { Text("Delete playlist", color = Theme.colors.danger) }
+            TextButton(onClick = { confirmDelete = true }, danger = true) { ButtonIcon(Icons.Outlined.Delete); Text("Delete playlist") }
         }
     }
 

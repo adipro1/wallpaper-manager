@@ -1,8 +1,20 @@
 package wpm.ui.pages
 
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.font.FontWeight
+import wpm.ui.components.Dot
+import wpm.ui.components.EmptyState
+import wpm.ui.components.Eyebrow
+import wpm.ui.components.FoldShape
+import wpm.ui.components.ListEntry
+import wpm.ui.components.Tag
+import wpm.ui.components.drawFoldFlap
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,22 +31,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.UploadFile
-import androidx.compose.material3.Button
+import wpm.ui.components.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
+import wpm.ui.components.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import wpm.ui.components.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import wpm.ui.components.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +68,7 @@ import wpm.AppState
 import wpm.data.MediaItem
 import wpm.media.SHADER_EXTENSIONS
 import wpm.ui.Theme
+import wpm.ui.components.ButtonIcon
 import wpm.ui.components.Card
 import wpm.ui.components.ConfirmDialog
 import wpm.ui.components.MutedText
@@ -94,9 +106,9 @@ fun CustomizePage(app: AppState) {
                     app.libraryChanged()
                 }
             }
-        }) { Icon(Icons.Outlined.UploadFile, null); Text("  Import .glsl") }
+        }) { ButtonIcon(Icons.Outlined.UploadFile); Text("Import .glsl") }
         Box {
-            Button(onClick = { newMenu = true }) { Icon(Icons.Outlined.Add, null); Text("  New shader") }
+            Button(onClick = { newMenu = true }) { ButtonIcon(Icons.Outlined.Add); Text("New shader") }
             DropdownMenu(newMenu, { newMenu = false }) {
                 DropdownMenuItem(text = { Text("Blank") }, onClick = { newMenu = false; create("My shader", BLANK_SHADER) })
                 HorizontalDivider()
@@ -108,23 +120,24 @@ fun CustomizePage(app: AppState) {
     }) {
         if (shaders.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
-                SectionTitle("No shaders yet")
-                Spacer(Modifier.height(6.dp))
-                MutedText("Shaders are small programs that draw animated wallpapers on your graphics card. " +
+                EmptyState("No shaders yet", "Shaders are small programs that draw animated wallpapers on your graphics card. " +
                     "Start from a sample with “New shader”, or import a .glsl file (for example from Shadertoy).")
             }
             return@PageScaffold
         }
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Card(Modifier.width(220.dp).fillMaxHeight(), padding = PaddingValues(8.dp)) {
-                LazyColumn {
+            Card(Modifier.width(230.dp).fillMaxHeight(), padding = PaddingValues(10.dp), fold = 14.dp) {
+                Text("YOUR SHADERS", color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 10.dp))
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(shaders, key = { it.id }) { s ->
-                        Text(
-                            s.filename, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
-                                .background(if (s.id == selectedId) Theme.colors.navSelected else androidx.compose.ui.graphics.Color.Transparent)
-                                .clickable { selectedId = s.id }.padding(12.dp),
-                        )
+                        ListEntry(s.id == selectedId, { selectedId = s.id }) {
+                            Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(16.dp),
+                                tint = if (s.id == selectedId) Theme.colors.accent else Theme.colors.textMuted)
+                            Spacer(Modifier.width(10.dp))
+                            Text(s.filename, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                fontWeight = if (s.id == selectedId) FontWeight.SemiBold else FontWeight.Normal)
+                        }
                     }
                 }
             }
@@ -164,6 +177,7 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
         then?.invoke()
     }
 
+    val flapColor = Theme.colors.indigo
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }, modifier = Modifier.weight(1f))
@@ -176,20 +190,28 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
                 }
             }) { Text("Set as wallpaper") }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Switch(interactive, { interactive = it })
             Text("React to the mouse (iMouse)", color = Theme.colors.text, fontSize = 13.sp)
+            Spacer(Modifier.width(8.dp))
             Switch(audio, { audio = it })
             Text("React to audio (iChannel0)", color = Theme.colors.text, fontSize = 13.sp)
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { confirmDelete = true }) { Text("Delete", color = Theme.colors.danger) }
+            TextButton(onClick = { confirmDelete = true }, danger = true) { ButtonIcon(Icons.Outlined.Delete); Text("Delete") }
         }
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                Box(
-                    Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Theme.colors.previewBg)
-                        .border(1.dp, Theme.colors.cardBorder, RoundedCornerShape(6.dp)),
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().shadow(8.dp, FoldShape(18.dp, 4.dp), ambientColor = Theme.colors.shadow, spotColor = Theme.colors.shadow)
+                        .clip(FoldShape(18.dp, 4.dp)).background(Theme.colors.previewBg)
+                        .drawWithContent { drawContent(); drawFoldFlap(18.dp.toPx(), flapColor, androidx.compose.ui.graphics.Color.Black) },
                 ) {
+                    Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.04f)).padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Tag("GLSL", Theme.colors.indigo)
+                        Text("${code.lines().size} lines", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.45f), fontSize = 12.sp)
+                        if (code != saved) Text("• unsaved", color = Theme.colors.gold, fontSize = 12.sp)
+                    }
                     BasicTextField(
                         code, { code = it },
                         textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = androidx.compose.ui.graphics.Color(0xFFE6E6E6)),
@@ -199,13 +221,22 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
                 }
                 Spacer(Modifier.height(6.dp))
                 val error = status?.takeIf { it.startsWith("error:") }?.removePrefix("error:")?.trim()
-                Text(
-                    error ?: if (status == "ok") "Compiles fine" else "Compiling…",
-                    color = if (error != null) Theme.colors.danger else Theme.colors.textMuted, fontSize = 12.sp, maxLines = 3,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Dot(when {
+                        error != null -> Theme.colors.danger
+                        status == "ok" -> Theme.colors.teal
+                        else -> Theme.colors.gold
+                    })
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        error ?: if (status == "ok") "Compiles fine" else "Compiling…",
+                        color = if (error != null) Theme.colors.danger else Theme.colors.textMuted, fontSize = 12.sp, maxLines = 3,
+                    )
+                }
             }
             Column(Modifier.weight(1f)) {
-                WebPreview(app, previewUrl, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp))) { status = it }
+                Eyebrow("Live preview", Theme.colors.indigo)
+                WebPreview(app, previewUrl, Modifier.fillMaxWidth().aspectRatio(16f / 9f)) { status = it }
                 Spacer(Modifier.height(8.dp))
                 app.webEngineStatus?.let { MutedText(it) }
                 MutedText("Write a mainImage(out vec4 fragColor, in vec2 fragCoord) function. Available: iResolution, iTime, " +

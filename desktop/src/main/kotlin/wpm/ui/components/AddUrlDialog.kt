@@ -10,15 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -180,7 +176,7 @@ fun AddUrlDialog(app: AppState, initialUrl: String = "", onDismiss: () -> Unit) 
 @Composable
 private fun VideoSummary(video: RemoteVideo, preview: ImageBitmap?) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.width(160.dp).height(90.dp).clip(RoundedCornerShape(6.dp)).background(Theme.colors.previewBg)) {
+        Box(Modifier.width(160.dp).height(90.dp).clip(FoldShape(12.dp, 3.dp)).background(Theme.colors.previewBg)) {
             if (preview != null) Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

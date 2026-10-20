@@ -1,5 +1,14 @@
 package wpm.ui.pages
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import wpm.ui.components.OrigamiMark
+import wpm.ui.components.ButtonIcon
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,11 +16,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
+import wpm.ui.components.OutlinedButton
+import wpm.ui.components.SegmentedButton
+import wpm.ui.components.SegmentedButtonDefaults
+import wpm.ui.components.SingleChoiceSegmentedButtonRow
+import wpm.ui.components.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,8 +46,8 @@ import wpm.services.RELEASES_PAGE
 import wpm.services.REPO
 import wpm.services.saveDiagnostics
 import wpm.win32.Autostart
-import androidx.compose.material3.Button
-import androidx.compose.material3.TextButton
+import wpm.ui.components.Button
+import wpm.ui.components.TextButton
 import java.awt.FileDialog
 import java.awt.Frame
 import java.time.LocalDate
@@ -52,7 +61,9 @@ fun SettingsPage(app: AppState) {
     PageScaffold("Settings") {
         Card(Modifier.fillMaxWidth()) {
             SectionTitle("Appearance")
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
+            MutedText("Washi paper by day, indigo ink by night.")
+            Spacer(Modifier.height(14.dp))
             val modes = listOf("light" to "Light", "dark" to "Dark", "system" to "System")
             SingleChoiceSegmentedButtonRow {
                 modes.forEachIndexed { i, (key, label) ->
@@ -100,7 +111,7 @@ fun SettingsPage(app: AppState) {
             MutedText(if (app.ytDlp.available) "Video links: yt-dlp found" else "Video links need yt-dlp.exe in ${NativeBin.dir.toAbsolutePath()}")
             if (app.ytDlp.available) {
                 var updating by remember { mutableStateOf(false) }
-                TextButton(onClick = {
+                TextButton(contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp), onClick = {
                     updating = true
                     app.runTask(failure = "Couldn't update yt-dlp") {
                         try {
@@ -121,7 +132,7 @@ fun SettingsPage(app: AppState) {
             BooleanSetting(app, "web_muted", true, "Mute web wallpapers (applies after restarting the app)")
             BooleanSetting(app, "audio_reactive", true, "Audio-reactive wallpapers may listen to what your PC plays (analysed live, never recorded)")
             var fps by remember { mutableStateOf(app.settings.string("shader_fps", "60")) }
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Shader frame rate (lower saves power)", color = Theme.colors.text, modifier = Modifier.weight(1f))
                 SingleChoiceSegmentedButtonRow {
                     listOf("30", "60").forEachIndexed { i, value ->
@@ -204,8 +215,15 @@ fun SettingsPage(app: AppState) {
         Card(Modifier.fillMaxWidth()) {
             SectionTitle("About")
             Spacer(Modifier.height(6.dp))
-            MutedText("$APP_NAME $APP_VERSION")
-            TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text("Project page") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OrigamiMark(34.dp)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(APP_NAME, color = Theme.colors.text, style = MaterialTheme.typography.titleMedium)
+                    MutedText("Version $APP_VERSION")
+                }
+                TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text("Project page"); ButtonIcon(Icons.AutoMirrored.Outlined.OpenInNew) }
+            }
         }
     }
 }
@@ -222,8 +240,8 @@ private fun BooleanSetting(app: AppState, key: String, default: Boolean, label: 
 @Composable
 private fun SettingSwitch(label: String, checked: Boolean, enabled: Boolean = true, hint: String? = null,
                           onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+    Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 16.dp)) {
             Text(label, color = if (enabled) Theme.colors.text else Theme.colors.textSubtle)
             if (hint != null) MutedText(hint)
         }
@@ -245,4 +263,11 @@ private fun openFolder(app: AppState, folder: Path) {
     } catch (e: Exception) {
         app.toast("Couldn't open the folder: ${e.message}", ToastKind.Error)
     }
+}
+
+/** A hairline above each setting row. */
+@Composable
+private fun Modifier.settingDivider(): Modifier {
+    val color = Theme.colors.cardBorder
+    return drawBehind { drawLine(color, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
 }

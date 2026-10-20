@@ -1,6 +1,30 @@
 package wpm.ui.components
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.lerp
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,7 +44,6 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.BrokenImage
@@ -68,9 +91,9 @@ fun MediaGrid(
         columns = GridCells.Adaptive(minTileWidth.dp),
         modifier = modifier,
         state = state,
-        contentPadding = PaddingValues(bottom = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(top = 6.dp, start = 2.dp, end = 2.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(items, key = { it.id }) { item ->
             MediaTile(
@@ -92,17 +115,46 @@ fun MediaGrid(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaTile(item: MediaItem, thumbs: ThumbnailCache, selected: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit = {}) {
-    val shape = RoundedCornerShape(8.dp)
+    val c = Theme.colors
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    // Hovering lifts the sheet and folds its corner further down; the picture leans in.
+    val lift by animateFloatAsState(if (hovered) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow))
+    val fold = lerp(10.dp, 26.dp, lift)
+    val shape = FoldShape(fold, 5.dp)
+    val border by animateColorAsState(if (selected) c.accent else if (hovered) c.accent.copy(alpha = 0.5f) else c.cardBorder, tween(160))
     Column(
-        Modifier.clip(shape)
-            .border(if (selected) BorderStroke(2.dp, Theme.colors.accent) else BorderStroke(1.dp, Theme.colors.cardBorder), shape)
-            .background(Theme.colors.cardBg)
-            .combinedClickable(onClick = onClick, onDoubleClick = onDoubleClick),
+        Modifier
+            .graphicsLayer { translationY = -4.dp.toPx() * lift }
+            .shadow(lerp(2.dp, 14.dp, lift), shape, ambientColor = c.shadow, spotColor = c.shadow)
+            .clip(shape)
+            .background(c.cardBg)
+            .border(if (selected) 2.dp else 1.dp, border, shape)
+            .drawWithContent {
+                drawContent()
+                drawFoldFlap(fold.toPx(), if (selected) c.accent else c.flap, c.shadow)
+            }
+            .hoverable(interaction)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .combinedClickable(interaction, indication = null, onClick = onClick, onDoubleClick = onDoubleClick),
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Theme.colors.previewBg)) {
-            MediaThumbnail(item, thumbs, Modifier.fillMaxSize())
-            if (item.favorite) {
-                Icon(Icons.Filled.Star, "Favorite", tint = Theme.colors.star, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp))
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clipToBounds().background(c.previewBg)) {
+            MediaThumbnail(item, thumbs, Modifier.fillMaxSize().graphicsLayer {
+                val s = 1f + 0.06f * lift
+                scaleX = s
+                scaleY = s
+            })
+            Row(Modifier.align(Alignment.TopStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (selected) {
+                    Box(Modifier.size(22.dp).background(c.accent, CutCornerShape(5.dp)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Check, "Selected", tint = c.accentText, modifier = Modifier.size(15.dp))
+                    }
+                }
+                if (item.favorite) {
+                    Box(Modifier.size(22.dp).background(Color.Black.copy(alpha = 0.55f), CutCornerShape(5.dp)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Star, "Favorite", tint = c.star, modifier = Modifier.size(14.dp))
+                    }
+                }
             }
             val badge = when {
                 item.isShader -> "Shader"
@@ -113,12 +165,16 @@ fun MediaTile(item: MediaItem, thumbs: ThumbnailCache, selected: Boolean, onClic
                 item.filename.endsWith(".gif", ignoreCase = true) -> "GIF"
                 else -> null
             }
-            if (badge != null) Badge(badge, Modifier.align(Alignment.BottomEnd).padding(6.dp))
+            if (badge != null) Badge(badge, Modifier.align(Alignment.BottomEnd).padding(8.dp), live = item.isLive)
         }
-        Text(
-            item.filename, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, color = Theme.colors.text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-        )
+        Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 9.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                item.filename, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) c.accent else c.text,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -127,7 +183,11 @@ fun MediaThumbnail(item: MediaItem, thumbs: ThumbnailCache, modifier: Modifier =
     val bitmap = rememberThumbnail(thumbs, item)
     Box(modifier, contentAlignment = Alignment.Center) {
         when {
-            bitmap != null -> Image(bitmap, item.filename, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            bitmap != null -> {
+                val shown = remember(bitmap) { Animatable(0f) }
+                LaunchedEffect(bitmap) { shown.animateTo(1f, tween(280)) }
+                Image(bitmap, item.filename, Modifier.fillMaxSize().graphicsLayer { alpha = shown.value }, contentScale = ContentScale.Crop)
+            }
             !item.available() -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Outlined.BrokenImage, null, tint = Color.Gray)
                 Text("File missing", color = Color.Gray, fontSize = 12.sp)
@@ -137,10 +197,18 @@ fun MediaThumbnail(item: MediaItem, thumbs: ThumbnailCache, modifier: Modifier =
     }
 }
 
+/** An angular tag on a thumbnail; live wallpapers get an accent fold. */
 @Composable
-fun Badge(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text, color = Color.White, fontSize = 11.sp,
-        modifier = modifier.background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-    )
+fun Badge(text: String, modifier: Modifier = Modifier, live: Boolean = false) {
+    val c = Theme.colors
+    Row(
+        modifier.background(Color.Black.copy(alpha = 0.62f), foldedShape(5.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (live) {
+            Box(Modifier.size(6.dp).background(c.accent, CutCornerShape(50)))
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(text, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
 }

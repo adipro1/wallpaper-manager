@@ -1,5 +1,19 @@
 package wpm.ui.pages
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.text.font.FontWeight
+import wpm.ui.components.EmptyState
+import wpm.ui.components.Tag
+import wpm.ui.components.foldedShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,20 +27,19 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import wpm.ui.components.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import wpm.ui.components.IconButton
+import wpm.ui.components.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
+import wpm.ui.components.SegmentedButton
+import wpm.ui.components.SegmentedButtonDefaults
+import wpm.ui.components.SingleChoiceSegmentedButtonRow
+import wpm.ui.components.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import wpm.ui.components.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +60,7 @@ import wpm.data.ScheduleRule
 import wpm.services.Occurrence
 import wpm.services.parseTime
 import wpm.ui.Theme
+import wpm.ui.components.ButtonIcon
 import wpm.ui.components.Card
 import wpm.ui.components.MediaPickerDialog
 import wpm.ui.components.MutedText
@@ -75,12 +89,12 @@ fun SchedulePage(app: AppState) {
     fun changed() = app.libraryChanged()
 
     PageScaffold("Schedule", "Show different wallpapers at different times of day.", actions = {
-        Button(onClick = { draft = RuleDraft() }) { Icon(Icons.Outlined.Add, null); Text("  Add rule") }
+        Button(onClick = { draft = RuleDraft() }) { ButtonIcon(Icons.Outlined.Add); Text("Add rule") }
     }) {
-        Card(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth(), accent = if (info.enabled) Theme.colors.teal else null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    SectionTitle("Schedule")
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SectionTitle(if (info.enabled) "Schedule is on" else "Schedule is off")
                     MutedText(
                         when {
                             !info.enabled -> "Off"
@@ -100,21 +114,28 @@ fun SchedulePage(app: AppState) {
 
         if (info.rules.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
-                SectionTitle("No rules yet")
-                Spacer(Modifier.height(6.dp))
-                MutedText("For example: 07:00 → a bright picture, 18:00 → a city video, 22:00 → a night playlist.")
+                EmptyState("No rules yet", "For example: 07:00 → a bright picture, 18:00 → a city video, 22:00 → a night playlist.") {
+                    Button(onClick = { draft = RuleDraft() }) { ButtonIcon(Icons.Outlined.Add); Text("Add rule") }
+                }
             }
         } else {
-            Card(Modifier.fillMaxWidth()) {
+            Card(Modifier.fillMaxWidth(), padding = PaddingValues(start = 12.dp, end = 22.dp, top = 12.dp, bottom = 12.dp)) {
                 info.rules.forEachIndexed { i, rule ->
-                    if (i > 0) HorizontalDivider(color = Theme.colors.cardBorder)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(rule.time, color = Theme.colors.text, fontSize = 20.sp, modifier = Modifier.width(70.dp))
+                    val active = info.enabled && info.active?.rule?.id == rule.id
+                    Row(
+                        Modifier.height(IntrinsicSize.Min).fillMaxWidth()
+                            .background(if (active) Theme.colors.accentSoft else androidx.compose.ui.graphics.Color.Transparent, foldedShape(10.dp)),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TimelineNode(first = i == 0, last = i == info.rules.lastIndex, active = active, enabled = rule.enabled)
+                        Text(rule.time, color = if (rule.enabled) Theme.colors.text else Theme.colors.textSubtle, fontFamily = wpm.ui.DisplayFont,
+                            fontWeight = FontWeight.SemiBold, fontSize = 26.sp, modifier = Modifier.width(84.dp).padding(vertical = 14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(rule.targetName.ifEmpty { "(missing)" }, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(rule.targetName.ifEmpty { "(missing)" }, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleSmall)
                             Text(if (rule.playlistId != null) "Playlist" else "Wallpaper", color = Theme.colors.textMuted, fontSize = 12.sp)
                         }
-                        if (info.enabled && info.active?.rule?.id == rule.id) Text("Active", color = Theme.colors.accent, fontSize = 13.sp)
+                        if (active) Tag("Now", Theme.colors.accent)
                         TextButton(onClick = {
                             app.runTask("Applied ${rule.targetName}", "Couldn't apply the rule") {
                                 app.changeWallpaper {
@@ -201,4 +222,27 @@ private fun RuleDialog(app: AppState, initial: RuleDraft, onDismiss: () -> Unit,
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
     if (picking) MediaPickerDialog(app, "Choose a wallpaper", multiple = false, onDismiss = { picking = false }) { media = it.first() }
+}
+
+/** One stop on the day's timeline: a fold line with a diamond, filled for the rule in effect. */
+@Composable
+private fun TimelineNode(first: Boolean, last: Boolean, active: Boolean, enabled: Boolean) {
+    val c = Theme.colors
+    val line = c.cardBorder
+    val node = when {
+        active -> c.accent
+        enabled -> c.indigo
+        else -> c.textSubtle
+    }
+    Canvas(Modifier.width(28.dp).fillMaxHeight()) {
+        val x = size.width / 2
+        val y = size.height / 2
+        val r = 7.dp.toPx()
+        if (!first) drawLine(line, Offset(x, 0f), Offset(x, y - r), strokeWidth = 2.dp.toPx())
+        if (!last) drawLine(line, Offset(x, y + r), Offset(x, size.height), strokeWidth = 2.dp.toPx())
+        val diamond = Path().apply { moveTo(x, y - r); lineTo(x + r, y); lineTo(x, y + r); lineTo(x - r, y); close() }
+        drawPath(diamond, node)
+        // the lit half of the folded diamond
+        drawPath(Path().apply { moveTo(x, y - r); lineTo(x + r, y); lineTo(x - r, y); close() }, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.22f))
+    }
 }

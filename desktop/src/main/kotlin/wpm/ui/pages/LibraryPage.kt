@@ -1,5 +1,13 @@
 package wpm.ui.pages
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material3.MaterialTheme
+import wpm.ui.components.EmptyState
+import wpm.ui.components.Notice
+import wpm.ui.components.PreviewFrame
+import wpm.ui.components.SearchField
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
@@ -24,21 +31,19 @@ import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material3.Button
+import wpm.ui.components.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
+import wpm.ui.components.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import wpm.ui.components.OutlinedButton
+import wpm.ui.components.SegmentedButton
+import wpm.ui.components.SegmentedButtonDefaults
+import wpm.ui.components.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import wpm.ui.components.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,6 +67,8 @@ import wpm.ToastKind
 import wpm.data.MediaItem
 import wpm.media.shortenMiddle
 import wpm.ui.Theme
+import wpm.ui.components.Switch
+import wpm.ui.components.ButtonIcon
 import wpm.ui.components.AddToPlaylistButton
 import wpm.ui.components.AddWebDialog
 import wpm.ui.components.Card
@@ -91,6 +98,7 @@ private sealed interface PendingAction {
     data class DeleteFile(val item: MediaItem) : PendingAction
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LibraryPage(app: AppState) {
     var search by remember { mutableStateOf("") }
@@ -141,22 +149,18 @@ fun LibraryPage(app: AppState) {
         items?.let { "${it.size} wallpaper${if (it.size == 1) "" else "s"}" + if (selected.size > 1) " · ${selected.size} selected" else "" },
         scroll = false,
         actions = {
-            OutlinedButton(onClick = { addingWeb = true }) { Icon(Icons.Outlined.Language, null); Text("  Web wallpaper") }
-            OutlinedButton(onClick = { app.addUrl = "" }) { Icon(Icons.Outlined.Link, null); Text("  Video URL") }
+            OutlinedButton(onClick = { addingWeb = true }) { ButtonIcon(Icons.Outlined.Language); Text("Web wallpaper") }
+            OutlinedButton(onClick = { app.addUrl = "" }) { ButtonIcon(Icons.Outlined.Link); Text("Video URL") }
             OutlinedButton(onClick = { pickFolder(app.window)?.let { app.import(listOf(it)) } }) {
-                Icon(Icons.Outlined.CreateNewFolder, null); Text("  Import folder")
+                ButtonIcon(Icons.Outlined.CreateNewFolder); Text("Import folder")
             }
             Button(onClick = { pickMediaFiles(app.window).takeIf { it.isNotEmpty() }?.let(app::import) }) {
-                Icon(Icons.Outlined.FileUpload, null); Text("  Import files")
+                ButtonIcon(Icons.Outlined.FileUpload); Text("Import files")
             }
         },
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                search, { search = it }, singleLine = true, placeholder = { Text("Search by name") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                modifier = Modifier.width(260.dp).focusRequester(searchFocus),
-            )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SearchField(search, { search = it }, Modifier.width(260.dp).focusRequester(searchFocus), placeholder = "Search by name")
             SingleChoiceSegmentedButtonRow {
                 TYPES.forEachIndexed { i, (key, label) ->
                     SegmentedButton(type == key, { type = key }, SegmentedButtonDefaults.itemShape(i, TYPES.size)) { Text(label) }
@@ -183,14 +187,14 @@ fun LibraryPage(app: AppState) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when {
                     list == null -> {}
-                    list.isEmpty() -> EmptyLibrary(filtered = search.isNotBlank() || type != null || favoritesOnly)
+                    list.isEmpty() -> EmptyLibrary(app, filtered = search.isNotBlank() || type != null || favoritesOnly)
                     else -> MediaGrid(list, app.thumbs, selected, ::onTileClick, Modifier.fillMaxSize(),
                         onDoubleClick = { if (!it.isVideo || app.videoSupport) app.setDesktop(it) })
                 }
             }
             val single = list?.firstOrNull { selected.size == 1 && it.id in selected }
             if (single != null) {
-                DetailsPanel(app, single, Modifier.width(320.dp).fillMaxHeight(), showVideo = pending == null && !pickerOpen,
+                DetailsPanel(app, single, Modifier.width(340.dp).fillMaxHeight(), showVideo = pending == null && !pickerOpen,
                     onPickFrame = { pickerOpen = true },
                     onRemove = { pending = PendingAction.Remove(listOf(single.id)) },
                     onDelete = { pending = PendingAction.DeleteFile(single) })
@@ -250,7 +254,10 @@ fun LibraryPage(app: AppState) {
 private fun SortMenu(sort: String, onChange: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { open = true }) { Text("Sort: ${SORTS.first { it.first == sort }.second}", maxLines = 1, softWrap = false) }
+        TextButton(onClick = { open = true }) {
+            ButtonIcon(Icons.AutoMirrored.Outlined.Sort)
+            Text(SORTS.first { it.first == sort }.second, maxLines = 1, softWrap = false)
+        }
         DropdownMenu(open, { open = false }) {
             SORTS.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { open = false; onChange(key) }) }
         }
@@ -258,19 +265,26 @@ private fun SortMenu(sort: String, onChange: (String) -> Unit) {
 }
 
 @Composable
-private fun EmptyLibrary(filtered: Boolean) {
-    Column(Modifier.fillMaxSize().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        SectionTitle(if (filtered) "Nothing matches" else "Your library is empty")
-        Spacer(Modifier.height(6.dp))
-        MutedText(if (filtered) "Try a different search or filter." else "Import pictures and videos, or drag them onto this window.")
+private fun EmptyLibrary(app: AppState, filtered: Boolean) {
+    EmptyState(
+        if (filtered) "Nothing matches" else "Your library is empty",
+        if (filtered) "Try a different search or filter." else "Import pictures and videos, or drag them onto this window.",
+        Modifier.padding(top = 40.dp),
+    ) {
+        if (!filtered) {
+            Button(onClick = { pickMediaFiles(app.window).takeIf { it.isNotEmpty() }?.let(app::import) }) {
+                ButtonIcon(Icons.Outlined.FileUpload); Text("Import files")
+            }
+        }
     }
 }
 
 @Composable
 private fun BulkBar(app: AppState, ids: List<Long>, onRemove: () -> Unit, onClear: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
+    Card(Modifier.fillMaxWidth(), padding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 26.dp, top = 10.dp, bottom = 10.dp),
+        fold = 14.dp, accent = Theme.colors.accent) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("${ids.size} selected", color = Theme.colors.text, modifier = Modifier.weight(1f))
+            Text("${ids.size} selected", color = Theme.colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { setFavorites(app, ids, true) }) { Text("Add to favorites") }
             OutlinedButton(onClick = { setFavorites(app, ids, false) }) { Text("Remove from favorites") }
             AddToPlaylistButton(app, { ids })
@@ -296,9 +310,9 @@ private fun DetailsPanel(
     onDelete: () -> Unit,
 ) {
     val exists = remember(item.id, app.libraryVersion) { item.available() }
-    Card(modifier) {
+    Card(modifier, padding = androidx.compose.foundation.layout.PaddingValues(18.dp)) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Theme.colors.previewBg)) {
+            PreviewFrame(Modifier.fillMaxWidth().aspectRatio(16f / 9f), fold = 18.dp) {
                 if (item.isVideo && !item.isRemote && exists && app.videoSupport && showVideo) {
                     VideoView(item.source, Modifier.fillMaxSize())
                 } else {
@@ -307,7 +321,8 @@ private fun DetailsPanel(
                     else MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
                 }
             }
-            Text(item.filename, color = Theme.colors.text, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(4.dp))
+            Text(item.filename, color = Theme.colors.text, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             InfoRow("Type", when {
                 item.isWeb && item.isRemote -> "Website"
                 item.isWeb -> "Web wallpaper"
@@ -322,7 +337,7 @@ private fun DetailsPanel(
             InfoRow("Added", item.dateAdded.take(16))
             if (item.path != null) InfoRow("Folder", shortenMiddle(Path(item.path).parent?.pathString ?: "", 40))
             item.sourceUrl?.let { InfoRow(if (item.isRemote) "Streams from" else "Downloaded from", shortenMiddle(it, 40)) }
-            if (!exists) Text("The file is missing. It may have been moved or deleted.", color = Theme.colors.danger, fontSize = 13.sp)
+            if (!exists) Notice("The file is missing. It may have been moved or deleted.")
 
             Spacer(Modifier.height(4.dp))
             val usable = exists && (item.isImage || item.isWeb || item.isShader || app.videoSupport)
@@ -363,7 +378,7 @@ private fun DetailsPanel(
             AddToPlaylistButton(app, { listOf(item.id) })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onRemove) { Text("Remove") }
-                TextButton(onClick = onDelete, enabled = exists) { Text("Delete file…", color = Theme.colors.danger) }
+                TextButton(onClick = onDelete, enabled = exists, danger = true) { Text("Delete file…") }
             }
         }
     }
@@ -371,8 +386,8 @@ private fun DetailsPanel(
 
 @Composable
 private fun InfoRow(label: String, value: String) {
-    Row {
-        Text(label, color = Theme.colors.textMuted, fontSize = 13.sp, modifier = Modifier.width(90.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label.uppercase(), color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(96.dp))
         Text(value, color = Theme.colors.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -391,13 +406,13 @@ private fun WebOptions(app: AppState, item: MediaItem) {
             Text("React to the mouse", color = Theme.colors.text, fontSize = 13.sp)
             Text("Clicks and moves on the empty desktop reach the page", color = Theme.colors.textMuted, fontSize = 12.sp)
         }
-        androidx.compose.material3.Switch(interactive, { on -> interactive = on; save() })
+        Switch(interactive, { on -> interactive = on; save() })
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("React to audio", color = Theme.colors.text, fontSize = 13.sp)
             Text("Gets the levels of what your PC is playing", color = Theme.colors.textMuted, fontSize = 12.sp)
         }
-        androidx.compose.material3.Switch(audio, { on -> audio = on; save() })
+        Switch(audio, { on -> audio = on; save() })
     }
 }

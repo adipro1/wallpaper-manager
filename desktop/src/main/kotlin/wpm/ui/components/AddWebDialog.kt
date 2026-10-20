@@ -10,12 +10,9 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,13 +47,13 @@ fun AddWebDialog(app: AppState, onDismiss: () -> Unit) {
                     "Use a folder with an index.html, a single .html file, or a .zip (Lively wallpapers work too).")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { pickFolder(app.window, "Choose a web wallpaper folder")?.let(::add) }) {
-                        Icon(Icons.Outlined.Folder, null); Text("  Folder…")
+                        ButtonIcon(Icons.Outlined.Folder); Text("Folder…")
                     }
                     OutlinedButton(onClick = {
                         val dialog = FileDialog(app.window as? Frame, "Choose a web wallpaper", FileDialog.LOAD).apply { file = "*.html;*.htm;*.zip" }
                         dialog.isVisible = true
                         dialog.files.firstOrNull()?.let { add(it.toPath()) }
-                    }) { Icon(Icons.Outlined.UploadFile, null); Text("  .html or .zip file…") }
+                    }) { ButtonIcon(Icons.Outlined.UploadFile); Text(".html or .zip file…") }
                 }
                 MutedText("Or show a website as your wallpaper (it is loaded live and needs a connection):")
                 OutlinedTextField(website, { website = it }, singleLine = true, label = { Text("Website address") },
