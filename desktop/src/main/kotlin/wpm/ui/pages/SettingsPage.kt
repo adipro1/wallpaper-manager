@@ -114,6 +114,7 @@ fun SettingsPage(app: AppState) {
             BooleanSetting(app, "resume_live_wallpaper", true, "Start the live wallpaper again when the app starts")
             BooleanSetting(app, "web_interaction", true, "Web wallpapers react to the mouse on the empty desktop")
             BooleanSetting(app, "web_muted", true, "Mute web wallpapers (applies after restarting the app)")
+            BooleanSetting(app, "audio_reactive", true, "Audio-reactive wallpapers may listen to what your PC plays (analysed live, never recorded)")
             var fps by remember { mutableStateOf(app.settings.string("shader_fps", "60")) }
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Shader frame rate (lower saves power)", color = Theme.colors.text, modifier = Modifier.weight(1f))

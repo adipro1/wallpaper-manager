@@ -380,18 +380,24 @@ private fun InfoRow(label: String, value: String) {
 @Composable
 private fun WebOptions(app: AppState, item: MediaItem) {
     var interactive by remember(item.id) { mutableStateOf(item.interactive) }
+    var audio by remember(item.id) { mutableStateOf(item.audio) }
+    fun save() = app.runTask {
+        app.db.updateItemOptions(item.id, interactive, audio)
+        app.libraryChanged()
+        if (app.wallpapers.state.mediaId == item.id) app.changeWallpaper { app.wallpapers.restartLive() }
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("React to the mouse", color = Theme.colors.text, fontSize = 13.sp)
             Text("Clicks and moves on the empty desktop reach the page", color = Theme.colors.textMuted, fontSize = 12.sp)
         }
-        androidx.compose.material3.Switch(interactive, { on ->
-            interactive = on
-            app.runTask {
-                app.db.updateItemOptions(item.id, on, item.audio)
-                app.libraryChanged()
-                if (app.wallpapers.state.mediaId == item.id) app.changeWallpaper { app.wallpapers.restartLive() }
-            }
-        })
+        androidx.compose.material3.Switch(interactive, { on -> interactive = on; save() })
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("React to audio", color = Theme.colors.text, fontSize = 13.sp)
+            Text("Gets the levels of what your PC is playing", color = Theme.colors.textMuted, fontSize = 12.sp)
+        }
+        androidx.compose.material3.Switch(audio, { on -> audio = on; save() })
     }
 }

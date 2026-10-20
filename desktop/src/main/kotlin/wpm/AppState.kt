@@ -23,6 +23,7 @@ import wpm.data.Settings
 import wpm.media.MediaLibrary
 import wpm.media.findMediaFiles
 import wpm.media.mediaTypeFor
+import wpm.engine.AudioCapture
 import wpm.engine.LiveKind
 import wpm.engine.LivePlayer
 import wpm.engine.LiveRouter
@@ -103,7 +104,10 @@ class AppState(
     } finally {
         webEngineStatus = null
     }
-    val webEngine: WebLivePlayer by lazy { WebLivePlayer(chromiumDir) { webEngineStatus = it } }
+    @Volatile private var webEngineCreated = false
+    val webEngine: WebLivePlayer by lazy { webEngineCreated = true; WebLivePlayer(chromiumDir) { webEngineStatus = it } }
+    /** System audio levels for audio-reactive wallpapers (runs only while one is showing). */
+    val audio = AudioCapture { levels -> if (webEngineCreated) webEngine.deliverAudio(levels) }
     private val livePlayer: LivePlayer = live ?: LiveRouter(MpvLivePlayer()) { webEngine }
     val wallpapers = WallpaperService(db, paths, desktopApi, livePlayer).also {
         it.videosAvailable = videoReader != null
@@ -311,12 +315,24 @@ class AppState(
             LiveKind.Web, if (item.isShader) shaders.pageFor(item, settings.string("shader_fps", "60").toIntOrNull() ?: 60) else WebWallpapers.pageUrl(item),
             muted = settings.boolean("web_muted", true),
             interactive = item.interactive && settings.boolean("web_interaction", true),
-            audio = item.audio,
+            audio = item.audio && settings.boolean("audio_reactive", true),
         )
     }
 
-    /** Starts the background jobs (restore, watchdog, auto-pause). */
+    /** Listens to system audio only while a visible wallpaper wants it. */
+    private fun updateAudio() {
+        val wanted = webEngineCreated && webEngine.active && webEngine.wantsAudio && !webEngine.paused
+        if (wanted && !audio.active) audio.start() else if (!wanted && audio.active) audio.stop()
+    }
+
+    /** Starts the background jobs (restore, watchdog, auto-pause, audio). */
     fun startAutomation() {
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(1_000)
+                runCatching { updateAudio() }
+            }
+        }
         Automation(scope, wallpapers, playlists, scheduler, updates, settings, systemProbe, { block -> changeWallpaper(block) }, { notify(it) }).start()
     }
 
@@ -326,6 +342,7 @@ class AppState(
     /** The app is exiting: stop the live wallpaper (it comes back on next start). */
     fun shutdown() {
         scope.cancel()
+        audio.stop()
         runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
         wpm.engine.Chromium.shutdown()
     }

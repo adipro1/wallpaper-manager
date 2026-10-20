@@ -91,6 +91,9 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
     private var rect: ScreenRect? = null
     private var forwarder: InputForwarder? = null
     @Volatile private var interactive = false
+    /** The page wants system audio levels (an audio-reactive wallpaper). */
+    @Volatile var wantsAudio = false
+        private set
     @Volatile override var paused: Boolean = false
         private set
     @Volatile override var source: String? = null
@@ -106,6 +109,16 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
     /** Runs JavaScript in the page (e.g. to deliver audio levels). Safe to call from any thread. */
     fun runScript(code: String) {
         browser?.executeJavaScript(code, source ?: "", 0)
+    }
+
+    /**
+     * Sends audio levels to the page: Lively's livelyAudioListener(array) if the page defines it,
+     * otherwise wpm.onAudio(array). Values are 0..1, bass first.
+     */
+    fun deliverAudio(levels: FloatArray) {
+        if (browser == null || paused) return
+        val values = levels.joinToString(",") { "%.3f".format(java.util.Locale.ROOT, it) }
+        runScript("(window.livelyAudioListener||(window.wpm&&window.wpm.onAudio)||function(){})([$values]);")
     }
 
     @Synchronized
@@ -124,6 +137,7 @@ class WebLivePlayer(private val installDir: Path, private val onStatus: (String?
         }
         this.source = source.target
         interactive = source.interactive
+        wantsAudio = source.audio
         forwarder?.enabled = interactive
         resume()
         log.info("Web wallpaper showing ${source.target}")
