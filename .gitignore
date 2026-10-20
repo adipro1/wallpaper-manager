@@ -18,11 +18,11 @@ dist/
 
 # Local app data (normally stored in %LOCALAPPDATA%\WallpaperManager,
 # ignored here in case WPM_DATA_DIR points inside the project)
-data/
-logs/
+/data/
+/logs/
 *.log
-thumbnails/
-cache/
+/thumbnails/
+/cache/
 *.db
 *.sqlite3
 
@@ -35,7 +35,7 @@ cache/
 *.jpg
 *.jpeg
 *.webp
-media/
+/media/
 
 # Secrets / editor / OS
 .env
@@ -50,3 +50,8 @@ bin/
 
 # Shareable builds
 *.zip
+
+# Kotlin / Gradle (desktop/)
+.gradle/
+.kotlin/
+desktop/build/

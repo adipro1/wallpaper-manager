@@ -23,6 +23,21 @@ jobs:
       - run: ruff check .
       - run: python -m pytest -q
 
+  desktop:
+    # Wallpaper Manager 2.0 (Kotlin + Compose), see desktop/
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: microsoft
+          java-version: "21"
+          cache: gradle
+      - run: ./gradlew check --console=plain
+
   package:
     # Only for version tags (v1.2.3) or a manual run.
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
