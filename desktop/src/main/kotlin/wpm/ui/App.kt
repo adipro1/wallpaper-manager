@@ -45,7 +45,10 @@ import wpm.Page
 import wpm.ui.components.ComingSoon
 import wpm.ui.components.PageScaffold
 import wpm.ui.components.ToastHost
+import wpm.ui.pages.DesktopPage
 import wpm.ui.pages.HomePage
+import wpm.ui.pages.LibraryPage
+import wpm.ui.pages.LockScreenPage
 import wpm.ui.pages.SettingsPage
 
 private fun Page.icon(): ImageVector = when (this) {
@@ -67,9 +70,9 @@ fun App(app: AppState) {
                 when (app.page) {
                     Page.Home -> HomePage(app)
                     Page.Settings -> SettingsPage(app)
-                    Page.Desktop -> PageScaffold("Desktop") { ComingSoon("Static and video wallpapers (step 2 and 3).") }
-                    Page.LockScreen -> PageScaffold("Lock Screen") { ComingSoon("Lock screen image (step 2).") }
-                    Page.Library -> PageScaffold("Library") { ComingSoon("Browsing and importing wallpapers (step 2).") }
+                    Page.Desktop -> DesktopPage(app)
+                    Page.LockScreen -> LockScreenPage(app)
+                    Page.Library -> LibraryPage(app)
                     Page.Playlists -> PageScaffold("Playlists") { ComingSoon("Playlists (step 4).") }
                     Page.Schedule -> PageScaffold("Schedule") { ComingSoon("Daily schedule (step 4).") }
                 }

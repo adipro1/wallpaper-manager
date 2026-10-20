@@ -15,7 +15,10 @@ import androidx.compose.ui.window.rememberWindowState
 import wpm.data.Database
 import wpm.data.DatabaseTooNewException
 import wpm.ui.App
+import wpm.ui.handleShortcut
+import wpm.ui.installFileDrop
 import wpm.win32.SingleInstance
+import wpm.win32.setAppUserModelId
 import androidx.compose.ui.Alignment
 import java.awt.Dimension
 import java.awt.GraphicsEnvironment
@@ -30,7 +33,8 @@ fun main(args: Array<String>) {
     // Only one copy may run (two would fight over the live wallpaper); a second
     // launch just brings the running copy's window to the front.
     // WPM_INSTANCE lets a development build run next to the installed app.
-    val instance = SingleInstance(System.getenv("WPM_INSTANCE")?.takeIf { it.isNotBlank() } ?: APP_ID)
+    val devInstance = System.getenv("WPM_INSTANCE")?.takeIf { it.isNotBlank() }
+    val instance = SingleInstance(devInstance ?: APP_ID)
     if (instance.alreadyRunning) {
         instance.askExistingToShow()
         instance.close()
@@ -49,6 +53,7 @@ fun main(args: Array<String>) {
         JOptionPane.showMessageDialog(null, "${e.message}\n\nPlease install the latest version.", APP_NAME, JOptionPane.ERROR_MESSAGE)
         exitProcess(1)
     }
+    setAppUserModelId(APP_ID)
     val app = AppState(paths, db, startMinimized)
     var showRequests by mutableIntStateOf(0)
 
@@ -73,6 +78,9 @@ fun main(args: Array<String>) {
                 onAction = { app.windowVisible = true; showRequests++ },
                 menu = {
                     Item("Open", onClick = { app.windowVisible = true; showRequests++ })
+                    Separator()
+                    Item("Next wallpaper", onClick = app::nextWallpaper)
+                    Item("Random wallpaper", onClick = app::randomWallpaper)
                     Separator()
                     Item("Exit", onClick = ::exit)
                 },
@@ -101,10 +109,15 @@ fun main(args: Array<String>) {
                 },
                 visible = app.windowVisible,
                 state = windowState,
-                title = APP_NAME,
+                title = if (devInstance != null) "$APP_NAME ($devInstance)" else APP_NAME,
                 icon = painterResource("icon.png"),
+                onKeyEvent = { handleShortcut(app, it) },
             ) {
-                LaunchedEffect(Unit) { window.minimumSize = Dimension(minOf(980, workArea.width), minOf(620, workArea.height)) }
+                LaunchedEffect(Unit) {
+                    window.minimumSize = Dimension(minOf(980, workArea.width), minOf(620, workArea.height))
+                    app.window = window
+                    installFileDrop(window, app::import)
+                }
                 LaunchedEffect(showRequests) {
                     if (showRequests > 0) {
                         app.windowVisible = true
