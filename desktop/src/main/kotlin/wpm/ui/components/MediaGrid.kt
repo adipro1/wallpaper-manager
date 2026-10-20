@@ -105,6 +105,9 @@ fun MediaTile(item: MediaItem, thumbs: ThumbnailCache, selected: Boolean, onClic
                 Icon(Icons.Filled.Star, "Favorite", tint = Theme.colors.star, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp))
             }
             val badge = when {
+                item.isShader -> "Shader"
+                item.isWeb && item.isRemote -> "Website"
+                item.isWeb -> "Web"
                 item.isRemote -> "Stream" + item.durationText.let { if (it.isEmpty()) "" else " · $it" }
                 item.isVideo -> item.durationText.ifEmpty { "Video" }
                 item.filename.endsWith(".gif", ignoreCase = true) -> "GIF"

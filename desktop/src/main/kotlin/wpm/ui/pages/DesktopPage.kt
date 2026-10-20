@@ -103,7 +103,7 @@ fun DesktopPage(app: AppState) {
                     SectionTitle("Current wallpaper")
                     Text(current?.filename ?: if (state.kind == null) "Set outside this app" else "Removed from the library",
                         color = Theme.colors.text, fontSize = 15.sp)
-                    if (state.kind == "video") {
+                    if (state.kind == "video" || state.kind == "web" || state.kind == "shader") {
                         VideoControls(app, state, live)
                     } else {
                         MutedText("Position")
@@ -172,6 +172,7 @@ private data class LiveInfo(
 @Composable
 private fun VideoControls(app: AppState, state: DesktopState, live: LiveInfo) {
     val w = app.wallpapers
+    app.webEngineStatus?.let { Text(it, color = Theme.colors.accent) }
     MutedText(
         when {
             !live.active -> "Live wallpaper (not running)"
@@ -191,12 +192,14 @@ private fun VideoControls(app: AppState, state: DesktopState, live: LiveInfo) {
         OutlinedButton(onClick = { app.videoAction("Back to the picture underneath") { w.stopVideo() } }) {
             Icon(Icons.Outlined.Stop, null); Text("  Stop")
         }
-        OutlinedButton(onClick = { app.videoAction { w.setMuted(!live.muted) } }) {
-            Icon(if (live.muted) Icons.AutoMirrored.Outlined.VolumeOff else Icons.AutoMirrored.Outlined.VolumeUp, null)
-            Text(if (live.muted) "  Sound off" else "  Sound on")
+        if (state.kind == "video") {
+            OutlinedButton(onClick = { app.videoAction { w.setMuted(!live.muted) } }) {
+                Icon(if (live.muted) Icons.AutoMirrored.Outlined.VolumeOff else Icons.AutoMirrored.Outlined.VolumeUp, null)
+                Text(if (live.muted) "  Sound off" else "  Sound on")
+            }
         }
     }
-    SingleChoiceSegmentedButtonRow {
+    if (state.kind == "video") SingleChoiceSegmentedButtonRow {
         VIDEO_STYLES.forEachIndexed { i, s ->
             SegmentedButton(state.style == s, { app.videoAction { w.setVideoStyle(s) } }, SegmentedButtonDefaults.itemShape(i, VIDEO_STYLES.size)) {
                 Text(s.replaceFirstChar(Char::uppercase))

@@ -112,6 +112,15 @@ fun SettingsPage(app: AppState) {
                 }, enabled = !updating) { Text(if (updating) "Updating yt-dlp…" else "Update yt-dlp (if YouTube links stop working)") }
             }
             BooleanSetting(app, "resume_live_wallpaper", true, "Start the live wallpaper again when the app starts")
+            BooleanSetting(app, "web_interaction", true, "Web wallpapers react to the mouse on the empty desktop")
+            BooleanSetting(app, "web_muted", true, "Mute web wallpapers (applies after restarting the app)")
+            MutedText(
+                when {
+                    wpm.engine.Chromium.version() != null -> "Web engine: Chromium ${wpm.engine.Chromium.version()}"
+                    wpm.engine.Chromium.installed(app.chromiumDir) -> "Web engine: installed"
+                    else -> "Web engine: downloaded the first time you use a web wallpaper (about 150 MB)"
+                },
+            )
             BooleanSetting(app, "pause_when_hidden", true, "Pause while the PC is locked or the screen is off")
             BooleanSetting(app, "pause_on_fullscreen", true, "Pause while a game or video runs full screen")
             BooleanSetting(app, "pause_when_covered", true, "Pause while maximized windows cover the desktop")

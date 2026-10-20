@@ -23,8 +23,13 @@ import wpm.data.Settings
 import wpm.media.MediaLibrary
 import wpm.media.findMediaFiles
 import wpm.media.mediaTypeFor
+import wpm.engine.LiveKind
 import wpm.engine.LivePlayer
+import wpm.engine.LiveRouter
+import wpm.engine.LiveSource
 import wpm.engine.MpvLivePlayer
+import wpm.engine.WebLivePlayer
+import wpm.media.WebWallpapers
 import wpm.media.VideoReader
 import wpm.media.UrlImporter
 import wpm.media.YtDlp
@@ -76,7 +81,7 @@ class AppState(
     startMinimized: Boolean,
     desktopApi: DesktopWallpaperApi = WindowsDesktop,
     lockScreenApi: LockScreenApi = PowerShellLockScreen(paths.cacheDir),
-    live: LivePlayer = MpvLivePlayer(),
+    live: LivePlayer? = null,
     videoReader: VideoReader? = if (Mpv.available) MpvVideoReader(paths.cacheDir.resolve("frames")) else null,
     private val systemProbe: SystemProbe = WindowsSystemProbe,
 ) {
@@ -84,7 +89,17 @@ class AppState(
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val library = MediaLibrary(db, paths.thumbDir, videoReader)
-    val wallpapers = WallpaperService(db, paths, desktopApi, live).also { it.videosAvailable = videoReader != null }
+    /** Status of the web engine while it starts or downloads, for the UI. */
+    var webEngineStatus by mutableStateOf<String?>(null)
+        private set
+    val chromiumDir: Path = paths.dataDir.resolve("chromium")
+    val webEngine: WebLivePlayer by lazy { WebLivePlayer(chromiumDir) { webEngineStatus = it } }
+    private val livePlayer: LivePlayer = live ?: LiveRouter(MpvLivePlayer()) { webEngine }
+    val wallpapers = WallpaperService(db, paths, desktopApi, livePlayer).also {
+        it.videosAvailable = videoReader != null
+        it.sourceFor = ::liveSourceFor
+    }
+    val web = WebWallpapers(db, library, paths.dataDir.resolve("web"))
     val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
     val ytDlp = YtDlp(NativeBin.dir.resolve("yt-dlp.exe"))
     val urls = UrlImporter(db, library, ytDlp, downloadFolder())
@@ -194,6 +209,7 @@ class AppState(
             playlists.stop()
             wallpapers.set(item)
         }
+        refreshWebThumbnail(item)
     }
 
     fun nextWallpaper() = runTask(failure = "Couldn't change the wallpaper") {
@@ -206,8 +222,42 @@ class AppState(
         toast(item?.let { "Showing ${it.filename}" } ?: "Add a few wallpapers first", if (item != null) ToastKind.Success else ToastKind.Info)
     }
 
-    /** Imports files and folders (folders recursively), showing progress. */
+    /** Imports web wallpapers (folders with a page, .html or .zip files). */
+    fun importWeb(paths: List<Path>) = runTask(failure = "Couldn't add the web wallpaper") {
+        var added = 0
+        paths.forEach { if (web.import(it) != null) added++ }
+        libraryChanged()
+        toast(if (added > 0) "Added $added web wallpaper${if (added == 1) "" else "s"}" else "Already in your library", ToastKind.Success)
+    }
+
+    /**
+     * After a web wallpaper has been showing for a few seconds, replaces its generated title-card
+     * thumbnail with a snapshot of the real page.
+     */
+    private fun refreshWebThumbnail(item: MediaItem) {
+        if (!item.isLive || item.isVideo || item.thumbnail?.startsWith(WebWallpapers.CARD_PREFIX) == false) return
+        scope.launch(Dispatchers.IO) {
+            delay(6_000)
+            if (wallpapers.state.mediaId != item.id || wallpapers.videoPaused) return@launch
+            val shot = webEngine.snapshot() ?: return@launch
+            runCatching {
+                val name = web.saveSnapshot(shot, item.id)
+                db.setThumbnail(item.id, name)
+                item.thumbnail?.let { old -> java.nio.file.Files.deleteIfExists(paths.thumbDir.resolve(old)) }
+                libraryChanged()
+            }.onFailure { log.info("No snapshot for ${item.filename}: $it") }
+        }
+    }
+
+    /** Imports files and folders (folders recursively), showing progress. Web wallpapers are recognised and added as such. */
     fun import(paths: List<Path>) {
+        val (webItems, media) = paths.partition(WebWallpapers::looksLikeWebWallpaper)
+        if (webItems.isNotEmpty()) importWeb(webItems)
+        if (media.isEmpty()) return
+        importMedia(media)
+    }
+
+    private fun importMedia(paths: List<Path>) {
         if (importProgress != null) {
             toast("An import is already running")
             return
@@ -238,6 +288,17 @@ class AppState(
         }
     }
 
+    /** What the live engines play for an item: videos through mpv, pages and shaders through Chromium. */
+    private fun liveSourceFor(item: MediaItem, style: String): LiveSource = when {
+        item.isVideo -> LiveSource(LiveKind.Video, item.source, fill = style == "fill", muted = wallpapers.muted)
+        else -> LiveSource(
+            LiveKind.Web, WebWallpapers.pageUrl(item),
+            muted = settings.boolean("web_muted", true),
+            interactive = item.interactive && settings.boolean("web_interaction", true),
+            audio = item.audio,
+        )
+    }
+
     /** Starts the background jobs (restore, watchdog, auto-pause). */
     fun startAutomation() {
         Automation(scope, wallpapers, playlists, scheduler, updates, settings, systemProbe, { block -> changeWallpaper(block) }, { notify(it) }).start()
@@ -250,6 +311,7 @@ class AppState(
     fun shutdown() {
         scope.cancel()
         runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
+        wpm.engine.Chromium.shutdown()
     }
 
     fun close() {

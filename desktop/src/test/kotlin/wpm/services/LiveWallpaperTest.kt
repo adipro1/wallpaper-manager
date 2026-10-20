@@ -26,10 +26,15 @@ class FakeLivePlayer : LivePlayer {
     override var active = false
     override var paused = false
 
-    override fun play(source: String, fill: Boolean, muted: Boolean) {
-        this.source = source
-        fillOn = fill
-        mutedOn = muted
+    var kind: wpm.engine.LiveKind? = null
+    var interactiveOn = false
+
+    override fun play(source: wpm.engine.LiveSource) {
+        this.source = source.target
+        fillOn = source.fill
+        mutedOn = source.muted
+        kind = source.kind
+        interactiveOn = source.interactive
         active = true
         paused = false
         healthy = true

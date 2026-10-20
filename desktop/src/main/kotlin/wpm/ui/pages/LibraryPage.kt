@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
@@ -62,6 +63,7 @@ import wpm.data.MediaItem
 import wpm.media.shortenMiddle
 import wpm.ui.Theme
 import wpm.ui.components.AddToPlaylistButton
+import wpm.ui.components.AddWebDialog
 import wpm.ui.components.Card
 import wpm.ui.components.ClickKind
 import wpm.ui.components.ConfirmDialog
@@ -82,7 +84,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.pathString
 
 private val SORTS = listOf("newest" to "Newest first", "oldest" to "Oldest first", "name" to "Name A–Z", "name_desc" to "Name Z–A")
-private val TYPES = listOf(null to "All", "image" to "Images", "video" to "Videos")
+private val TYPES = listOf(null to "All", "image" to "Images", "video" to "Videos", "interactive" to "Interactive")
 
 private sealed interface PendingAction {
     data class Remove(val ids: List<Long>) : PendingAction
@@ -100,6 +102,7 @@ fun LibraryPage(app: AppState) {
     var anchor by remember { mutableStateOf<Long?>(null) }
     var pending by remember { mutableStateOf<PendingAction?>(null) }
     var pickerOpen by remember { mutableStateOf(false) }
+    var addingWeb by remember { mutableStateOf(false) }
     val searchFocus = remember { FocusRequester() }
 
     LaunchedEffect(search, type, favoritesOnly, sort, app.libraryVersion) {
@@ -138,7 +141,8 @@ fun LibraryPage(app: AppState) {
         items?.let { "${it.size} wallpaper${if (it.size == 1) "" else "s"}" + if (selected.size > 1) " · ${selected.size} selected" else "" },
         scroll = false,
         actions = {
-            OutlinedButton(onClick = { app.addUrl = "" }) { Icon(Icons.Outlined.Link, null); Text("  Add from URL") }
+            OutlinedButton(onClick = { addingWeb = true }) { Icon(Icons.Outlined.Language, null); Text("  Web wallpaper") }
+            OutlinedButton(onClick = { app.addUrl = "" }) { Icon(Icons.Outlined.Link, null); Text("  Video URL") }
             OutlinedButton(onClick = { pickFolder(app.window)?.let { app.import(listOf(it)) } }) {
                 Icon(Icons.Outlined.CreateNewFolder, null); Text("  Import folder")
             }
@@ -193,6 +197,8 @@ fun LibraryPage(app: AppState) {
             }
         }
     }
+
+    if (addingWeb) AddWebDialog(app, onDismiss = { addingWeb = false })
 
     if (pickerOpen) {
         items?.firstOrNull { selected.size == 1 && it.id in selected }?.let { FramePickerDialog(app, it, onClose = { pickerOpen = false }) }
@@ -303,36 +309,44 @@ private fun DetailsPanel(
             }
             Text(item.filename, color = Theme.colors.text, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             InfoRow("Type", when {
+                item.isWeb && item.isRemote -> "Website"
+                item.isWeb -> "Web wallpaper"
+                item.isShader -> "Shader"
                 item.isRemote -> "Online video (streamed)"
                 item.isVideo -> "Video"
                 else -> "Image"
             })
-            InfoRow("Resolution", item.resolutionText)
+            if (item.isImage || item.isVideo) InfoRow("Resolution", item.resolutionText)
             if (item.isVideo) InfoRow("Duration", item.durationText.ifEmpty { "Unknown" })
-            if (!item.isRemote) InfoRow("Size", item.sizeText)
+            if (!item.isRemote && (item.isImage || item.isVideo)) InfoRow("Size", item.sizeText)
             InfoRow("Added", item.dateAdded.take(16))
             if (item.path != null) InfoRow("Folder", shortenMiddle(Path(item.path).parent?.pathString ?: "", 40))
             item.sourceUrl?.let { InfoRow(if (item.isRemote) "Streams from" else "Downloaded from", shortenMiddle(it, 40)) }
             if (!exists) Text("The file is missing. It may have been moved or deleted.", color = Theme.colors.danger, fontSize = 13.sp)
 
             Spacer(Modifier.height(4.dp))
-            val usable = exists && (item.isImage || app.videoSupport)
+            val usable = exists && (item.isImage || item.isWeb || item.isShader || app.videoSupport)
             Button(onClick = { app.setDesktop(item) }, enabled = usable, modifier = Modifier.fillMaxWidth()) {
-                Text(if (item.isVideo) "Set as live wallpaper" else "Set as desktop wallpaper")
+                Text(if (item.isLive) "Set as live wallpaper" else "Set as desktop wallpaper")
             }
-            OutlinedButton(
-                onClick = {
-                    if (item.isVideo) {
-                        onPickFrame()
-                    } else {
-                        app.runTask("Lock screen updated", "Couldn't set the lock screen") {
-                            app.changeWallpaper { app.lockScreen.setImage(item) }
+            if (item.isWeb || item.isShader) {
+                WebOptions(app, item)
+            }
+            if (item.isImage || item.isVideo) {
+                OutlinedButton(
+                    onClick = {
+                        if (item.isVideo) {
+                            onPickFrame()
+                        } else {
+                            app.runTask("Lock screen updated", "Couldn't set the lock screen") {
+                                app.changeWallpaper { app.lockScreen.setImage(item) }
+                            }
                         }
-                    }
-                },
-                enabled = usable && !item.isRemote, modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (item.isVideo) "Pick a frame for the lock screen…" else "Set as lock screen") }
-            if (item.isRemote) MutedText("Streams play from the internet; save the video offline to use a frame on the lock screen.")
+                    },
+                    enabled = usable && !item.isRemote, modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (item.isVideo) "Pick a frame for the lock screen…" else "Set as lock screen") }
+            }
+            if (item.isRemote && item.isVideo) MutedText("Streams play from the internet; save the video offline to use a frame on the lock screen.")
             if (item.isVideo && !app.videoSupport) MutedText("Videos need libmpv-2.dll in the app's bin folder.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
@@ -360,5 +374,24 @@ private fun InfoRow(label: String, value: String) {
     Row {
         Text(label, color = Theme.colors.textMuted, fontSize = 13.sp, modifier = Modifier.width(90.dp))
         Text(value, color = Theme.colors.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun WebOptions(app: AppState, item: MediaItem) {
+    var interactive by remember(item.id) { mutableStateOf(item.interactive) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("React to the mouse", color = Theme.colors.text, fontSize = 13.sp)
+            Text("Clicks and moves on the empty desktop reach the page", color = Theme.colors.textMuted, fontSize = 12.sp)
+        }
+        androidx.compose.material3.Switch(interactive, { on ->
+            interactive = on
+            app.runTask {
+                app.db.updateItemOptions(item.id, on, item.audio)
+                app.libraryChanged()
+                if (app.wallpapers.state.mediaId == item.id) app.changeWallpaper { app.wallpapers.restartLive() }
+            }
+        })
     }
 }

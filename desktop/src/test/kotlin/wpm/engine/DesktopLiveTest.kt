@@ -26,7 +26,7 @@ class DesktopLiveTest {
         val clip = Samples.video(dir.resolve("clip.mp4"), seconds = 5, width = 640, height = 360)
         val player = MpvLivePlayer()
         try {
-            player.play(clip.toString(), fill = true, muted = true)
+            player.play(LiveSource(LiveKind.Video, clip.toString()))
             assertTrue(player.active)
             Thread.sleep(2_500)
             assertTrue(player.isHealthy())

@@ -8,6 +8,21 @@ import wpm.win32.DesktopHost
 import wpm.win32.Monitors
 import wpm.win32.windowProcessName
 
+enum class LiveKind { Video, Web }
+
+/** What a live wallpaper shows: a video file or stream, or a web page (also used for shaders). */
+data class LiveSource(
+    val kind: LiveKind,
+    /** File path or URL. */
+    val target: String,
+    val fill: Boolean = true,
+    val muted: Boolean = true,
+    /** Web pages: pass mouse input from the desktop through to the page. */
+    val interactive: Boolean = false,
+    /** Web pages: send system audio levels to the page. */
+    val audio: Boolean = false,
+)
+
 /** One live wallpaper behind the desktop icons. An interface so tests can use a fake. */
 interface LivePlayer {
     val active: Boolean
@@ -17,8 +32,8 @@ interface LivePlayer {
     /** Why the last source couldn't be played (e.g. a stream is offline), or null. */
     val lastError: String?
 
-    /** Starts (or switches to) a video. Switching reuses the window, so there is no flicker. */
-    fun play(source: String, fill: Boolean, muted: Boolean)
+    /** Starts (or switches to) a wallpaper. Switching within the same engine reuses its window, so there is no flicker. */
+    fun play(source: LiveSource)
     fun pause()
     fun resume()
     fun setMuted(muted: Boolean)
@@ -50,16 +65,16 @@ class MpvLivePlayer : LivePlayer {
     override val paused: Boolean get() = mpv?.get("pause") == "yes"
 
     @Synchronized
-    override fun play(source: String, fill: Boolean, muted: Boolean) {
+    override fun play(source: LiveSource) {
         if (mpv == null || host?.isAlive() != true) create()
         val player = mpv!!
-        player["panscan"] = if (fill) "1.0" else "0.0" // 1.0 = crop to fill the screen, 0 = letterbox
-        player["mute"] = if (muted) "yes" else "no"
+        player["panscan"] = if (source.fill) "1.0" else "0.0" // 1.0 = crop to fill the screen, 0 = letterbox
+        player["mute"] = if (source.muted) "yes" else "no"
         player["pause"] = "no"
         lastError = null
-        player.command("loadfile", source)
-        this.source = source
-        log.info("Live wallpaper playing $source")
+        player.command("loadfile", source.target)
+        this.source = source.target
+        log.info("Live wallpaper playing ${source.target}")
     }
 
     private fun create() {
@@ -131,5 +146,49 @@ class MpvLivePlayer : LivePlayer {
 
     companion object {
         val available: Boolean get() = Mpv.available
+    }
+}
+
+/**
+ * Routes each wallpaper to the engine that can show it (mpv for videos, Chromium for web
+ * pages and shaders) and stops the other one, so only one live wallpaper runs at a time.
+ * The web engine is created on first use (it may have to download Chromium).
+ */
+class LiveRouter(private val video: LivePlayer, private val webFactory: () -> LivePlayer) : LivePlayer {
+    private var web: LivePlayer? = null
+    @Volatile private var current: LivePlayer? = null
+
+    private fun engineFor(kind: LiveKind): LivePlayer = when (kind) {
+        LiveKind.Video -> video
+        LiveKind.Web -> web ?: webFactory().also { web = it }
+    }
+
+    override val active: Boolean get() = current?.active == true
+    override val paused: Boolean get() = current?.paused == true
+    override val source: String? get() = current?.source
+    override val lastError: String? get() = current?.lastError
+    /** Which engine is showing the wallpaper, if any. */
+    val kind: LiveKind? get() = current?.let { if (it === video) LiveKind.Video else LiveKind.Web }
+
+    @Synchronized
+    override fun play(source: LiveSource) {
+        val engine = engineFor(source.kind)
+        if (current != null && current !== engine) current?.stop()
+        current = engine
+        engine.play(source)
+    }
+
+    override fun pause() { current?.pause() }
+    override fun resume() { current?.resume() }
+    override fun setMuted(muted: Boolean) { current?.setMuted(muted) }
+    override fun setFill(fill: Boolean) { current?.setFill(fill) }
+    override fun isHealthy(): Boolean = current?.isHealthy() ?: true
+    override fun competingApps(): List<String> = current?.competingApps() ?: emptyList()
+    override fun fitToScreen() { current?.fitToScreen() }
+
+    @Synchronized
+    override fun stop() {
+        current?.stop()
+        current = null
     }
 }

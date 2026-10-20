@@ -6,7 +6,9 @@ import wpm.AppPaths
 import wpm.data.Database
 import wpm.data.MediaItem
 import wpm.data.Settings
+import wpm.engine.LiveKind
 import wpm.engine.LivePlayer
+import wpm.engine.LiveSource
 import wpm.logger
 import wpm.media.Imaging
 import wpm.win32.DesktopWallpaperApi
@@ -23,6 +25,7 @@ private val log = logger("wallpaper")
 // Formats Windows reliably accepts as a wallpaper; anything else is converted to PNG.
 private val NATIVE_WALLPAPER_FORMATS = setOf("jpg", "jpeg", "png", "bmp")
 val IMAGE_STYLES = listOf("fill", "fit", "stretch", "center", "tile")
+private val LIVE_KINDS = setOf("video", "web", "shader")
 val VIDEO_STYLES = listOf("fill", "fit")
 
 /** What the desktop currently shows, as far as this app knows. Same JSON as version 1.x. */
@@ -133,7 +136,7 @@ class WallpaperService(
         runCatching { windows.setWallpaper(file, persist = false) }.onFailure { log.warning("Could not repaint the desktop: $it") }
     }
 
-    // -- live video -----------------------------------------------------------------
+    // -- live wallpapers (video, web page, shader) --------------------------------------
 
     val muted: Boolean get() = settings.boolean("video_muted", true)
     val videoActive: Boolean get() = live.active
@@ -141,21 +144,34 @@ class WallpaperService(
     /** Why the live wallpaper couldn't play (e.g. a stream is offline), or null. */
     val liveError: String? get() = live.lastError
 
-    /** Plays a video behind the desktop icons. */
-    fun setVideo(item: MediaItem, style: String? = null) {
-        require(item.isVideo) { "Use setImage for images" }
-        if (!item.available()) throw FileNotFoundException("File not found: ${item.path}")
+    /** Turns a library item into what the live engines play (web and shader items need the web engine). */
+    var sourceFor: (MediaItem, style: String) -> LiveSource = { item, style ->
+        LiveSource(LiveKind.Video, item.source, fill = style == "fill", muted = muted)
+    }
+
+    /** Plays a video, web page or shader behind the desktop icons. */
+    fun setLive(item: MediaItem, style: String? = null) {
+        require(item.isLive) { "Use setImage for images" }
+        if (!item.available()) throw FileNotFoundException("Not found: ${item.path}")
         val chosen = style ?: settings.string("video_style", "fill")
         backupOriginal()
-        live.play(item.source, fill = chosen == "fill", muted = muted)
-        autoPauseReason = null // a new video starts playing; the next check re-pauses if needed
-        settings.set("video_style", chosen)
-        saveState(DesktopState("video", item.id, item.source, chosen))
+        live.play(sourceFor(item, chosen))
+        autoPauseReason = null // a new wallpaper starts playing; the next check re-pauses if needed
+        if (item.isVideo) settings.set("video_style", chosen)
+        saveState(DesktopState(item.mediaType, item.id, item.source, chosen))
         log.info("Live wallpaper set to ${item.source} ($chosen)")
     }
 
+    fun setVideo(item: MediaItem, style: String? = null) = setLive(item, style)
+
     /** Sets any library item as the desktop wallpaper. */
-    fun set(item: MediaItem) = if (item.isVideo) setVideo(item) else setImage(item)
+    fun set(item: MediaItem) = if (item.isImage) setImage(item) else setLive(item)
+
+    /** Plays the current live wallpaper again (e.g. after its options changed). */
+    fun restartLive() {
+        val item = currentItem() ?: return
+        if (state.kind != "image" && item.isLive) setLive(item, state.style)
+    }
 
     fun setVideoStyle(style: String) {
         settings.set("video_style", style)
@@ -210,7 +226,7 @@ class WallpaperService(
 
     /** Stops the live wallpaper and goes back to the static picture underneath. */
     fun stopVideo() {
-        if (!live.active && state.kind != "video") return
+        if (!live.active && (state.kind == null || state.kind == "image")) return
         live.stop()
         autoPauseReason = null
         repaintStatic()
@@ -222,13 +238,13 @@ class WallpaperService(
     /** Starts the saved live wallpaper again after the app was restarted. Returns true if started. */
     fun restoreOnStartup(): Boolean {
         val saved = state
-        if (saved.kind != "video" || !settings.boolean("resume_live_wallpaper", true)) return false
+        if (saved.kind !in LIVE_KINDS || !settings.boolean("resume_live_wallpaper", true)) return false
         val item = currentItem()
-        if (item == null || !item.available()) {
+        if (item == null || !item.available() || !playable(item)) {
             log.warning("Saved live wallpaper is no longer available: ${saved.path}")
             return false
         }
-        live.play(item.source, fill = saved.style == "fill", muted = muted)
+        live.play(sourceFor(item, saved.style))
         return true
     }
 
@@ -237,11 +253,11 @@ class WallpaperService(
         if (!live.active) return
         if (!live.isHealthy()) {
             log.warning("Live wallpaper window was lost (Explorer restarted?) - recreating it")
-            val source = live.source
             val wasPaused = autoPauseReason != null
+            val item = currentItem()
             live.stop()
-            if (source != null) {
-                live.play(source, fill = state.style == "fill", muted = muted)
+            if (item != null && item.isLive) {
+                live.play(sourceFor(item, state.style))
                 if (wasPaused) live.pause()
             }
         } else {

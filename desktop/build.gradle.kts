@@ -26,6 +26,7 @@ dependencies {
     implementation(libs.sqlite.jdbc)
     implementation(libs.jna)
     implementation(libs.jna.platform)
+    implementation(libs.jcefmaven)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)

@@ -59,8 +59,11 @@ private const val HELP_TEXT = "Live wallpapers could not be attached to the desk
 /** The desktop window layout is not what we expect (e.g. a new Windows version). */
 class DesktopLayerException(detail: String) : RuntimeException("$detail\n\n$HELP_TEXT")
 
-/** The window to attach to and, on 24H2+, the icon window to sit directly below (null for the classic layout). */
-data class WallpaperLayer(val parent: HWND, val insertAfter: HWND?)
+/**
+ * The window to attach to and, on 24H2+, the icon window to sit directly below (null for the
+ * classic layout). [workerW] is the 24H2 wallpaper window inside Progman.
+ */
+data class WallpaperLayer(val parent: HWND, val insertAfter: HWND?, val workerW: HWND? = null)
 
 fun findWallpaperLayer(): WallpaperLayer {
     val progman = user32.FindWindow("Progman", null)
@@ -70,10 +73,10 @@ fun findWallpaperLayer(): WallpaperLayer {
     user32.SendMessageTimeout(progman, SPAWN_WORKERW, WinDef.WPARAM(0), WinDef.LPARAM(0), 0, 1000, result)
 
     // Windows 11 24H2+: WorkerW is a child of Progman, next to the icons.
-    if (user32.FindWindowEx(progman, null, "WorkerW", null) != null) {
+    user32.FindWindowEx(progman, null, "WorkerW", null)?.let { workerW ->
         user32.FindWindowEx(progman, null, "SHELLDLL_DefView", null)?.let { defView ->
             log.fine("Desktop layout: 24H2 (WorkerW and icons inside Progman)")
-            return WallpaperLayer(progman, defView)
+            return WallpaperLayer(progman, defView, workerW)
         }
     }
     // Classic layout: the WorkerW that follows the top-level window holding the icons.
@@ -142,6 +145,51 @@ fun describeDesktop(): List<String> {
 
 internal object Pointer2 {
     fun value(hwnd: HWND): Long = com.sun.jna.Pointer.nativeValue(hwnd.pointer)
+}
+
+private const val GWL_STYLE = -16
+private const val GWL_EXSTYLE = -20
+private const val WS_CAPTION = 0x00C00000
+private const val WS_THICKFRAME = 0x00040000
+private const val WS_EX_APPWINDOW = 0x00040000
+private const val SWP_FRAMECHANGED = 0x0020
+private const val SWP_SHOWWINDOW = 0x0040
+
+/**
+ * Moves another window (e.g. Chromium's) into the wallpaper layer as a child window covering
+ * [screenRect]. On 24H2+ it goes inside the wallpaper WorkerW, which needs no layered style
+ * (GPU-drawn children don't show in layered windows). Returns the new parent.
+ */
+fun attachToWallpaperLayer(hwnd: HWND, screenRect: ScreenRect): HWND {
+    val layer = findWallpaperLayer()
+    val parent = layer.workerW ?: layer.parent
+    val style = user32.GetWindowLong(hwnd, GWL_STYLE)
+    user32.SetWindowLong(hwnd, GWL_STYLE,
+        (style and (WS_POPUP or WS_CAPTION or WS_THICKFRAME).inv()) or WS_CHILD or WS_VISIBLE or WS_CLIPCHILDREN or WS_CLIPSIBLINGS)
+    val exStyle = user32.GetWindowLong(hwnd, GWL_EXSTYLE)
+    user32.SetWindowLong(hwnd, GWL_EXSTYLE, (exStyle and WS_EX_APPWINDOW.inv()) or WS_EX_NOACTIVATE)
+    user32.SetParent(hwnd, parent)
+    val client = toClient(parent, screenRect)
+    user32.SetWindowPos(hwnd, HWND(com.sun.jna.Pointer.createConstant(0)), client.x, client.y, client.width, client.height,
+        SWP_NOACTIVATE or SWP_FRAMECHANGED or SWP_SHOWWINDOW)
+    log.info("Window attached to the wallpaper layer at $screenRect (${if (layer.workerW != null) "24H2" else "classic"} layout)")
+    return parent
+}
+
+/** Moves an attached child window to cover [screenRect]. */
+fun moveInWallpaperLayer(hwnd: HWND, parent: HWND, screenRect: ScreenRect) {
+    val client = toClient(parent, screenRect)
+    user32.SetWindowPos(hwnd, null, client.x, client.y, client.width, client.height, SWP_NOZORDER or SWP_NOACTIVATE)
+}
+
+/** Child windows of [parent] (recursively) with this class name. */
+fun findChildWindows(parent: HWND, className: String): List<HWND> {
+    val found = mutableListOf<HWND>()
+    user32.EnumChildWindows(parent, { child, _ ->
+        if (className(child) == className) found += child
+        true
+    }, null)
+    return found
 }
 
 /** Converts a screen rectangle into [parent]'s client coordinates (the layer spans the virtual screen). */
