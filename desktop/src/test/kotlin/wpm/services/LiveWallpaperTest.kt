@@ -77,6 +77,10 @@ class FakeProbe(
         displays().filter { it.id in coveredOn }.map { it.bounds }
     override fun onBattery() = battery
     override fun displays() = listOf(MAIN) + extraDisplays
+    var foreground: String? = null
+    var running: Set<String> = emptySet()
+    override fun foregroundApp() = foreground
+    override fun runningApps() = running
 
     companion object {
         val MAIN = wpm.win32.Monitor("""\\.\DISPLAY1""", wpm.win32.ScreenRect(0, 0, 1920, 1080), true)
@@ -228,6 +232,31 @@ class LiveWallpaperTest {
         assertNull(pauseReason(settings, probe)) // battery is off by default
         settings.set("pause_on_battery", true)
         assertEquals(PauseReason.Battery, pauseReason(settings, probe))
+    }
+
+    @Test
+    fun pausesForApps() {
+        val settings = Settings(db)
+        val probe = FakeProbe()
+        probe.foreground = "chrome.exe"
+        probe.running = setOf("chrome.exe", "obs64.exe", "explorer.exe")
+        assertNull(pauseReason(settings, probe)) // nothing chosen yet
+        settings.set("pause_apps", appRulesSerializer, listOf(AppPauseRule("game.exe"), AppPauseRule("obs64.exe", whileRunning = true)))
+        assertEquals(PauseReason.AppRunning, pauseReason(settings, probe))
+        probe.running = setOf("chrome.exe")
+        assertNull(pauseReason(settings, probe))
+        probe.foreground = "game.exe"
+        assertEquals(PauseReason.AppInFront, pauseReason(settings, probe))
+        probe.foreground = null // the desktop
+        settings.set("pause_when_app_focused", true)
+        assertNull(pauseReason(settings, probe))
+        probe.foreground = "notepad.exe"
+        assertEquals(PauseReason.AppInFront, pauseReason(settings, probe))
+        // Locking still comes first.
+        probe.locked = true
+        assertEquals(PauseReason.Locked, pauseReason(settings, probe))
+        assertEquals("game.exe", normalizeExe("C:\\Games\\Game.EXE"))
+        assertEquals("game.exe", normalizeExe(" game "))
     }
 
     @Test

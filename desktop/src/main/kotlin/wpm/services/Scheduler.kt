@@ -14,9 +14,25 @@ import java.time.format.DateTimeFormatter
 
 private val log = logger("schedule")
 
-/** "7:5" / "07:05" / "0705" -> "07:05". Throws IllegalArgumentException for invalid times. */
+private val SOLAR = Regex("""^(sunrise|sunset)\s*(?:([+-])\s*(\d{1,3})(?::(\d{2}))?\s*(?:min|m)?)?$""", RegexOption.IGNORE_CASE)
+
+/**
+ * A rule time: "7:5" / "07:05" / "0705" -> "07:05", or one relative to the sun:
+ * "sunset" / "Sunrise + 30" / "sunset-1:15" -> "sunset", "sunrise+30", "sunset-75" (minutes).
+ * Throws IllegalArgumentException for anything else.
+ */
 fun parseTime(text: String): String {
     val t = text.trim()
+    SOLAR.matchEntire(t)?.let { m ->
+        val (event, sign, first, second) = m.destructured
+        val minutes = when {
+            sign.isEmpty() -> 0
+            second.isNotEmpty() -> first.toInt() * 60 + second.toInt()
+            else -> first.toInt()
+        }
+        if (minutes > 6 * 60) throw IllegalArgumentException("Keep it within 6 hours of ${event.lowercase()}")
+        return event.lowercase() + if (minutes == 0) "" else "$sign$minutes"
+    }
     val (h, m) = when {
         ':' in t -> t.substringBefore(':') to t.substringAfter(':')
         t.all(Char::isDigit) && t.length in 3..4 -> t.dropLast(2) to t.takeLast(2)
@@ -28,6 +44,25 @@ fun parseTime(text: String): String {
     if (hours !in 0..23 || minutes !in 0..59) throw IllegalArgumentException("“$t” is not a valid time")
     return "%02d:%02d".format(java.util.Locale.ROOT, hours, minutes)
 }
+
+/** For a rule time from [parseTime]: the sun event and the offset in minutes, or null for a clock time. */
+fun solarTime(time: String): Pair<String, Int>? {
+    if (!time.startsWith("sun")) return null
+    val event = if (time.startsWith("sunrise")) "sunrise" else "sunset"
+    return event to (time.removePrefix(event).toIntOrNull() ?: 0)
+}
+
+/** "sunset-30" -> "30 min before sunset"; clock times stay as they are. */
+fun describeTime(time: String): String {
+    val (event, offset) = solarTime(time) ?: return time
+    return when {
+        offset == 0 -> event.replaceFirstChar { it.uppercase() }
+        offset > 0 -> "${formatOffset(offset)} after $event"
+        else -> "${formatOffset(-offset)} before $event"
+    }
+}
+
+private fun formatOffset(minutes: Int) = if (minutes % 60 == 0) "${minutes / 60} h" else if (minutes > 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"
 
 /** One occurrence of a rule on a particular day. */
 data class Occurrence(val time: ZonedDateTime, val rule: ScheduleRule) {
@@ -58,6 +93,33 @@ class Scheduler(
 
     val enabled: Boolean get() = settings.boolean("schedule_enabled", true)
 
+    /** Where sunrise and sunset are worked out for; null until the user sets it. */
+    val place: Place? get() = settings.obj("location", Place.serializer())
+
+    fun setPlace(place: Place?) {
+        if (place == null) db.execute("DELETE FROM settings WHERE key = 'location'") else settings.set("location", Place.serializer(), place)
+        markCurrentApplied() // the times moved; don't jump to another wallpaper because of that
+    }
+
+    /**
+     * When [rule] happens on [day]: its clock time, or the sun event plus its offset. Null for
+     * sun rules without a location, or on days the sun doesn't rise or set there.
+     */
+    fun timeOn(rule: ScheduleRule, day: java.time.LocalDate, zone: java.time.ZoneId): ZonedDateTime? {
+        val (event, offset) = solarTime(rule.time)
+            // atZone moves times in a DST gap forward, and picks the earlier of repeated times.
+            ?: return day.atTime(LocalTime.of(rule.minutes / 60, rule.minutes % 60)).atZone(zone)
+        val where = place ?: return null
+        val sun = if (event == "sunrise") Sun.sunrise(day, where, zone) else Sun.sunset(day, where, zone)
+        return sun?.plusMinutes(offset.toLong())?.withSecond(0)
+    }
+
+    /** Today's time of a rule, e.g. "18:12", or null (see [timeOn]). */
+    fun todayText(rule: ScheduleRule): String? {
+        val now = clock()
+        return timeOn(rule, now.toLocalDate(), now.zone)?.toLocalTime()?.let { "%02d:%02d".format(it.hour, it.minute) }
+    }
+
     fun setEnabled(enabled: Boolean) {
         settings.set("schedule_enabled", enabled)
         markCurrentApplied()
@@ -68,8 +130,7 @@ class Scheduler(
         val rules = db.listRules().filter { it.enabled }
         return (-1L..1L).flatMap { offset ->
             val day = now.toLocalDate().plusDays(offset)
-            // atZone moves times in a DST gap forward, and picks the earlier of repeated times.
-            rules.map { Occurrence(day.atTime(LocalTime.of(it.minutes / 60, it.minutes % 60)).atZone(now.zone), it) }
+            rules.mapNotNull { rule -> timeOn(rule, day, now.zone)?.let { Occurrence(it, rule) } }
         }.sortedWith(compareBy<Occurrence> { it.time }.thenBy { it.rule.id })
     }
 
@@ -116,6 +177,6 @@ class Scheduler(
             playlists.stop()
             wallpapers.set(item)
         }
-        log.info("Schedule: applied ${rule.time} → ${rule.targetName}")
+        log.info("Schedule: applied ${describeTime(rule.time)} → ${rule.targetName}")
     }
 }

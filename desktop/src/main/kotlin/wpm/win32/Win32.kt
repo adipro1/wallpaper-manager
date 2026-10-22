@@ -21,6 +21,7 @@ import kotlin.io.path.isRegularFile
 internal interface User32Ex : StdCallLibrary {
     fun SystemParametersInfoW(action: Int, param: Int, value: WString?, flags: Int): Boolean
     fun SystemParametersInfoW(action: Int, param: Int, value: CharArray, flags: Int): Boolean
+    fun SystemParametersInfoW(action: Int, param: Int, value: IntByReference, flags: Int): Boolean
     fun MapWindowPoints(from: WinDef.HWND?, to: WinDef.HWND?, points: WinDef.POINT, count: Int): Int
     fun RegisterPowerSettingNotification(recipient: WinNT.HANDLE, guid: Guid.GUID, flags: Int): WinNT.HANDLE?
     fun UnregisterPowerSettingNotification(handle: WinNT.HANDLE): Boolean
@@ -31,6 +32,7 @@ internal interface User32Ex : StdCallLibrary {
     fun WindowFromPoint(point: WinDef.POINT.ByValue): WinDef.HWND?
     fun SendMessageW(hwnd: WinDef.HWND, msg: Int, wParam: WinDef.WPARAM, lParam: WinDef.LPARAM): WinDef.LRESULT
     fun ScreenToClient(hwnd: WinDef.HWND, point: WinDef.POINT): Boolean
+    fun SendMessageTimeoutW(hwnd: WinDef.HWND, msg: Int, wParam: WinDef.WPARAM, lParam: WString, flags: Int, timeout: Int, result: IntByReference?): WinDef.LRESULT
 
     companion object {
         val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java, W32APIOptions.DEFAULT_OPTIONS)
@@ -66,6 +68,21 @@ internal interface DwmApi : StdCallLibrary {
 }
 
 private val log = logger("win32")
+
+/** Tells running apps (Explorer, the taskbar) that a setting changed, e.g. "ImmersiveColorSet" for the accent color. */
+fun broadcastSettingChange(area: String) {
+    runCatching {
+        // HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG; a hung window doesn't hold us up for long.
+        User32Ex.INSTANCE.SendMessageTimeoutW(WinDef.HWND(com.sun.jna.Pointer.createConstant(0xFFFF)), 0x001A, WinDef.WPARAM(0), WString(area), 0x0002, 1000, null)
+    }.onFailure { log.warning("Couldn't announce the $area change: $it") }
+}
+
+/** False when "Animation effects" is switched off in Windows (Accessibility > Visual effects). */
+fun systemAnimationsEnabled(): Boolean = runCatching {
+    val value = IntByReference(1)
+    User32Ex.INSTANCE.SystemParametersInfoW(0x1042, 0, value, 0) // SPI_GETCLIENTAREAANIMATION
+    value.value != 0
+}.getOrDefault(true)
 
 /** Gives the process its own taskbar identity (icon and grouping). */
 fun setAppUserModelId(appId: String) {

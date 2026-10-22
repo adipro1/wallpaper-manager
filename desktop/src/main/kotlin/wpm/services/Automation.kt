@@ -25,6 +25,27 @@ interface SystemProbe {
     fun coveredDisplays(): Set<ScreenRect>
     fun onBattery(): Boolean
     fun displays(): List<Monitor>
+    /** The program in front (e.g. "chrome.exe"), or null for the desktop, the taskbar or this app. */
+    fun foregroundApp(): String? = null
+    /** Programs running right now (lower case). */
+    fun runningApps(): Set<String> = emptySet()
+}
+
+/** "Pause while chrome.exe is in front" ([whileRunning] = false) or "... is running at all". */
+@kotlinx.serialization.Serializable
+data class AppPauseRule(
+    val exe: String,
+    @kotlinx.serialization.SerialName("while_running") val whileRunning: Boolean = false,
+)
+
+val appRulesSerializer = kotlinx.serialization.builtins.ListSerializer(AppPauseRule.serializer())
+
+fun appPauseRules(settings: Settings): List<AppPauseRule> = settings.obj("pause_apps", appRulesSerializer) ?: emptyList()
+
+/** A full path, "game" or "Game.EXE" -> "game.exe". */
+fun normalizeExe(text: String): String {
+    val name = text.trim().trim('"').substringAfterLast('\\').substringAfterLast('/').lowercase()
+    return if (name.isEmpty() || name.endsWith(".exe")) name else "$name.exe"
 }
 
 object WindowsSystemProbe : SystemProbe {
@@ -34,6 +55,8 @@ object WindowsSystemProbe : SystemProbe {
     override fun coveredDisplays() = SystemState.coveredMonitors()
     override fun onBattery() = SystemState.onBattery()
     override fun displays() = Monitors.all()
+    override fun foregroundApp() = SystemState.foregroundApp()
+    override fun runningApps() = SystemState.runningApps()
 }
 
 /** What the auto-pause check decided: a reason for pausing everything, and displays nobody can see. */
@@ -58,8 +81,21 @@ fun pauseDecision(settings: Settings, probe: SystemProbe, liveDisplays: Set<Stri
     if (showing.isNotEmpty() && hidden.containsAll(showing)) {
         return PauseDecision(if (showing.any { it in fullscreen }) PauseReason.Fullscreen else PauseReason.Covered)
     }
+    appPauseReason(settings, probe)?.let { return PauseDecision(it) }
     if (settings.boolean("pause_on_battery", false) && probe.onBattery()) return PauseDecision(PauseReason.Battery)
     return PauseDecision(null, hidden)
+}
+
+/** Pausing for apps: one of the user's app rules applies, or (optionally) any app is in front. */
+private fun appPauseReason(settings: Settings, probe: SystemProbe): PauseReason? {
+    val rules = appPauseRules(settings)
+    val anyApp = settings.boolean("pause_when_app_focused", false)
+    if (rules.isEmpty() && !anyApp) return null
+    val front = probe.foregroundApp()
+    if (front != null && (anyApp || rules.any { !it.whileRunning && it.exe == front })) return PauseReason.AppInFront
+    val watched = rules.filter { it.whileRunning }.map { it.exe }
+    if (watched.isNotEmpty() && probe.runningApps().any { it in watched }) return PauseReason.AppRunning
+    return null
 }
 
 /** Why live wallpapers should be paused everywhere right now, or null (single display, as in 1.x). */
@@ -88,6 +124,7 @@ class Automation(
     private val liveDisplays: () -> Set<String> = { emptySet() },
     /** Called once the saved wallpaper has been restored (or that failed). */
     private val onStarted: () -> Unit = {},
+    private val lockSlideshow: LockScreenSlideshow? = null,
 ) {
     fun start() {
         DisplayState.start()
@@ -105,6 +142,12 @@ class Automation(
             when {
                 scheduler.isDue() -> exclusive { runCatching { scheduler.applyDue() }.onFailure { log.warning("Schedule change failed: $it") } }
                 playlists.isDue() -> exclusive { runCatching { playlists.advance() }.onFailure { log.warning("Playlist change failed: $it") } }
+            }
+        }
+        // The lock screen slideshow (PowerShell, a second or two: not while other changes run).
+        lockSlideshow?.let { slideshow ->
+            every(30_000) {
+                if (slideshow.isDue()) exclusive { runCatching { slideshow.advance() }.onFailure { log.warning("Lock screen slideshow: $it") } }
             }
         }
         scope.launch(Dispatchers.IO) {

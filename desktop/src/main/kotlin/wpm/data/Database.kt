@@ -98,6 +98,19 @@ val MIGRATIONS = listOf(
     CREATE INDEX idx_media_type ON media(media_type);
     CREATE INDEX idx_media_favorite ON media(favorite);
     """,
+    // 5 (2.1): tags
+    """
+    CREATE TABLE tags (
+        id    INTEGER PRIMARY KEY,
+        name  TEXT NOT NULL UNIQUE COLLATE NOCASE
+    );
+    CREATE TABLE media_tags (
+        media_id  INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+        tag_id    INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (media_id, tag_id)
+    );
+    CREATE INDEX idx_media_tags_tag ON media_tags(tag_id);
+    """,
 )
 
 /** Migrations that rebuild a table: foreign keys must be off while they run, or the old table's rows cascade away. */
@@ -171,6 +184,11 @@ class Database(private val path: String) : AutoCloseable {
         runCatching { conn.createStatement().use { it.execute("VACUUM INTO '" + target.replace("'", "''") + "'") } }
             .onSuccess { log.info("Backed up the library database to $target") }
             .onFailure { log.warning("Could not back up the database before upgrading: $it") }
+    }
+
+    /** A consistent copy of the whole database in [target] (which must not exist yet). */
+    fun snapshot(target: Path) = synchronized(lock) {
+        conn.createStatement().use { it.execute("VACUUM INTO '" + target.toString().replace("'", "''") + "'") }
     }
 
     val schemaVersion: Int
@@ -299,6 +317,11 @@ class Database(private val path: String) : AutoCloseable {
         execute("UPDATE media SET interactive = ?, audio = ? WHERE id = ?", interactive, audio, mediaId)
     }
 
+    /** Moves an item to another file or folder (and renames it to [newName] if given). */
+    fun relink(mediaId: Long, path: String, newName: String? = null) {
+        execute("UPDATE media SET path = ?, filename = COALESCE(?, filename) WHERE id = ?", path, newName, mediaId)
+    }
+
     fun rename(mediaId: Long, name: String) {
         execute("UPDATE media SET filename = ? WHERE id = ?", name, mediaId)
     }
@@ -312,12 +335,19 @@ class Database(private val path: String) : AutoCloseable {
     /** The library item for a local file or folder (paths compare case-insensitively, like Windows). */
     fun mediaByPath(path: String): MediaItem? = query("SELECT * FROM media WHERE path = ?", path, map = ::mediaFrom).firstOrNull()
 
-    private fun mediaFilter(search: String, mediaType: String?, favoritesOnly: Boolean): Pair<String, List<Any>> {
+    private fun mediaFilter(search: String, mediaType: String?, favoritesOnly: Boolean, tag: String? = null): Pair<String, List<Any>> {
         val clauses = mutableListOf<String>()
         val params = mutableListOf<Any>()
         if (search.isNotBlank()) {
-            clauses += "instr(lower(filename), lower(?)) > 0"
+            // The name, or one of its tags.
+            clauses += "(instr(lower(filename), lower(?)) > 0 OR EXISTS (SELECT 1 FROM media_tags mt JOIN tags t ON t.id = mt.tag_id " +
+                "WHERE mt.media_id = media.id AND instr(lower(t.name), lower(?)) > 0))"
             params += search.trim()
+            params += search.trim()
+        }
+        if (tag != null) {
+            clauses += "EXISTS (SELECT 1 FROM media_tags mt JOIN tags t ON t.id = mt.tag_id WHERE mt.media_id = media.id AND t.name = ?)"
+            params += tag
         }
         if (mediaType == "interactive") {
             clauses += "media_type IN ('web', 'shader')"
@@ -331,8 +361,8 @@ class Database(private val path: String) : AutoCloseable {
     }
 
     fun listMedia(search: String = "", mediaType: String? = null, favoritesOnly: Boolean = false,
-                  sort: String = "newest", limit: Int = -1, offset: Int = 0): List<MediaItem> {
-        val (where, params) = mediaFilter(search, mediaType, favoritesOnly)
+                  sort: String = "newest", limit: Int = -1, offset: Int = 0, tag: String? = null): List<MediaItem> {
+        val (where, params) = mediaFilter(search, mediaType, favoritesOnly, tag)
         val order = SORT_ORDERS[sort] ?: SORT_ORDERS.getValue("newest")
         return query("SELECT * FROM media $where ORDER BY $order LIMIT ? OFFSET ?",
             *params.toTypedArray(), limit, offset, map = ::mediaFrom)
@@ -370,6 +400,33 @@ class Database(private val path: String) : AutoCloseable {
         "SELECT COUNT(*), COALESCE(SUM(media_type = 'image'), 0), COALESCE(SUM(media_type = 'video'), 0)," +
             " COALESCE(SUM(favorite), 0), COALESCE(SUM(media_type IN ('web', 'shader')), 0) FROM media",
     ) { MediaStats(it.getInt(1), it.getInt(2), it.getInt(3), it.getInt(4), it.getInt(5)) }.first()
+
+    // -- tags --------------------------------------------------------------------------
+
+    /** Every tag with how many items have it, by name. */
+    fun listTags(): List<Pair<String, Int>> = query(
+        "SELECT t.name, COUNT(mt.media_id) FROM tags t JOIN media_tags mt ON mt.tag_id = t.id GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
+    ) { it.getString(1) to it.getInt(2) }
+
+    fun tagsOf(mediaId: Long): List<String> = query(
+        "SELECT t.name FROM tags t JOIN media_tags mt ON mt.tag_id = t.id WHERE mt.media_id = ? ORDER BY t.name COLLATE NOCASE", mediaId,
+    ) { it.getString(1) }
+
+    /** Gives items a tag (created if new; an existing tag keeps its spelling). */
+    fun addTag(mediaIds: Collection<Long>, name: String) = inTransaction {
+        val clean = name.trim().replace(Regex("\\s+"), " ")
+        require(clean.isNotEmpty()) { "A tag needs a name" }
+        require(clean.length <= 40) { "Keep tags under 40 characters" }
+        execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", clean)
+        val tagId = query("SELECT id FROM tags WHERE name = ?", clean) { it.getLong(1) }.first()
+        mediaIds.forEach { execute("INSERT OR IGNORE INTO media_tags (media_id, tag_id) VALUES (?, ?)", it, tagId) }
+    }
+
+    /** Takes a tag off an item; tags nobody uses any more are deleted. */
+    fun removeTag(mediaId: Long, name: String) = inTransaction {
+        execute("DELETE FROM media_tags WHERE media_id = ? AND tag_id = (SELECT id FROM tags WHERE name = ?)", mediaId, name)
+        execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM media_tags)")
+    }
 
     // -- playlists -----------------------------------------------------------------
 

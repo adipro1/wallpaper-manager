@@ -7,6 +7,10 @@ import androidx.compose.material3.MaterialTheme
 import wpm.ui.components.EmptyState
 import wpm.ui.components.Notice
 import wpm.ui.components.PreviewFrame
+import wpm.ui.components.PropertyEditor
+import wpm.ui.components.TagEditor
+import wpm.ui.components.MissingFilesDialog
+import wpm.ui.components.TextInputDialog
 import wpm.ui.components.SearchField
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.FileUpload
@@ -111,10 +116,23 @@ fun LibraryPage(app: AppState) {
     var pending by remember { mutableStateOf<PendingAction?>(null) }
     var pickerOpen by remember { mutableStateOf(false) }
     var addingWeb by remember { mutableStateOf(false) }
+    var tag by remember { mutableStateOf<String?>(null) }
+    var tags by remember { mutableStateOf(emptyList<Pair<String, Int>>()) }
+    var missing by remember { mutableStateOf(emptyList<MediaItem>()) }
+    var reviewingMissing by remember { mutableStateOf(false) }
+    var taggingSelection by remember { mutableStateOf(false) }
     val searchFocus = remember { FocusRequester() }
 
-    LaunchedEffect(search, type, favoritesOnly, sort, app.libraryVersion) {
-        val loaded = withContext(Dispatchers.IO) { app.db.listMedia(search, type, favoritesOnly, sort) }
+    LaunchedEffect(app.libraryVersion) {
+        withContext(Dispatchers.IO) {
+            tags = app.db.listTags()
+            missing = runCatching { app.missing.find() }.getOrDefault(emptyList())
+        }
+        if (tag != null && tags.none { it.first.equals(tag, ignoreCase = true) }) tag = null
+        if (missing.isEmpty()) reviewingMissing = false
+    }
+    LaunchedEffect(search, type, favoritesOnly, sort, tag, app.libraryVersion) {
+        val loaded = withContext(Dispatchers.IO) { app.db.listMedia(search, type, favoritesOnly, sort, tag = tag) }
         items = loaded
         val ids = loaded.mapTo(HashSet()) { it.id }
         selected = selected.filterTo(HashSet()) { it in ids }
@@ -170,6 +188,20 @@ fun LibraryPage(app: AppState) {
                 leadingIcon = { Icon(if (favoritesOnly) Icons.Filled.Star else Icons.Outlined.StarBorder, null, Modifier.size(18.dp)) })
             SortMenu(sort) { sort = it; app.settings.set("library_sort", it) }
         }
+        if (tags.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                tags.forEach { (name, count) ->
+                    FilterChip(tag == name, { tag = if (tag == name) null else name }, label = { Text("#$name  $count") })
+                }
+            }
+        }
+        if (missing.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Notice("${missing.size} wallpaper${if (missing.size == 1) " can't" else "s can't"} be found (moved, renamed or deleted).",
+                    modifier = Modifier.weight(1f))
+                TextButton(onClick = { reviewingMissing = true }) { Text("Review") }
+            }
+        }
 
         app.importProgress?.let { progress ->
             Column(Modifier.fillMaxWidth()) {
@@ -180,14 +212,15 @@ fun LibraryPage(app: AppState) {
             }
         }
 
-        if (selected.size > 1) BulkBar(app, selected.toList(), onRemove = { pending = PendingAction.Remove(selected.toList()) }, onClear = { selected = emptySet() })
+        if (selected.size > 1) BulkBar(app, selected.toList(), onRemove = { pending = PendingAction.Remove(selected.toList()) },
+            onTag = { taggingSelection = true }, onClear = { selected = emptySet() })
 
         val list = items
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when {
                     list == null -> {}
-                    list.isEmpty() -> EmptyLibrary(app, filtered = search.isNotBlank() || type != null || favoritesOnly)
+                    list.isEmpty() -> EmptyLibrary(app, filtered = search.isNotBlank() || type != null || favoritesOnly || tag != null)
                     else -> MediaGrid(list, app.thumbs, selected, ::onTileClick, Modifier.fillMaxSize(),
                         onDoubleClick = { if (!it.isVideo || app.videoSupport) app.setDesktop(it) })
                 }
@@ -203,6 +236,16 @@ fun LibraryPage(app: AppState) {
     }
 
     if (addingWeb) AddWebDialog(app, onDismiss = { addingWeb = false })
+    if (reviewingMissing) MissingFilesDialog(app, missing, onDismiss = { reviewingMissing = false })
+    if (taggingSelection) {
+        val ids = selected.toList()
+        TextInputDialog("Tag ${ids.size} wallpapers", "Tag", confirm = "Add tag", onDismiss = { taggingSelection = false }, onConfirm = { name ->
+            app.runTask("Tagged ${ids.size} with “$name”", "Couldn't add the tag") {
+                app.db.addTag(ids, name)
+                app.libraryChanged()
+            }
+        })
+    }
 
     if (pickerOpen) {
         items?.firstOrNull { selected.size == 1 && it.id in selected }?.let { FramePickerDialog(app, it, onClose = { pickerOpen = false }) }
@@ -280,7 +323,7 @@ private fun EmptyLibrary(app: AppState, filtered: Boolean) {
 }
 
 @Composable
-private fun BulkBar(app: AppState, ids: List<Long>, onRemove: () -> Unit, onClear: () -> Unit) {
+private fun BulkBar(app: AppState, ids: List<Long>, onRemove: () -> Unit, onTag: () -> Unit, onClear: () -> Unit) {
     Card(Modifier.fillMaxWidth(), padding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 26.dp, top = 10.dp, bottom = 10.dp),
         fold = 14.dp, accent = Theme.colors.accent) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -288,6 +331,7 @@ private fun BulkBar(app: AppState, ids: List<Long>, onRemove: () -> Unit, onClea
             OutlinedButton(onClick = { setFavorites(app, ids, true) }) { Text("Add to favorites") }
             OutlinedButton(onClick = { setFavorites(app, ids, false) }) { Text("Remove from favorites") }
             AddToPlaylistButton(app, { ids })
+            OutlinedButton(onClick = onTag) { Text("Add tag…") }
             OutlinedButton(onClick = onRemove) { Text("Remove") }
             TextButton(onClick = onClear) { Text("Clear") }
         }
@@ -337,7 +381,18 @@ private fun DetailsPanel(
             InfoRow("Added", item.dateAdded.take(16))
             if (item.path != null) InfoRow("Folder", shortenMiddle(Path(item.path).parent?.pathString ?: "", 40))
             item.sourceUrl?.let { InfoRow(if (item.isRemote) "Streams from" else "Downloaded from", shortenMiddle(it, 40)) }
-            if (!exists) Notice("The file is missing. It may have been moved or deleted.")
+            if (!exists) {
+                Notice("The file is missing. It may have been moved or deleted.")
+                TextButton(onClick = {
+                    val path = if (item.isWeb) pickFolder(app.window, "Where is ${item.filename} now?") else {
+                        val dialog = java.awt.FileDialog(app.window as? java.awt.Frame, "Where is ${item.filename} now?", java.awt.FileDialog.LOAD)
+                            .apply { file = item.localPath?.fileName?.toString() }
+                        dialog.isVisible = true
+                        dialog.file?.let { java.nio.file.Path.of(dialog.directory, it) }
+                    }
+                    if (path != null) app.runTask("Found ${item.filename}", "Couldn't use that file") { app.missing.relink(item, path); app.libraryChanged() }
+                }) { Text("Locate the file…") }
+            }
 
             Spacer(Modifier.height(4.dp))
             val usable = exists && (item.isImage || item.isWeb || item.isShader || app.videoSupport)
@@ -346,6 +401,7 @@ private fun DetailsPanel(
             }
             if (item.isWeb || item.isShader) {
                 WebOptions(app, item)
+                PropertyEditor(app, item, Modifier.padding(top = 6.dp))
             }
             if (item.isImage || item.isVideo) {
                 OutlinedButton(
@@ -361,6 +417,7 @@ private fun DetailsPanel(
                     enabled = usable && !item.isRemote, modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (item.isVideo) "Pick a frame for the lock screen…" else "Set as lock screen") }
             }
+            if (item.isImage && !item.isRemote) MakeAliveButton(app, item, enabled = usable)
             if (item.isRemote && item.isVideo) MutedText("Streams play from the internet; save the video offline to use a frame on the lock screen.")
             if (item.isVideo && !app.videoSupport) MutedText("Videos need libmpv-2.dll in the app's bin folder.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -376,9 +433,46 @@ private fun DetailsPanel(
                 }, enabled = exists && !item.isRemote) { Text("Show in folder") }
             }
             AddToPlaylistButton(app, { listOf(item.id) })
+            TagEditor(app, item)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onRemove) { Text("Remove") }
                 TextButton(onClick = onDelete, enabled = exists, danger = true) { Text("Delete file…") }
+            }
+        }
+    }
+}
+
+/** Turns the picture into a live wallpaper with an effect (zoom, parallax, rain, snow). */
+@Composable
+private fun MakeAliveButton(app: AppState, item: MediaItem, enabled: Boolean) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            ButtonIcon(Icons.Outlined.AutoAwesome)
+            Text("Make it alive…")
+        }
+        DropdownMenu(open, { open = false }) {
+            listOf(
+                "Ken Burns" to "Slow zoom and pan",
+                "Parallax" to "Leans towards the mouse",
+                "Rain on glass" to "Drops run down the window",
+                "Snowfall" to "Flakes drift down",
+            ).forEach { (effect, hint) ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(effect)
+                            Text(hint, color = Theme.colors.textMuted, fontSize = 12.sp)
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        app.runTask(failure = "Couldn't bring the picture to life") {
+                            val alive = app.makeAlive(item, effect)
+                            app.toast("Showing ${alive.filename}. Its settings are in the Library and on the Customize page.", ToastKind.Success)
+                        }
+                    },
+                )
             }
         }
     }

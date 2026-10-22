@@ -19,7 +19,10 @@ Python app; your library, playlists and schedule carry over.)
   files or whole folders, or drag them onto the window. Search, filters
   (images / videos / interactive / favorites), sorting, multi-select with
   Ctrl/Shift-click and bulk actions, details panel with a live video preview.
-  Files are never copied or moved.
+  Files are never copied or moved. **Tags** (filter by them, or search finds them),
+  and **missing files**: when files were moved or deleted, the Library says so and
+  finds them again by searching a folder (or one at a time). **Watched folders**:
+  new pictures and videos in them are added by themselves, deleted ones removed.
 - **Pictures** as the desktop wallpaper with Fill / Fit / Stretch / Center / Tile
   (WEBP/GIF converted automatically). Your original wallpaper is backed up and
   can be restored.
@@ -33,9 +36,18 @@ Python app; your library, playlists and schedule carry over.)
   a folder with an `index.html`, an `.html` file, a `.zip` (Lively wallpapers
   import as they are) or a website, shown by an embedded Chromium. Clicks,
   moves and the wheel on the empty desktop reach the page; icons keep working.
+- **Wallpaper settings**: Lively wallpapers that come with a `LivelyProperties.json`
+  get their sliders, colors, checkboxes, dropdowns, text fields and buttons in the
+  details panel. Changes reach the running wallpaper straight away and are remembered.
 - **Shader wallpapers** (Shadertoy-style GLSL) with the **Customize** editor:
   live preview, compile errors with line numbers, four samples to start from.
-  `iMouse` follows the desktop mouse, `iChannel0` is the audio spectrum.
+  `iMouse` follows the desktop mouse, `iPointer` too without a button, `iChannel0`
+  is the audio spectrum. A comment adds a setting with a control and a uniform:
+  `// @slider speed 0 2 1 Speed`, `// @color tint #ff8800 Tint`,
+  `// @checkbox rain on Rain`, `// @image photo Picture` (`iChannel1`-`3`).
+- **Make a picture alive**: turn any picture into a live wallpaper with a slow
+  Ken Burns zoom, parallax that follows the mouse, rain running down the glass, or
+  snowfall - each with its own settings.
 - **Audio-reactive wallpapers**: system audio levels (WASAPI loopback, 128
   bands, about 30 times a second) go to web pages through Lively's
   `livelyAudioListener` and to shaders. Nothing is recorded or sent.
@@ -43,16 +55,26 @@ Python app; your library, playlists and schedule carry over.)
   or a different wallpaper per display.
 - **Automatic pausing** while the PC is locked, the screen is off, a game runs
   full screen, maximized windows cover the desktop (per display) or, optionally,
-  on battery - without ever overriding your own pause / resume.
-- **Lock screen**: any picture, or a frame picked from a video. Uses the
-  official WinRT `LockScreen` API; the original (and Spotlight) can be restored.
+  on battery, while any other app is in front, or while apps you choose are in
+  front or running (e.g. `obs64.exe`) - without ever overriding your own pause / resume.
+- **Lock screen**: any picture, or a frame picked from a video, or a **slideshow**
+  of a playlist (every 15 minutes or more). Uses the official WinRT `LockScreen`
+  API; the original (and Spotlight) can be restored.
+- **Accent color from the wallpaper** (optional): taskbar, Start and window
+  borders take the wallpaper's most striking color; your own color comes back
+  when you switch it off.
 - **Playlists**: in order or shuffled (everything once before repeating), an
   interval in minutes or hours, kept across restarts.
 - **Schedule**: daily rules such as 07:00 → morning.jpg, 18:00 → city.mp4,
-  22:00 → a playlist; caught up after a restart; daylight-saving safe.
+  22:00 → a playlist, or following the sun: `sunrise`, `sunset - 30`. Sunrise and
+  sunset are worked out on the PC for a city you pick (or coordinates); nothing is
+  looked up online. Caught up after a restart; daylight-saving safe.
 - **Tray icon** (Next / Random / Pause / Stop / Exit), close to tray, start with
   Windows, one copy at a time, daily update check, a diagnostics zip for bug
-  reports, dark / light / system theme.
+  reports, dark / light / system theme, and "reduce motion" (follows Windows'
+  animation setting).
+- **Backup**: one `.wpmbackup` file with the library, playlists, schedule, settings,
+  shaders and thumbnails; restore it on another PC (the files you replace are kept).
 
 **Keyboard shortcuts**: Ctrl+1 … Ctrl+8 switch pages, Ctrl+F searches the
 library, Ctrl+I imports files, Ctrl+A / Delete / Esc work on the library selection.

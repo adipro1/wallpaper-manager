@@ -96,6 +96,7 @@ class WebLivePlayer(
     private var rect: ScreenRect? = null
     private var forwarder: InputForwarder? = null
     @Volatile private var interactive = false
+    @Volatile private var loadScript: String? = null
     /** The page wants system audio levels (an audio-reactive wallpaper). */
     @Volatile var wantsAudio = false
         private set
@@ -136,8 +137,10 @@ class WebLivePlayer(
         }
         if (browser == null || !isHealthy()) {
             stopLocked()
+            loadScript = source.onLoadScript // before loading: small pages finish loading right away
             create(app, source.target)
         } else {
+            loadScript = source.onLoadScript
             onEdt { browser?.loadURL(source.target) }
         }
         this.source = source.target
@@ -152,6 +155,7 @@ class WebLivePlayer(
         val monitor = area()
         val opened = openBrowserWindow(app, url,
             onTitle = { pageTitle = it },
+            onLoaded = { loaded -> loadScript?.takeIf { it.isNotEmpty() }?.let { loaded.executeJavaScript(it, loaded.url ?: "", 0) } },
             onError = { error, failed ->
                 lastError = error
                 log.warning("Web wallpaper couldn't load $failed: $error")
@@ -294,12 +298,20 @@ class BrowserWindow(val client: CefClient, val browser: CefBrowser, val hwnd: HW
  * browsers in a hidden holder window; we find Chromium's window there so the caller can put it
  * where it wants (behind the desktop icons, or inside a preview area).
  */
-fun openBrowserWindow(app: CefApp, url: String, onTitle: (String?) -> Unit = {}, onError: (String, String?) -> Unit = { _, _ -> }): BrowserWindow {
+fun openBrowserWindow(
+    app: CefApp, url: String, onTitle: (String?) -> Unit = {}, onError: (String, String?) -> Unit = { _, _ -> },
+    /** The main page has finished loading (may come before this function returns). */
+    onLoaded: (CefBrowser) -> Unit = {},
+): BrowserWindow {
     val (client, browser, before) = onEdt {
         val client = app.createClient()
         client.addLoadHandler(object : CefLoadHandlerAdapter() {
             override fun onLoadError(b: CefBrowser?, frame: CefFrame?, code: CefLoadHandler.ErrorCode?, text: String?, failed: String?) {
                 if (frame?.isMain == true && code != CefLoadHandler.ErrorCode.ERR_ABORTED) onError(text?.ifBlank { null } ?: code.toString(), failed)
+            }
+
+            override fun onLoadEnd(b: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
+                if (frame?.isMain == true && b != null) onLoaded(b)
             }
         })
         client.addDisplayHandler(object : org.cef.handler.CefDisplayHandlerAdapter() {

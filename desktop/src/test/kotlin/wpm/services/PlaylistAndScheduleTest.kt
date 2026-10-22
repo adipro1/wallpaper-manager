@@ -160,6 +160,65 @@ class PlaylistAndScheduleTest {
         }
     }
 
+    @Test
+    fun parsesSunTimes() {
+        mapOf(
+            "sunset" to "sunset", "Sunrise" to "sunrise", "sunset - 30" to "sunset-30", "sunrise+1:15" to "sunrise+75",
+            "SUNSET +45 min" to "sunset+45", "sunrise - 0" to "sunrise",
+        ).forEach { (text, expected) -> assertEquals(expected, parseTime(text), text) }
+        listOf("sunset-7:00", "sundown", "sunset * 2", "sunrise+").forEach { text ->
+            assertFailsWith<IllegalArgumentException>(text) { parseTime(text) }
+        }
+        assertEquals("30 min before sunset", describeTime("sunset-30"))
+        assertEquals("1 h 15 min after sunrise", describeTime("sunrise+75"))
+        assertEquals("Sunset", describeTime("sunset"))
+        assertEquals("07:00", describeTime("07:00"))
+    }
+
+    @Test
+    fun sunTimesMatchPublishedTables() {
+        fun hm(t: ZonedDateTime?) = t!!.toLocalTime().let { it.hour * 60 + it.minute }
+        val berlin = Place("Berlin", 52.52, 13.40)
+        val june = java.time.LocalDate.of(2026, 6, 21)
+        // Published: sunrise 04:43, sunset 21:33 (CEST).
+        assertTrue(kotlin.math.abs(hm(Sun.sunrise(june, berlin, zone)) - (4 * 60 + 43)) <= 3)
+        assertTrue(kotlin.math.abs(hm(Sun.sunset(june, berlin, zone)) - (21 * 60 + 33)) <= 3)
+        val newYork = Place("New York", 40.71, -74.01)
+        val december = java.time.LocalDate.of(2026, 12, 21)
+        val eastern = ZoneId.of("America/New_York")
+        // Published: sunrise 07:17, sunset 16:32 (EST).
+        assertTrue(kotlin.math.abs(hm(Sun.sunrise(december, newYork, eastern)) - (7 * 60 + 17)) <= 3)
+        assertTrue(kotlin.math.abs(hm(Sun.sunset(december, newYork, eastern)) - (16 * 60 + 32)) <= 3)
+        // Tokyo: sunrise falls on the previous day in UTC, but on the right local day.
+        val tokyo = Sun.sunrise(june, Place("Tokyo", 35.68, 139.69), ZoneId.of("Asia/Tokyo"))!!
+        assertEquals(june, tokyo.toLocalDate())
+        // Polar day: no sunset in Tromsø in June.
+        assertNull(Sun.sunset(june, Place("Tromsø", 69.65, 18.96), zone))
+        assertEquals("Berlin", guessCity(ZoneId.of("Europe/Berlin"))?.name)
+        assertEquals("Kolkata", guessCity(ZoneId.of("Asia/Calcutta"))?.name)
+        assertEquals("New York", findCities("new").first().name)
+    }
+
+    @Test
+    fun sunRulesNeedALocationAndFollowTheSun() {
+        val sunset = db.addRule("sunset-30", mediaId = ids[3])
+        db.addRule("07:00", mediaId = ids[0])
+        wallClock = at("2026-10-16T20:00")
+        // Without a location only the clock rule counts.
+        assertEquals("07:00", scheduler.active()?.rule?.time)
+        scheduler.setPlace(Place("Berlin", 52.52, 13.40))
+        // Berlin sunset on 16 Oct 2026 is about 18:11, so the rule ran at about 17:41.
+        val active = scheduler.active()!!
+        assertEquals(sunset, active.rule.id)
+        assertTrue(active.time.toLocalTime().hour == 17 && active.time.toLocalTime().minute in 37..45, active.time.toString())
+        assertFalse(scheduler.isDue(), "setting the location doesn't switch wallpapers by itself")
+        wallClock = at("2026-10-17T07:01")
+        assertTrue(scheduler.isDue())
+        assertEquals("07:00", scheduler.applyDue()?.time)
+        assertEquals(sunset, scheduler.upcoming()?.rule?.id)
+        assertTrue(scheduler.todayText(db.listRules().first { it.id == sunset })!!.startsWith("17:"))
+    }
+
     private fun rules() {
         db.addRule("07:00", mediaId = ids[0])
         db.addRule("18:00", mediaId = ids[3])

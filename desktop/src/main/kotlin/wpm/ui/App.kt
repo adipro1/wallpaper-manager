@@ -1,6 +1,9 @@
 package wpm.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -131,11 +134,14 @@ fun App(app: AppState) {
 private fun PageHost(app: AppState) {
     AnimatedContent(
         app.page,
-        transitionSpec = { fadeIn(tween(240, delayMillis = 60)) togetherWith fadeOut(tween(120)) },
+        transitionSpec = {
+            if (app.reduceMotion) EnterTransition.None togetherWith ExitTransition.None
+            else fadeIn(tween(240, delayMillis = 60)) togetherWith fadeOut(tween(120))
+        },
         label = "page",
     ) { page ->
         val unfold by transition.animateFloat(
-            transitionSpec = { tween(380, easing = FastOutSlowInEasing) },
+            transitionSpec = { if (app.reduceMotion) snap() else tween(380, easing = FastOutSlowInEasing) },
             label = "unfold",
         ) { if (it == EnterExitState.Visible) 1f else 0f }
         Box(

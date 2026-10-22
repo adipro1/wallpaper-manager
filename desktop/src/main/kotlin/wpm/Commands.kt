@@ -24,6 +24,8 @@ data class CommandLine(
     val minimized: Boolean = false,
     val selfTest: Boolean = false,
     val help: Boolean = false,
+    /** --after <pid>: wait for that process (the copy that is restarting or updating) to exit first. */
+    val afterPid: Long? = null,
     /** Set when the arguments don't make sense; shown with the usage text. */
     val error: String? = null,
 )
@@ -79,6 +81,11 @@ fun parseCommandLine(args: List<String>): CommandLine {
             "--minimized" -> result = result.copy(minimized = true)
             "--self-test" -> result = result.copy(selfTest = true)
             "--help", "-h", "/?", "-?" -> result = result.copy(help = true)
+            "--after" -> {
+                val pid = args.getOrNull(i + 1)?.toLongOrNull() ?: return result.copy(error = "--after needs a process id")
+                result = result.copy(afterPid = pid)
+                i++
+            }
             "--set", "--playlist" -> {
                 val value = args.getOrNull(i + 1)?.trim()
                 if (value.isNullOrEmpty() || value.startsWith("--")) {

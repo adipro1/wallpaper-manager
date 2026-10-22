@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import wpm.ui.components.TextButton
+import wpm.ui.components.OutlinedButton
+import wpm.ToastKind
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -114,6 +116,7 @@ fun LockScreenPage(app: AppState) {
                 }
             }
         }
+        SlideshowCard(app)
         ChooserCard(
             app, if (app.videoSupport) "Choose a picture or a video frame" else "Choose a picture",
             filter = { it.isImage || (it.isVideo && !it.isRemote && app.videoSupport) }, highlighted = current?.id,
@@ -141,5 +144,75 @@ fun LockScreenPage(app: AppState) {
                 }
             },
         )
+    }
+}
+
+/** A playlist that changes the lock screen picture every so often. */
+@Composable
+private fun SlideshowCard(app: AppState) {
+    var running by remember { mutableStateOf<wpm.services.LockSlideshowState?>(null) }
+    var playlists by remember { mutableStateOf(emptyList<wpm.data.Playlist>()) }
+    var chosen by remember { mutableStateOf<Long?>(null) }
+    var amount by remember { mutableStateOf("1") }
+    var hours by remember { mutableStateOf(true) }
+    var menuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(app.wallpaperVersion, app.libraryVersion) {
+        withContext(Dispatchers.IO) {
+            running = app.lockSlideshow.state
+            playlists = app.db.listPlaylists()
+        }
+        running?.let {
+            chosen = it.playlistId
+            hours = it.intervalMinutes % 60 == 0
+            amount = (if (hours) it.intervalMinutes / 60 else it.intervalMinutes).toString()
+        }
+        if (chosen == null) chosen = playlists.firstOrNull()?.id
+    }
+    val minutes = amount.trim().toIntOrNull()?.let { if (hours) it * 60 else it }
+    val valid = chosen != null && minutes != null && minutes >= wpm.services.MIN_LOCK_INTERVAL_MINUTES
+    wpm.ui.components.Card(Modifier.fillMaxWidth(), accent = if (running != null) Theme.colors.teal else null) {
+        SectionTitle("Slideshow")
+        Spacer(Modifier.height(6.dp))
+        val current = running
+        MutedText(
+            if (current != null) {
+                val name = playlists.firstOrNull { it.id == current.playlistId }?.name ?: "a playlist"
+                val next = app.lockSlideshow.secondsUntilChange()?.let { ((it + 59) / 60).toInt() }
+                "Showing “$name” on the lock screen" + (next?.let { ", next picture in $it min" } ?: "")
+            } else {
+                "Let a playlist change the lock screen picture (at most every ${wpm.services.MIN_LOCK_INTERVAL_MINUTES} minutes)."
+            },
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box {
+                OutlinedButton(onClick = { menuOpen = true }, enabled = playlists.isNotEmpty()) {
+                    Text(playlists.firstOrNull { it.id == chosen }?.name ?: if (playlists.isEmpty()) "Make a playlist first" else "Choose a playlist")
+                }
+                androidx.compose.material3.DropdownMenu(menuOpen, { menuOpen = false }) {
+                    playlists.forEach { p ->
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(p.name) }, onClick = { chosen = p.id; menuOpen = false })
+                    }
+                }
+            }
+            Text("every", color = Theme.colors.textMuted)
+            wpm.ui.components.NumberField(amount, { amount = it.filter(Char::isDigit).take(4) })
+            wpm.ui.components.SingleChoiceSegmentedButtonRow {
+                wpm.ui.components.SegmentedButton(!hours, { hours = false }, wpm.ui.components.SegmentedButtonDefaults.itemShape(0, 2)) { Text("min") }
+                wpm.ui.components.SegmentedButton(hours, { hours = true }, wpm.ui.components.SegmentedButtonDefaults.itemShape(1, 2)) { Text("h") }
+            }
+            Spacer(Modifier.weight(1f))
+            if (current != null) {
+                TextButton(onClick = {
+                    app.runTask("Slideshow stopped") { app.lockSlideshow.stop(); app.wallpaperChanged() }
+                }) { Text("Stop") }
+            }
+            wpm.ui.components.Button(onClick = {
+                app.runTask(failure = "Couldn't start the slideshow") {
+                    val item = app.changeWallpaper { app.lockSlideshow.start(chosen!!, minutes!!) }
+                    app.toast("Lock screen slideshow: ${item.filename}", ToastKind.Success)
+                }
+            }, enabled = valid) { Text(if (current != null) "Restart" else "Start") }
+        }
     }
 }

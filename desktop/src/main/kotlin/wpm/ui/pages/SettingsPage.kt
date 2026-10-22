@@ -39,6 +39,7 @@ import wpm.ui.Theme
 import wpm.ui.components.Card
 import wpm.ui.components.Notice
 import wpm.ui.components.ShortcutField
+import wpm.ui.components.AppPauseRules
 import wpm.SHORTCUT_ACTIONS
 import wpm.ui.components.MutedText
 import wpm.ui.components.PageScaffold
@@ -77,7 +78,22 @@ fun SettingsPage(app: AppState) {
                     ) { Text(label) }
                 }
             }
+            Spacer(Modifier.height(6.dp))
+            SettingSwitch("Reduce motion (no page animations)", app.reduceMotion) { app.updateReduceMotion(it) }
+            var accentOn by remember { mutableStateOf(app.accent.enabled) }
+            SettingSwitch(
+                "Match the Windows accent color to the wallpaper", accentOn,
+                hint = "Taskbar, Start and window borders take the wallpaper's most striking color. Switching it off puts your own color back.",
+            ) { on ->
+                accentOn = on
+                app.runTask {
+                    app.accent.setEnabled(on)
+                    app.updateAccent(force = true)
+                }
+            }
         }
+
+        WatchedFoldersCard(app)
 
         Card(Modifier.fillMaxWidth()) {
             SectionTitle("Window")
@@ -160,6 +176,8 @@ fun SettingsPage(app: AppState) {
             BooleanSetting(app, "pause_on_fullscreen", true, "Pause while a game or video runs full screen")
             BooleanSetting(app, "pause_when_covered", true, "Pause while maximized windows cover the desktop")
             BooleanSetting(app, "pause_on_battery", false, "Pause while running on battery")
+            BooleanSetting(app, "pause_when_app_focused", false, "Pause while any other app is in front (resumes when you click the desktop)")
+            AppPauseRules(app, Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp))
         }
 
         Card(Modifier.fillMaxWidth()) {
@@ -172,6 +190,8 @@ fun SettingsPage(app: AppState) {
                 OutlinedButton(onClick = { openFolder(app, app.paths.logDir) }) { Text("Open log folder") }
             }
         }
+
+        BackupCard(app)
 
         Card(Modifier.fillMaxWidth()) {
             SectionTitle("Updates")
@@ -230,6 +250,103 @@ fun SettingsPage(app: AppState) {
                 TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text("Project page"); ButtonIcon(Icons.AutoMirrored.Outlined.OpenInNew) }
             }
         }
+    }
+}
+
+/** Folders whose new and deleted pictures and videos show up in the library by themselves. */
+@Composable
+private fun WatchedFoldersCard(app: AppState) {
+    var folders by remember { mutableStateOf(app.watched.folders) }
+    Card(Modifier.fillMaxWidth()) {
+        SectionTitle("Watched folders")
+        Spacer(Modifier.height(6.dp))
+        MutedText("New pictures and videos in these folders are added to the library, and deleted ones removed. Moving files around inside them keeps their playlists and tags.")
+        Spacer(Modifier.height(8.dp))
+        folders.forEach { folder ->
+            Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(folder.toString(), color = Theme.colors.text, modifier = Modifier.weight(1f), maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                TextButton(onClick = {
+                    app.runTask("Stopped watching ${folder.fileName}") {
+                        app.watched.remove(folder)
+                        folders = app.watched.folders
+                    }
+                }) { Text("Stop watching") }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val folder = wpm.ui.components.pickFolder(app.window, "Watch a folder") ?: return@OutlinedButton
+                app.runTask(failure = "Couldn't watch the folder") {
+                    val result = app.watched.add(folder)
+                    folders = app.watched.folders
+                    app.libraryChanged()
+                    app.toast("Watching ${folder.fileName}: ${result.added} added", ToastKind.Success)
+                }
+            }) { Text("Watch a folder…") }
+            if (folders.isNotEmpty()) {
+                TextButton(onClick = {
+                    app.runTask(failure = "Couldn't check the folders") {
+                        val result = app.watched.syncAll()
+                        app.libraryChanged()
+                        app.toast(if (result.changed) "${result.added} added, ${result.removed} removed, ${result.moved} moved" else "Everything is up to date")
+                    }
+                }) { Text("Check now") }
+            }
+        }
+    }
+}
+
+/** Saves the library, playlists, schedule and settings to one file, and brings them back (e.g. on a new PC). */
+@Composable
+private fun BackupCard(app: AppState) {
+    var restoring by remember { mutableStateOf<Pair<Path, wpm.services.BackupInfo>?>(null) }
+    Card(Modifier.fillMaxWidth()) {
+        SectionTitle("Backup")
+        Spacer(Modifier.height(6.dp))
+        MutedText("One file with your library, playlists, schedule, settings, shaders and thumbnails. The wallpaper files themselves " +
+            "aren't included; on another PC, Library > Missing files finds them again.")
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val dialog = FileDialog(app.window as? Frame, "Save a backup", FileDialog.SAVE).apply {
+                    file = "WallpaperManager-backup-${LocalDate.now()}.${wpm.services.Backup.EXTENSION}"
+                }
+                dialog.isVisible = true
+                val name = dialog.file ?: return@OutlinedButton
+                val target = Path.of(dialog.directory, if (name.endsWith(".${wpm.services.Backup.EXTENSION}")) name else "$name.${wpm.services.Backup.EXTENSION}")
+                app.runTask(failure = "Couldn't save the backup") {
+                    val info = wpm.services.Backup.export(target, app.db, app.paths)
+                    app.toast("Backup saved (${info.items} wallpapers)", ToastKind.Success)
+                }
+            }) { Text("Back up…") }
+            OutlinedButton(onClick = {
+                val dialog = FileDialog(app.window as? Frame, "Restore a backup", FileDialog.LOAD).apply {
+                    file = "*.${wpm.services.Backup.EXTENSION}"
+                }
+                dialog.isVisible = true
+                val name = dialog.file ?: return@OutlinedButton
+                val file = Path.of(dialog.directory, name)
+                app.runTask(failure = "Couldn't read the backup") { restoring = file to wpm.services.Backup.inspect(file) }
+            }) { Text("Restore…") }
+        }
+    }
+    restoring?.let { (file, info) ->
+        wpm.ui.components.ConfirmDialog(
+            "Restore this backup?",
+            "From ${info.created.take(16).replace('T', ' ')} (version ${info.version}, ${info.items} wallpapers). It replaces your current library, " +
+                "playlists, schedule and settings; they are kept in a before-restore folder in the data folder. The app restarts.",
+            "Restore and restart",
+            onDismiss = { restoring = null },
+            onConfirm = {
+                restoring = null
+                app.runTask(failure = "Couldn't restore the backup") {
+                    wpm.services.Backup.stage(file, app.paths)
+                    javax.swing.SwingUtilities.invokeLater { app.restart() }
+                }
+            },
+        )
     }
 }
 

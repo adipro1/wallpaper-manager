@@ -64,6 +64,8 @@ enum class PauseReason(val text: String) {
     ScreenOff("the screen is off"),
     Fullscreen("a fullscreen app is running"),
     Covered("windows cover the desktop"),
+    AppInFront("another app is in front"),
+    AppRunning("an app you chose is running"),
     Battery("running on battery"),
 }
 

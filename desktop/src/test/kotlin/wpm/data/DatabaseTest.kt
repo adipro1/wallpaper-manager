@@ -71,7 +71,7 @@ class DatabaseTest {
             }
         }
         Database(dbPath).use { db ->
-            assertEquals(4, db.schemaVersion)
+            assertEquals(MIGRATIONS.size, db.schemaVersion)
             assertEquals(listOf(7L, 9L), db.playlistItems(1).map { it.id })
             assertEquals(9L, db.listRules().single().mediaId)
             val a = db.getMedia(7)!!

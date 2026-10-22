@@ -86,6 +86,49 @@ object SystemState {
         return covered
     }
 
+    /**
+     * The program (e.g. "chrome.exe", lower case) whose window is in front, or null when the
+     * desktop, the taskbar or this app is in front.
+     */
+    fun foregroundApp(): String? {
+        val hwnd = user32.GetForegroundWindow() ?: return null
+        if (className(hwnd) in SHELL_CLASSES || windowPid(hwnd) == ownPid) return null
+        return windowProcessName(hwnd).lowercase().takeIf { it.endsWith(".exe") }
+    }
+
+    /** Programs running right now (e.g. "chrome.exe", lower case). */
+    fun runningApps(): Set<String> {
+        val k32 = Kernel32.INSTANCE
+        val snapshot = k32.CreateToolhelp32Snapshot(com.sun.jna.platform.win32.Tlhelp32.TH32CS_SNAPPROCESS, com.sun.jna.platform.win32.WinDef.DWORD(0))
+            ?: return emptySet()
+        val names = mutableSetOf<String>()
+        try {
+            val entry = com.sun.jna.platform.win32.Tlhelp32.PROCESSENTRY32.ByReference()
+            var more = k32.Process32First(snapshot, entry)
+            while (more) {
+                names += Native.toString(entry.szExeFile).lowercase()
+                more = k32.Process32Next(snapshot, entry)
+            }
+        } finally {
+            k32.CloseHandle(snapshot)
+        }
+        return names
+    }
+
+    /** Programs with a visible window right now (for picking one in Settings), lower case and sorted. */
+    fun windowedApps(): List<String> {
+        val names = sortedSetOf<String>()
+        user32.EnumWindows({ hwnd, _ ->
+            if (user32.IsWindowVisible(hwnd) && user32.GetWindowLong(hwnd, GWL_EXSTYLE) and WS_EX_TOOLWINDOW == 0 &&
+                user32.GetWindowTextLength(hwnd) > 0 && windowPid(hwnd) != ownPid && !cloaked(hwnd) && className(hwnd) !in SHELL_CLASSES
+            ) {
+                windowProcessName(hwnd).lowercase().takeIf { it.endsWith(".exe") }?.let(names::add)
+            }
+            true
+        }, null)
+        return names.toList()
+    }
+
     /** True when running on battery (ACLineStatus 0). Desktops without a battery report AC power. */
     fun onBattery(): Boolean {
         val status = PowerStatus()

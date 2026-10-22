@@ -50,6 +50,10 @@ fun main(rawArgs: Array<String>) {
         exitProcess(if (commandLine.error != null) 2 else 0)
     }
     val command = commandLine.command
+    // Restarting (after a restore or an update): let the old copy finish exiting first.
+    commandLine.afterPid?.let { pid ->
+        runCatching { ProcessHandle.of(pid).ifPresent { it.onExit().get(30, java.util.concurrent.TimeUnit.SECONDS) } }
+    }
 
     // Only one copy may run (two would fight over the live wallpaper); a second
     // launch brings the running copy's window to the front, or hands it its command.
@@ -75,6 +79,8 @@ fun main(rawArgs: Array<String>) {
     val logFile = setupLogging(paths.logDir)
     val log = logger("main")
     log.info("Starting $APP_NAME $APP_VERSION (data: ${paths.dataDir})")
+    runCatching { if (wpm.services.Backup.applyPending(paths)) log.info("Restored a backup") }
+        .onFailure { log.log(Level.SEVERE, "Couldn't restore the backup", it) }
 
     val db = try {
         Database(paths.dbPath)
@@ -111,6 +117,7 @@ fun main(rawArgs: Array<String>) {
                 app.shutdown()
                 exitApplication()
             }
+            app.exitApp = ::exit
 
             val trayState = rememberTrayState()
             app.notify = { trayState.sendNotification(androidx.compose.ui.window.Notification(APP_NAME, it)) }
@@ -187,5 +194,24 @@ fun main(rawArgs: Array<String>) {
         instance.close()
         log.info("Exited")
     }
+    if (app.restartRequested) restartApp(args)
     exitProcess(0)
+}
+
+/** Starts this app again once this process has exited (same command line, without a command). */
+private fun restartApp(args: List<String>) {
+    val log = logger("main")
+    val self = ProcessHandle.current()
+    val command = self.info().command().orElse(null) ?: return log.warning("Can't restart: unknown command")
+    // A packaged app is just its .exe; a development run is java with its own arguments.
+    val jvmArgs = self.info().arguments().orElse(emptyArray()).toList()
+    val keep = if (command.endsWith("java.exe", ignoreCase = true) || command.endsWith("javaw.exe", ignoreCase = true)) {
+        jvmArgs.takeWhile { it != "wpm.MainKt" } + "wpm.MainKt"
+    } else {
+        emptyList()
+    }
+    val options = args.filter { it.equals("--minimized", ignoreCase = true) }
+    runCatching { ProcessBuilder(listOf(command) + keep + options + listOf("--after", self.pid().toString())).start() }
+        .onSuccess { log.info("Restarting") }
+        .onFailure { log.warning("Couldn't restart: $it") }
 }

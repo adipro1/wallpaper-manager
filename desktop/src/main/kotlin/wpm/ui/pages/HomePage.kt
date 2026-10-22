@@ -152,7 +152,7 @@ fun HomePage(app: AppState) {
                         IconLine(Icons.AutoMirrored.Outlined.PlaylistPlay,
                             "“$name” · next change ${info.playlistCountdown?.let(::formatCountdown) ?: "soon"}", Theme.colors.accent)
                     }
-                    info.upcoming?.let { IconLine(Icons.Outlined.Schedule, "Schedule: ${it.rule.targetName} at ${it.rule.time}", Theme.colors.textMuted) }
+                    info.upcoming?.let { IconLine(Icons.Outlined.Schedule, "Schedule: ${it.rule.targetName} at ${"%02d:%02d".format(java.util.Locale.ROOT, it.time.hour, it.time.minute)}", Theme.colors.textMuted) }
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = app::nextWallpaper) { ButtonIcon(Icons.Outlined.SkipNext); Text("Next") }

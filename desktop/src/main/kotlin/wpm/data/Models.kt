@@ -85,12 +85,13 @@ data class Playlist(
 
 data class ScheduleRule(
     val id: Long,
-    val time: String, // "HH:MM"
+    val time: String, // "HH:MM", or relative to the sun: "sunrise", "sunset-30" (see parseTime)
     val mediaId: Long?,
     val playlistId: Long?,
     val enabled: Boolean,
     val targetName: String = "", // file name or playlist name, filled in by the query
 ) {
+    /** Minutes after midnight of a clock time (not for sunrise/sunset rules). */
     val minutes: Int
         get() {
             val (h, m) = time.split(":").map { it.toInt() }

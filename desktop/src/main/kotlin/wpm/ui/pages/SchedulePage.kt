@@ -59,9 +59,16 @@ import wpm.data.Playlist
 import wpm.data.ScheduleRule
 import wpm.services.Occurrence
 import wpm.services.parseTime
+import wpm.services.describeTime
+import wpm.services.solarTime
+import wpm.services.Place
+import wpm.services.Sun
+import wpm.services.findCities
+import wpm.services.guessCity
 import wpm.ui.Theme
 import wpm.ui.components.ButtonIcon
 import wpm.ui.components.Card
+import wpm.ui.components.FilterChip
 import wpm.ui.components.MediaPickerDialog
 import wpm.ui.components.MutedText
 import wpm.ui.components.PageScaffold
@@ -72,7 +79,16 @@ private data class ScheduleInfo(
     val rules: List<ScheduleRule> = emptyList(),
     val active: Occurrence? = null,
     val upcoming: Occurrence? = null,
+    /** Today's time of each rule ("18:12"); missing for sun rules without a location. */
+    val today: Map<Long, String> = emptyMap(),
+    val place: Place? = null,
 )
+
+/** "18:00", or for sun rules today's time and the rule ("18:12 · 30 min before sunset"). */
+private fun ScheduleInfo.timeOf(occurrence: Occurrence): String {
+    val time = occurrence.time.toLocalTime().let { "%02d:%02d".format(java.util.Locale.ROOT, it.hour, it.minute) }
+    return if (solarTime(occurrence.rule.time) != null) "$time (${describeTime(occurrence.rule.time).lowercase()})" else time
+}
 
 /** Rule being edited: null id = new rule. */
 private data class RuleDraft(val id: Long? = null, val time: String = "", val mediaId: Long? = null, val playlistId: Long? = null)
@@ -83,7 +99,13 @@ fun SchedulePage(app: AppState) {
     var draft by remember { mutableStateOf<RuleDraft?>(null) }
     LaunchedEffect(app.libraryVersion, app.wallpaperVersion) {
         info = withContext(Dispatchers.IO) {
-            ScheduleInfo(app.scheduler.enabled, app.db.listRules(), app.scheduler.active(), app.scheduler.upcoming())
+            val rules = app.db.listRules()
+            val today = rules.mapNotNull { rule -> app.scheduler.todayText(rule)?.let { rule.id to it } }.toMap()
+            ScheduleInfo(
+                app.scheduler.enabled,
+                rules.sortedWith(compareBy<ScheduleRule> { today[it.id] ?: "99" }.thenBy { it.id }), // in the order they happen today
+                app.scheduler.active(), app.scheduler.upcoming(), today, app.scheduler.place,
+            )
         }
     }
     fun changed() = app.libraryChanged()
@@ -100,8 +122,8 @@ fun SchedulePage(app: AppState) {
                             !info.enabled -> "Off"
                             info.rules.none { it.enabled } -> "No active rules"
                             else -> buildString {
-                                info.active?.let { append("Now: ${it.rule.targetName} (since ${it.rule.time})") }
-                                info.upcoming?.let { append("   ·   Next: ${it.rule.targetName} at ${it.rule.time}") }
+                                info.active?.let { append("Now: ${it.rule.targetName} (since ${info.timeOf(it)})") }
+                                info.upcoming?.let { append("   ·   Next: ${it.rule.targetName} at ${info.timeOf(it)}") }
                             }
                         },
                     )
@@ -111,6 +133,8 @@ fun SchedulePage(app: AppState) {
             Spacer(Modifier.height(6.dp))
             MutedText("Changes take effect at the next rule time. Use “Apply now” to switch straight away.")
         }
+
+        SunCard(app, info) { changed() }
 
         if (info.rules.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
@@ -128,12 +152,20 @@ fun SchedulePage(app: AppState) {
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         TimelineNode(first = i == 0, last = i == info.rules.lastIndex, active = active, enabled = rule.enabled)
-                        Text(rule.time, color = if (rule.enabled) Theme.colors.text else Theme.colors.textSubtle, fontFamily = wpm.ui.DisplayFont,
+                        val solar = solarTime(rule.time) != null
+                        Text(info.today[rule.id] ?: "--:--", color = if (rule.enabled) Theme.colors.text else Theme.colors.textSubtle, fontFamily = wpm.ui.DisplayFont,
                             fontWeight = FontWeight.SemiBold, fontSize = 26.sp, modifier = Modifier.width(84.dp).padding(vertical = 14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(rule.targetName.ifEmpty { "(missing)" }, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.titleSmall)
-                            Text(if (rule.playlistId != null) "Playlist" else "Wallpaper", color = Theme.colors.textMuted, fontSize = 12.sp)
+                            Text(
+                                (if (rule.playlistId != null) "Playlist" else "Wallpaper") + when {
+                                    !solar -> ""
+                                    info.place == null -> "  ·  ${describeTime(rule.time)} (set your location)"
+                                    else -> "  ·  ${describeTime(rule.time)}"
+                                },
+                                color = if (solar && info.place == null) Theme.colors.danger else Theme.colors.textMuted, fontSize = 12.sp,
+                            )
                         }
                         if (active) Tag("Now", Theme.colors.accent)
                         TextButton(onClick = {
@@ -194,7 +226,20 @@ private fun RuleDialog(app: AppState, initial: RuleDraft, onDismiss: () -> Unit,
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(time, { time = it }, label = { Text("Time (HH:MM, every day)") }, singleLine = true, isError = timeError,
-                    supportingText = { if (timeError) Text(runCatching { parseTime(time) }.exceptionOrNull()?.message ?: "") })
+                    supportingText = {
+                        Text(
+                            if (timeError) runCatching { parseTime(time) }.exceptionOrNull()?.message ?: ""
+                            else "Or relative to the sun: sunrise, sunset, sunset - 30, sunrise + 1:00",
+                        )
+                    })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("sunrise", "sunset").forEach { event ->
+                        FilterChip(selected = time.trim().startsWith(event, ignoreCase = true), onClick = { time = event }, label = { Text(event.replaceFirstChar { it.uppercase() }) })
+                    }
+                }
+                if (!timeError && solarTime(runCatching { parseTime(time) }.getOrDefault("")) != null && app.scheduler.place == null) {
+                    Text("Set your location on the Schedule page so sunrise and sunset can be worked out.", color = Theme.colors.danger, fontSize = 12.sp)
+                }
                 SingleChoiceSegmentedButtonRow {
                     SegmentedButton(!usePlaylist, { usePlaylist = false }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Wallpaper") }
                     SegmentedButton(usePlaylist, { usePlaylist = true }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Playlist") }
@@ -245,4 +290,84 @@ private fun TimelineNode(first: Boolean, last: Boolean, active: Boolean, enabled
         // the lit half of the folded diamond
         drawPath(Path().apply { moveTo(x, y - r); lineTo(x + r, y); lineTo(x - r, y); close() }, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.22f))
     }
+}
+
+/** Where sunrise and sunset are worked out for, with today's times. */
+@Composable
+private fun SunCard(app: AppState, info: ScheduleInfo, onChanged: () -> Unit) {
+    var editing by remember { mutableStateOf(false) }
+    val anySolar = info.rules.any { solarTime(it.time) != null }
+    if (info.place == null && !anySolar) {
+        // Only a hint while nobody uses sun rules.
+        MutedText("Tip: rules can also follow the sun, e.g. “sunset - 30”.")
+        return
+    }
+    Card(Modifier.fillMaxWidth(), accent = if (info.place == null) Theme.colors.danger else Theme.colors.gold) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SectionTitle("Sunrise and sunset")
+                val place = info.place
+                if (place == null) {
+                    MutedText("Set your location so rules at sunrise or sunset know when to run.")
+                } else {
+                    val zone = java.time.ZoneId.systemDefault()
+                    val today = java.time.LocalDate.now()
+                    fun hm(t: java.time.ZonedDateTime?) = t?.let { "%02d:%02d".format(java.util.Locale.ROOT, it.hour, it.minute) } ?: "none"
+                    MutedText("${place.name}: sunrise ${hm(Sun.sunrise(today, place, zone))}, sunset ${hm(Sun.sunset(today, place, zone))} today")
+                }
+            }
+            OutlinedButton(onClick = { editing = true }) { Text(if (info.place == null) "Set location" else "Change") }
+        }
+    }
+    if (editing) {
+        LocationDialog(info.place, onDismiss = { editing = false }) { place ->
+            app.runTask("Location saved") {
+                app.scheduler.setPlace(place)
+                onChanged()
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationDialog(current: Place?, onDismiss: () -> Unit, onSave: (Place) -> Unit) {
+    val suggestion = remember { current ?: guessCity() }
+    var query by remember { mutableStateOf("") }
+    var chosen by remember { mutableStateOf(suggestion) }
+    var lat by remember { mutableStateOf(suggestion?.latitude?.toString() ?: "") }
+    var lon by remember { mutableStateOf(suggestion?.longitude?.toString() ?: "") }
+    val latitude = lat.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in -90.0..90.0 }
+    val longitude = lon.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in -180.0..180.0 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Your location") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                MutedText("Pick a city near you, or enter the coordinates. Nothing is sent anywhere.")
+                OutlinedTextField(query, { query = it }, label = { Text("Search a city") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                findCities(query).forEach { city ->
+                    TextButton(onClick = {
+                        chosen = city
+                        lat = city.latitude.toString()
+                        lon = city.longitude.toString()
+                        query = ""
+                    }) { Text("${city.name}  (${city.latitude}, ${city.longitude})") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(lat, { lat = it; chosen = null }, label = { Text("Latitude (N+)") }, singleLine = true,
+                        isError = lat.isNotBlank() && latitude == null, modifier = Modifier.weight(1f))
+                    OutlinedTextField(lon, { lon = it; chosen = null }, label = { Text("Longitude (E+)") }, singleLine = true,
+                        isError = lon.isNotBlank() && longitude == null, modifier = Modifier.weight(1f))
+                }
+                chosen?.let { MutedText("Near ${it.name}") }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onDismiss()
+                onSave(Place(chosen?.name ?: "%.2f, %.2f".format(java.util.Locale.ROOT, latitude, longitude), latitude!!, longitude!!))
+            }, enabled = latitude != null && longitude != null) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

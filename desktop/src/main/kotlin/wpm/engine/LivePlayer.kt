@@ -22,6 +22,8 @@ data class LiveSource(
     val interactive: Boolean = false,
     /** Web pages: send system audio levels to the page. */
     val audio: Boolean = false,
+    /** Web pages: JavaScript run each time the page has loaded (e.g. the wallpaper's settings). */
+    val onLoadScript: String? = null,
 )
 
 /** One live wallpaper behind the desktop icons. An interface so tests can use a fake. */

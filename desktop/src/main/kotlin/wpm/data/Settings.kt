@@ -27,6 +27,9 @@ class Settings(private val db: Database) {
         runCatching { db.getSetting(key)?.jsonPrimitive?.booleanOrNull }.getOrNull() ?: default
 
     fun set(key: String, value: String) = db.setSetting(key, JsonPrimitive(value))
+    fun remove(key: String) {
+        db.execute("DELETE FROM settings WHERE key = ?", key)
+    }
     fun set(key: String, value: Boolean) = db.setSetting(key, JsonPrimitive(value))
 
     /** A structured setting, or null if it is missing or can't be read. */

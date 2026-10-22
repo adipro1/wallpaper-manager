@@ -13,6 +13,8 @@ import wpm.ui.components.Eyebrow
 import wpm.ui.components.FoldShape
 import wpm.ui.components.ListEntry
 import wpm.ui.components.Tag
+import wpm.ui.components.PropertyEditor
+import wpm.media.parseShaderProperties
 import wpm.ui.components.drawFoldFlap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -156,16 +158,19 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
     var previewUrl by remember(item.id) { mutableStateOf<String?>(null) }
     var status by remember(item.id) { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    /** Bumped when a setting changes, so the preview is written again with it. */
+    var settingsVersion by remember(item.id) { mutableStateOf(0) }
+    val declared = remember(code) { parseShaderProperties(code) }
 
     LaunchedEffect(item.id) {
         code = withContext(Dispatchers.IO) { app.shaders.code(item) }
         saved = code
     }
     // Recompile the preview shortly after typing stops.
-    LaunchedEffect(code) {
+    LaunchedEffect(code, settingsVersion) {
         if (code.isEmpty()) return@LaunchedEffect
-        delay(700)
-        previewUrl = withContext(Dispatchers.IO) { app.shaders.previewPage(code) }
+        delay(if (settingsVersion > 0) 250 else 700)
+        previewUrl = withContext(Dispatchers.IO) { app.shaders.previewPage(code, mediaId = item.id) }
     }
 
     fun save(then: (() -> Unit)? = null) = app.runTask(if (then == null) "Saved" else null, "Couldn't save the shader") {
@@ -234,13 +239,16 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
                     )
                 }
             }
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 Eyebrow("Live preview", Theme.colors.indigo)
                 WebPreview(app, previewUrl, Modifier.fillMaxWidth().aspectRatio(16f / 9f)) { status = it }
                 Spacer(Modifier.height(8.dp))
                 app.webEngineStatus?.let { MutedText(it) }
                 MutedText("Write a mainImage(out vec4 fragColor, in vec2 fragCoord) function. Available: iResolution, iTime, " +
-                    "iTimeDelta, iFrame, iMouse, iDate and iChannel0 (audio: spectrum in row 0).")
+                    "iTimeDelta, iFrame, iMouse, iPointer (mouse 0..1), iDate and iChannel0 (audio: spectrum in row 0).")
+                MutedText("Settings: a comment line such as // @slider speed 0 2 1 Speed, // @color tint #ff8800 Tint, " +
+                    "// @checkbox rain on Rain or // @image photo Picture (iChannel1-3) adds a control and a uniform of that name.")
+                PropertyEditor(app, item, Modifier.padding(top = 12.dp), declared = declared) { settingsVersion++ }
             }
         }
     }

@@ -44,6 +44,8 @@ fun MediaPickerDialog(
     onDismiss: () -> Unit,
     exclude: Set<Long> = emptySet(),
     confirmLabel: String = "Add",
+    /** Only items this accepts are offered. */
+    filter: (MediaItem) -> Boolean = { true },
     onPick: (List<MediaItem>) -> Unit,
 ) {
     var search by remember { mutableStateOf("") }
@@ -51,7 +53,7 @@ fun MediaPickerDialog(
     var selected by remember { mutableStateOf(emptySet<Long>()) }
     LaunchedEffect(search, app.libraryVersion) {
         items = withContext(Dispatchers.IO) {
-            app.db.listMedia(search = search).filter { it.id !in exclude && (!it.isVideo || app.videoSupport) }
+            app.db.listMedia(search = search).filter { it.id !in exclude && (!it.isVideo || app.videoSupport) && filter(it) }
         }
     }
     DialogWindow(onCloseRequest = onDismiss, title = title, state = rememberDialogState(width = 860.dp, height = 640.dp)) {

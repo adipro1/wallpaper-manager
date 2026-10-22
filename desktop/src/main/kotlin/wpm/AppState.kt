@@ -39,6 +39,9 @@ import wpm.engine.WebLivePlayer
 import wpm.media.SHADER_EXTENSIONS
 import wpm.media.Shaders
 import wpm.media.WebWallpapers
+import wpm.media.WallpaperProperties
+import wpm.media.WallpaperProperty
+import kotlinx.serialization.json.JsonPrimitive
 import wpm.media.VideoReader
 import wpm.media.UrlImporter
 import wpm.media.YtDlp
@@ -133,11 +136,25 @@ class AppState(
         it.sourceFor = ::liveSourceFor
     }
     val web = WebWallpapers(db, library, paths.dataDir.resolve("web"))
-    val shaders = Shaders(db, web, paths.dataDir.resolve("shaders"), paths.cacheDir.resolve("shader-pages")).also { it.cleanPreviews() }
+    val properties = WallpaperProperties(db)
+    val missing = wpm.media.MissingFiles(db)
+    val shaders = Shaders(db, web, paths.dataDir.resolve("shaders"), paths.cacheDir.resolve("shader-pages"), properties).also { it.cleanPreviews() }
     val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
     val ytDlp = YtDlp(NativeBin.dir.resolve("yt-dlp.exe"))
     val urls = UrlImporter(db, library, ytDlp, downloadFolder())
     val playlists = PlaylistPlayer(db, wallpapers)
+    val lockSlideshow = wpm.services.LockScreenSlideshow(db, lockScreen)
+    val accent = wpm.services.AccentFromWallpaper(settings)
+    /** Watched folders; new and deleted files show up in the library by themselves. */
+    val watched = wpm.services.WatchedFolders(db, library) { change ->
+        libraryChanged()
+        val parts = buildList {
+            if (change.added > 0) add("${change.added} new")
+            if (change.removed > 0) add("${change.removed} removed")
+            if (change.moved > 0) add("${change.moved} moved")
+        }
+        toast("Watched folders: ${parts.joinToString(", ")}")
+    }
     val scheduler = Scheduler(db, wallpapers, playlists)
     val updates = UpdateChecker(db)
     /** Shows a tray notification (set by the window code). */
@@ -154,12 +171,25 @@ class AppState(
     /** Bumped to bring the window to the front (tray, a second launch, a shortcut). */
     var showRequests by mutableIntStateOf(0)
         private set
+    /** Set before exiting when the app should start again (after a restore or an update). */
+    @Volatile var restartRequested = false
+    /** Asks the window code to exit (set by Main). */
+    var exitApp: () -> Unit = {}
+
+    /** Exits and starts again (e.g. to apply a restored backup). */
+    fun restart() {
+        restartRequested = true
+        exitApp()
+    }
+
     /** Completed once the saved wallpaper has been restored after starting. */
     val ready = CompletableDeferred<Unit>()
     var appearance by mutableStateOf(settings.string("appearance_mode", "dark"))
         private set
     var systemDark by mutableStateOf(systemUsesDarkTheme())
         private set
+    /** No page animations (Settings; follows Windows' "Animation effects" until changed). */
+    var reduceMotion by mutableStateOf(settings.boolean("reduce_motion", !wpm.win32.systemAnimationsEnabled()))
     var toast by mutableStateOf<ToastMessage?>(null)
         private set
 
@@ -200,6 +230,11 @@ class AppState(
     fun showWindow() {
         windowVisible = true
         showRequests++
+    }
+
+    fun updateReduceMotion(on: Boolean) {
+        reduceMotion = on
+        settings.set("reduce_motion", on)
     }
 
     fun updateAppearance(mode: String) {
@@ -244,7 +279,29 @@ class AppState(
 
     /** Applies a wallpaper change exclusively, then refreshes the pages that show it. */
     suspend fun <T> changeWallpaper(block: () -> T): T = changeLock.withLock {
-        withContext(Dispatchers.IO) { block() }.also { wallpaperChanged() }
+        withContext(Dispatchers.IO) { block() }.also {
+            wallpaperChanged()
+            updateAccent()
+        }
+    }
+
+    private var accentFor: Long? = null
+
+    /** With "accent color from the wallpaper" on, follows the desktop wallpaper (pictures, or a live wallpaper's thumbnail). */
+    fun updateAccent(force: Boolean = false) {
+        if (!accent.enabled) {
+            accentFor = null
+            return
+        }
+        val item = wallpapers.currentItem() ?: return
+        if (!force && item.id == accentFor) return
+        accentFor = item.id
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val file = if (item.isImage) item.localPath else item.thumbnail?.let { paths.thumbDir.resolve(it) }
+                file?.let { wpm.media.Imaging.load(it) }?.use { accent.applyFrom(it) }
+            }.onFailure { log.warning("Couldn't set the accent color: $it") }
+        }
     }
 
     /** Picking a wallpaper by hand stops the running playlist. */
@@ -508,7 +565,77 @@ class AppState(
             muted = settings.boolean("web_muted", true),
             interactive = item.interactive && settings.boolean("web_interaction", true),
             audio = item.audio && settings.boolean("audio_reactive", true),
+            onLoadScript = propertyScript(item),
         )
+    }
+
+    // -- wallpaper settings (LivelyProperties.json, shader sliders) ------------------------------
+
+    /** The settings a web wallpaper or shader offers. */
+    fun propertiesOf(item: MediaItem): List<WallpaperProperty> =
+        if (item.isShader) shaders.properties(item) else properties.read(item)
+
+    /** Sends all of an item's setting values to its page once it has loaded. */
+    private fun propertyScript(item: MediaItem): String? {
+        val list = propertiesOf(item).takeIf { it.isNotEmpty() } ?: return null
+        return WallpaperProperties.loadScript(list, properties.values(item.id, list))
+    }
+
+    /** Runs a script in every web engine showing [item] right now. */
+    private fun sendToPage(item: MediaItem, script: String) {
+        if (script.isEmpty()) return
+        val page = if (item.isShader) null else WebWallpapers.pageUrl(item)
+        webEngines().filter { engine ->
+            val shown = engine.source ?: return@filter false
+            if (item.isShader) shown.contains("shader-${item.id}.html") else shown == page
+        }.forEach { it.runScript(script) }
+    }
+
+    /**
+     * Changes one setting; a showing wallpaper gets the new value straight away (buttons are only
+     * sent). A shader's picture needs the page to be written again: then the wallpaper restarts.
+     */
+    suspend fun setProperty(item: MediaItem, property: WallpaperProperty, value: JsonPrimitive) {
+        val normalized = if (property.type == wpm.media.PropertyType.BUTTON) JsonPrimitive(true) else property.normalize(value)
+        if (property.type != wpm.media.PropertyType.BUTTON) properties.set(item.id, property.name, normalized)
+        if (property.type == wpm.media.PropertyType.IMAGE) restartIfShowing(item)
+        else sendToPage(item, WallpaperProperties.script(listOf(property.name to WallpaperProperties.pageValue(property, normalized))))
+    }
+
+    /**
+     * Turns a picture into a live wallpaper with one of the [wpm.media.PICTURE_EFFECTS]
+     * (a shader that shows it), adds that to the library and shows it.
+     */
+    suspend fun makeAlive(picture: MediaItem, effect: String): MediaItem {
+        val path = picture.localPath ?: throw IllegalArgumentException("Only pictures on this PC can be used")
+        val sample = shaders.effects().firstOrNull { it.name == effect } ?: throw IllegalArgumentException("Unknown effect: $effect")
+        val item = withContext(Dispatchers.IO) {
+            val title = "${picture.filename.substringBeforeLast('.')} · $effect"
+            val id = shaders.create(title, sample.code, interactive = effect == "Parallax", preview = path)
+            properties.set(id, "photo", JsonPrimitive(path.toString()))
+            db.getMedia(id)!!
+        }
+        libraryChanged()
+        changeWallpaper {
+            playlists.stop()
+            wallpapers.set(item)
+        }
+        return item
+    }
+
+    /** Back to the values the wallpaper comes with. */
+    suspend fun resetProperties(item: MediaItem) {
+        val hadPicture = propertiesOf(item).any { it.type == wpm.media.PropertyType.IMAGE && properties.saved(item.id).containsKey(it.name) }
+        properties.reset(item.id)
+        if (hadPicture) restartIfShowing(item) else propertyScript(item)?.let { sendToPage(item, it) }
+    }
+
+    /** Plays [item] again wherever it is showing (after its page changed). */
+    suspend fun restartIfShowing(item: MediaItem) {
+        if (wallpapers.state.mediaId == item.id && wallpapers.videoActive) changeWallpaper { wallpapers.restartLive() }
+        wallpapers.displayChoices().filterValues { it.mediaId == item.id }.keys.forEach { id ->
+            Monitors.all().firstOrNull { it.id == id }?.let { display -> changeWallpaper { wallpapers.setOnDisplay(display, item) } }
+        }
     }
 
     /** Listens to system audio only while a visible wallpaper wants it. */
@@ -531,7 +658,9 @@ class AppState(
             notify = { notify(it) },
             liveDisplays = { displays?.players()?.filterValues { it.active }?.keys ?: emptySet() },
             onStarted = { ready.complete(Unit) },
+            lockSlideshow = lockSlideshow,
         ).start()
+        watched.start()
         scope.launch(Dispatchers.IO) { runCatching { applyShortcuts() }.onFailure { log.warning("Shortcuts: $it") } }
     }
 
@@ -542,6 +671,7 @@ class AppState(
     fun shutdown() {
         scope.cancel()
         hotkeys?.close()
+        watched.close()
         audio.stop()
         runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
         wpm.engine.Chromium.shutdown()

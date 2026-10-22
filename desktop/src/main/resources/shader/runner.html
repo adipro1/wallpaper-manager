@@ -3,7 +3,9 @@
   Wallpaper Manager shader runner: plays Shadertoy-style fragment shaders.
   The app writes one copy of this page per shader, with the code and the
   options in the "config" block.
-  Uniforms: iResolution, iTime, iTimeDelta, iFrame, iMouse, iDate, iChannel0 (audio, 512x2).
+  Uniforms: iResolution, iTime, iTimeDelta, iFrame, iMouse, iDate, iChannel0 (audio, 512x2),
+  iChannel1-3 (pictures chosen with "// @image"), iChannelResolution, iPointer (mouse 0..1, also
+  without a button) and one uniform per "// @slider / @color / @checkbox" setting.
 -->
 <html>
 <head>
@@ -36,6 +38,16 @@ function fail(message) {
 const vertexSource = `#version 300 es
 in vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
 
+// Settings declared in the code ("// @slider speed 0 2 1"): [{name, type, value, channel}].
+const properties = config.properties || [];
+const values = {};
+for (const p of properties) values[p.name] = p.value;
+const declarations = properties.map(p =>
+  p.type === "slider" ? `uniform float ${p.name};` :
+  p.type === "color" ? `uniform vec3 ${p.name};` :
+  p.type === "checkbox" ? `uniform bool ${p.name};` :
+  p.type === "image" ? `#define ${p.name} iChannel${p.channel}` : "").join("\n");
+
 const header = `#version 300 es
 precision highp float;
 precision highp int;
@@ -45,8 +57,14 @@ uniform float iTimeDelta;
 uniform int iFrame;
 uniform vec4 iMouse;
 uniform vec4 iDate;
+uniform vec2 iPointer;
 uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+uniform vec3 iChannelResolution[4];
 out vec4 wpmFragColor;
+${declarations}
 `;
 const footer = `
 void main() {
@@ -70,6 +88,7 @@ function compile(type, source) {
 }
 
 let program, uniforms = {}, audioTexture;
+const channelSize = [[512, 2], [1, 1], [1, 1], [1, 1]];
 const audio = new Uint8Array(512 * 2);
 
 function setup() {
@@ -90,9 +109,11 @@ function setup() {
   gl.enableVertexAttribArray(location);
   gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
 
-  for (const name of ["iResolution", "iTime", "iTimeDelta", "iFrame", "iMouse", "iDate", "iChannel0"]) {
+  for (const name of ["iResolution", "iTime", "iTimeDelta", "iFrame", "iMouse", "iDate", "iPointer", "iChannel0",
+                      "iChannel1", "iChannel2", "iChannel3", "iChannelResolution"]) {
     uniforms[name] = gl.getUniformLocation(program, name);
   }
+  for (const p of properties) uniforms["p:" + p.name] = gl.getUniformLocation(program, p.name);
   audioTexture = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, audioTexture);
@@ -103,6 +124,53 @@ function setup() {
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
   uploadAudio();
   gl.uniform1i(uniforms.iChannel0, 0);
+  for (let channel = 1; channel <= 3; channel++) setupPicture(channel);
+}
+
+// Pictures for iChannel1-3 come as data: URLs (file:// images can't be used by WebGL).
+function setupPicture(channel) {
+  const texture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + channel);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 255]));
+  gl.uniform1i(uniforms["iChannel" + channel], channel);
+  const source = (config.images || {})[channel];
+  if (!source) return;
+  const image = new Image();
+  image.onload = () => {
+    gl.activeTexture(gl.TEXTURE0 + channel);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    channelSize[channel] = [image.width, image.height];
+    gl.activeTexture(gl.TEXTURE0);
+  };
+  image.src = source;
+}
+
+// Settings changed in the app arrive like Lively's (livelyPropertyListener(name, value)).
+window.livelyPropertyListener = (name, value) => { if (name in values) values[name] = value; };
+
+function hexColor(text) {
+  const n = parseInt(String(text || "#000000").replace("#", "").slice(-6), 16) || 0;
+  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+}
+
+function setProperties() {
+  for (const p of properties) {
+    const location = uniforms["p:" + p.name];
+    if (!location) continue;
+    const v = values[p.name];
+    if (p.type === "slider") gl.uniform1f(location, Number(v) || 0);
+    else if (p.type === "color") gl.uniform3fv(location, hexColor(v));
+    else if (p.type === "checkbox") gl.uniform1i(location, v ? 1 : 0);
+  }
 }
 
 function uploadAudio() {
@@ -133,6 +201,8 @@ function toPixels(e) {
 addEventListener("mousedown", e => { const [x, y] = toPixels(e); mouse[0] = x; mouse[1] = y; mouse[2] = x; mouse[3] = y; });
 addEventListener("mousemove", e => { if (e.buttons & 1) { const [x, y] = toPixels(e); mouse[0] = x; mouse[1] = y; } });
 addEventListener("mouseup", () => { mouse[2] = -Math.abs(mouse[2]); mouse[3] = -Math.abs(mouse[3]); });
+const pointer = [0.5, 0.5];
+addEventListener("mousemove", e => { pointer[0] = e.clientX / innerWidth; pointer[1] = 1 - e.clientY / innerHeight; });
 
 let start = performance.now(), last = start, frame = 0, lastDrawn = 0;
 function draw(now) {
@@ -149,6 +219,9 @@ function draw(now) {
   gl.uniform1f(uniforms.iTimeDelta, (now - last) / 1000);
   gl.uniform1i(uniforms.iFrame, frame++);
   gl.uniform4f(uniforms.iMouse, mouse[0], mouse[1], mouse[2], mouse[3]);
+  gl.uniform2f(uniforms.iPointer, pointer[0], pointer[1]);
+  gl.uniform3fv(uniforms.iChannelResolution, channelSize.flatMap(([cw, ch]) => [cw, ch, 1]));
+  setProperties();
   gl.uniform4f(uniforms.iDate, d.getFullYear(), d.getMonth(), d.getDate(),
     d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
