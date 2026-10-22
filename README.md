@@ -57,6 +57,23 @@ Python app; your library, playlists and schedule carry over.)
 **Keyboard shortcuts**: Ctrl+1 … Ctrl+8 switch pages, Ctrl+F searches the
 library, Ctrl+I imports files, Ctrl+A / Delete / Esc work on the library selection.
 
+**Global shortcuts** (switch them on in Settings; they work while any app is in front):
+Ctrl+Alt+N next wallpaper, Ctrl+Alt+R random, Ctrl+Alt+P pause / resume,
+Ctrl+Alt+W open the window. Click a shortcut in Settings to change it.
+
+**Command line**, for scripts, Task Scheduler, AutoHotkey or a Stream Deck. Commands
+go to the running copy (it is started first if needed):
+
+```
+WallpaperManager.exe --next | --random | --pause | --resume | --toggle-pause | --stop
+WallpaperManager.exe --set "C:\Pictures\sunset.jpg"    (a file, added to the library if needed)
+WallpaperManager.exe --set "sunset"                    (or a library item by name)
+WallpaperManager.exe --playlist "Evenings" | --stop-playlist | --show | --help
+```
+
+The exit code is 0 when it worked, 1 when it didn't and 2 for unknown options; the
+result is printed when the output is redirected (`WallpaperManager.exe --next | Out-String`).
+
 ## Download
 
 Get the installer or the zip from the

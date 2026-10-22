@@ -309,6 +309,9 @@ class Database(private val path: String) : AutoCloseable {
 
     fun getMedia(mediaId: Long): MediaItem? = query("SELECT * FROM media WHERE id = ?", mediaId, map = ::mediaFrom).firstOrNull()
 
+    /** The library item for a local file or folder (paths compare case-insensitively, like Windows). */
+    fun mediaByPath(path: String): MediaItem? = query("SELECT * FROM media WHERE path = ?", path, map = ::mediaFrom).firstOrNull()
+
     private fun mediaFilter(search: String, mediaType: String?, favoritesOnly: Boolean): Pair<String, List<Any>> {
         val clauses = mutableListOf<String>()
         val params = mutableListOf<Any>()

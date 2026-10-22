@@ -1,9 +1,7 @@
 package wpm
 
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Tray
@@ -17,29 +15,61 @@ import wpm.data.DatabaseTooNewException
 import wpm.ui.App
 import wpm.ui.handleShortcut
 import wpm.ui.installFileDrop
+import wpm.win32.CommandPipe
 import wpm.win32.SingleInstance
+import wpm.win32.parentConsole
 import wpm.win32.setAppUserModelId
 import androidx.compose.ui.Alignment
 import java.awt.Dimension
 import java.awt.GraphicsEnvironment
+import java.nio.file.Path
 import java.util.logging.Level
 import javax.swing.JOptionPane
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
-fun main(args: Array<String>) {
-    val startMinimized = "--minimized" in args
+/** Relative paths after --set mean the caller's folder, which the running copy doesn't know. */
+private fun absolutePaths(args: List<String>): List<String> = args.mapIndexed { i, arg ->
+    if (i > 0 && args[i - 1].equals("--set", ignoreCase = true)) {
+        runCatching { Path.of(arg.trim('"')) }.getOrNull()?.takeIf { !it.isAbsolute && it.toFile().exists() }?.toAbsolutePath()?.toString() ?: arg
+    } else {
+        arg
+    }
+}
+
+fun main(rawArgs: Array<String>) {
+    val args = absolutePaths(rawArgs.toList())
+    val commandLine = parseCommandLine(args)
+    if (commandLine.help || commandLine.error != null) {
+        val console = parentConsole()
+        commandLine.error?.let { console?.println("Error: $it\n") }
+        console?.println(COMMAND_LINE_HELP)
+        if (console == null && commandLine.error != null) {
+            JOptionPane.showMessageDialog(null, "${commandLine.error}\n\n$COMMAND_LINE_HELP", APP_NAME, JOptionPane.ERROR_MESSAGE)
+        }
+        exitProcess(if (commandLine.error != null) 2 else 0)
+    }
+    val command = commandLine.command
 
     // Only one copy may run (two would fight over the live wallpaper); a second
-    // launch just brings the running copy's window to the front.
+    // launch brings the running copy's window to the front, or hands it its command.
     // WPM_INSTANCE lets a development build run next to the installed app.
     val devInstance = System.getenv("WPM_INSTANCE")?.takeIf { it.isNotBlank() }
-    val instance = SingleInstance(devInstance ?: APP_ID)
+    val instanceName = devInstance ?: APP_ID
+    val instance = SingleInstance(instanceName)
     if (instance.alreadyRunning) {
-        instance.askExistingToShow()
+        if (command == null || commandLine.selfTest) {
+            instance.askExistingToShow()
+            instance.close()
+            return
+        }
         instance.close()
-        return
+        val reply = runCatching { CommandPipe.send(instanceName, args) }
+            .getOrElse { wpm.win32.CommandReply(false, it.message ?: "The running copy didn't answer") }
+        parentConsole()?.println(reply.message)
+        exitProcess(if (reply.ok) 0 else 1)
     }
+    val startMinimized = commandLine.minimized || (command != null && command != AppCommand.Show)
 
     val paths = AppPaths.default()
     val logFile = setupLogging(paths.logDir)
@@ -55,22 +85,24 @@ fun main(args: Array<String>) {
     }
     log.info("Native helpers in ${wpm.mpv.NativeBin.dir.toAbsolutePath()}: libmpv=${wpm.mpv.Mpv.available}, " +
         "yt-dlp=${wpm.mpv.NativeBin.dir.resolve("yt-dlp.exe").toFile().exists()}")
-    if ("--self-test" in args) {
+    if (commandLine.selfTest) {
         val passed = runSelfTest(paths)
         instance.close()
         exitProcess(if (passed) 0 else 1)
     }
     setAppUserModelId(APP_ID)
     val app = AppState(paths, db, startMinimized)
-    var showRequests by mutableIntStateOf(0)
 
     app.startAutomation()
+    // A command given to the first launch runs once the saved wallpaper is back.
+    if (command != null) app.scope.launch { app.ready.await(); app.runCommand(command) }
 
     thread(name = "show-requests", isDaemon = true) {
         while (true) {
-            if (instance.waitForShowRequest(1_000)) showRequests++
+            if (instance.waitForShowRequest(1_000)) app.showWindow()
         }
     }
+    val commands = CommandPipe(instanceName, app::handleCommandLine)
 
     try {
         application {
@@ -86,18 +118,16 @@ fun main(args: Array<String>) {
                 icon = painterResource("icon.png"),
                 state = trayState,
                 tooltip = APP_NAME,
-                onAction = { app.windowVisible = true; showRequests++ },
+                onAction = app::showWindow,
                 menu = {
-                    Item("Open", onClick = { app.windowVisible = true; showRequests++ })
+                    Item("Open", onClick = app::showWindow)
                     Separator()
                     Item("Next wallpaper", onClick = app::nextWallpaper)
                     Item("Random wallpaper", onClick = app::randomWallpaper)
                     if (app.videoSupport) {
                         Separator()
-                        Item("Pause / resume video", onClick = {
-                            app.videoAction { if (app.wallpapers.videoPaused) app.wallpapers.resumeVideo() else app.wallpapers.pauseVideo() }
-                        })
-                        Item("Stop video", onClick = { app.videoAction { app.wallpapers.stopVideo() } })
+                        Item("Pause / resume", onClick = { app.runCommand(AppCommand.TogglePause) })
+                        Item("Stop live wallpaper", onClick = { app.runCommand(AppCommand.Stop) })
                     }
                     Separator()
                     Item("Exit", onClick = ::exit)
@@ -136,8 +166,8 @@ fun main(args: Array<String>) {
                     app.window = window
                     installFileDrop(window, app::import) { app.addUrl = it }
                 }
-                LaunchedEffect(showRequests) {
-                    if (showRequests > 0) {
+                LaunchedEffect(app.showRequests) {
+                    if (app.showRequests > 0) {
                         app.windowVisible = true
                         windowState.isMinimized = false
                         window.toFront()
@@ -151,6 +181,7 @@ fun main(args: Array<String>) {
         log.log(Level.SEVERE, "Fatal error - see $logFile", e)
         throw e
     } finally {
+        commands.close()
         app.close()
         db.close()
         instance.close()

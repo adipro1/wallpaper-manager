@@ -37,6 +37,9 @@ import wpm.ToastKind
 import wpm.logger
 import wpm.ui.Theme
 import wpm.ui.components.Card
+import wpm.ui.components.Notice
+import wpm.ui.components.ShortcutField
+import wpm.SHORTCUT_ACTIONS
 import wpm.ui.components.MutedText
 import wpm.ui.components.PageScaffold
 import wpm.ui.components.SectionTitle
@@ -100,6 +103,8 @@ fun SettingsPage(app: AppState) {
                 }
             }
         }
+
+        ShortcutsCard(app)
 
         Card(Modifier.fillMaxWidth()) {
             SectionTitle("Live wallpapers")
@@ -225,6 +230,42 @@ fun SettingsPage(app: AppState) {
                 TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text("Project page"); ButtonIcon(Icons.AutoMirrored.Outlined.OpenInNew) }
             }
         }
+    }
+}
+
+@Composable
+private fun ShortcutsCard(app: AppState) {
+    Card(Modifier.fillMaxWidth()) {
+        SectionTitle("Keyboard shortcuts")
+        Spacer(Modifier.height(6.dp))
+        MutedText("They work everywhere, even while another app is in front.")
+        var enabled by remember { mutableStateOf(app.shortcutsEnabled) }
+        var keys by remember { mutableStateOf(app.shortcutKeys()) }
+        fun save() = app.runTask { app.updateShortcuts(enabled, keys) }
+        SettingSwitch("Use global keyboard shortcuts", enabled) {
+            enabled = it
+            save()
+        }
+        app.shortcutProblems[""]?.let { Notice(it) }
+        SHORTCUT_ACTIONS.forEach { action ->
+            Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 16.dp)) {
+                    Text(action.label, color = if (enabled) Theme.colors.text else Theme.colors.textSubtle)
+                    if (enabled) app.shortcutProblems[action.id]?.let { Text(it, color = Theme.colors.danger, style = MaterialTheme.typography.bodySmall) }
+                }
+                ShortcutField(
+                    keys[action.id].orEmpty(),
+                    onChange = {
+                        keys = keys + (action.id to it)
+                        save()
+                    },
+                    onHint = { app.toast(it) },
+                    enabled = enabled,
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        MutedText("Click a shortcut and press the new keys (Backspace removes it). Scripts can use the command line too, e.g. WallpaperManager.exe --next; --help lists every option.")
     }
 }
 

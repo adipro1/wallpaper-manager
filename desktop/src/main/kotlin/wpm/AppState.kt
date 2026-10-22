@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,6 +15,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -52,10 +56,15 @@ import wpm.services.LockScreenService
 import wpm.services.PowerShellLockScreen
 import wpm.services.WallpaperService
 import wpm.ui.ThumbnailCache
+import wpm.win32.CommandReply
 import wpm.win32.DesktopWallpaperApi
+import wpm.win32.GlobalHotkeys
+import wpm.win32.Hotkey
 import wpm.win32.WindowsDesktop
 import java.awt.Window
 import java.nio.file.Path
+import kotlin.io.path.exists
+import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 
 enum class Page(val label: String) {
@@ -142,6 +151,11 @@ class AppState(
 
     var page by mutableStateOf(Page.Home)
     var windowVisible by mutableStateOf(!startMinimized)
+    /** Bumped to bring the window to the front (tray, a second launch, a shortcut). */
+    var showRequests by mutableIntStateOf(0)
+        private set
+    /** Completed once the saved wallpaper has been restored after starting. */
+    val ready = CompletableDeferred<Unit>()
     var appearance by mutableStateOf(settings.string("appearance_mode", "dark"))
         private set
     var systemDark by mutableStateOf(systemUsesDarkTheme())
@@ -181,6 +195,11 @@ class AppState(
                 systemDark = systemUsesDarkTheme()
             }
         }
+    }
+
+    fun showWindow() {
+        windowVisible = true
+        showRequests++
     }
 
     fun updateAppearance(mode: String) {
@@ -242,14 +261,171 @@ class AppState(
         changeWallpaper { wallpapers.setOnDisplay(display, item) }
     }
 
-    fun nextWallpaper() = runTask(failure = "Couldn't change the wallpaper") {
-        val item = changeWallpaper { wallpapers.nextFromLibrary() }
-        toast(item?.let { "Showing ${it.filename}" } ?: "Your library is empty", if (item != null) ToastKind.Success else ToastKind.Info)
+    fun nextWallpaper() = runCommand(AppCommand.Next)
+
+    fun randomWallpaper() = runCommand(AppCommand.Random)
+
+    /** Runs a command from the UI, tray or a shortcut; the result is shown as a toast. */
+    fun runCommand(command: AppCommand) {
+        scope.launch {
+            try {
+                val message = perform(command)
+                if (command != AppCommand.Show) toast(message, ToastKind.Success)
+            } catch (e: Exception) {
+                log.info("$command: ${e.message}")
+                toast(e.message ?: e.javaClass.simpleName, if (e is IllegalStateException) ToastKind.Info else ToastKind.Error)
+            }
+        }
     }
 
-    fun randomWallpaper() = runTask(failure = "Couldn't change the wallpaper") {
-        val item = changeWallpaper { wallpapers.randomFromLibrary() }
-        toast(item?.let { "Showing ${it.filename}" } ?: "Add a few wallpapers first", if (item != null) ToastKind.Success else ToastKind.Info)
+    /** A command line handed over by a second launch (blocks until done). */
+    fun handleCommandLine(args: List<String>): CommandReply {
+        val parsed = parseCommandLine(args)
+        if (parsed.error != null) return CommandReply(false, parsed.error)
+        val command = parsed.command ?: AppCommand.Show
+        return runBlocking {
+            ready.await()
+            try {
+                CommandReply(true, perform(command))
+            } catch (e: Exception) {
+                CommandReply(false, e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    /**
+     * Does what a command asks and describes the result. Throws IllegalStateException when there
+     * is nothing to do (e.g. no live wallpaper to pause) and other exceptions when it failed.
+     */
+    suspend fun perform(command: AppCommand): String = when (command) {
+        AppCommand.Show -> {
+            showWindow()
+            "Window opened"
+        }
+        AppCommand.Next -> {
+            val item = changeWallpaper { if (playlists.state != null) playlists.advance() else wallpapers.nextFromLibrary() }
+            "Showing ${item?.filename ?: throw IllegalStateException("Your library is empty")}"
+        }
+        AppCommand.Random -> {
+            val item = changeWallpaper { wallpapers.randomFromLibrary() } ?: throw IllegalStateException("Add a few wallpapers first")
+            "Showing ${item.filename}"
+        }
+        AppCommand.TogglePause -> liveControl { if (wallpapers.videoPaused) resumeLive() else pauseLive() }
+        AppCommand.Pause -> liveControl { pauseLive() }
+        AppCommand.Resume -> liveControl { resumeLive() }
+        AppCommand.Stop -> liveControl {
+            wallpapers.stopVideo()
+            "Live wallpaper stopped"
+        }
+        AppCommand.StopPlaylist -> {
+            if (playlists.state == null) throw IllegalStateException("No playlist is running")
+            playlists.stop()
+            wallpaperChanged()
+            "Playlist stopped"
+        }
+        is AppCommand.Set -> {
+            val item = withContext(Dispatchers.IO) { resolveTarget(command.target) }
+            changeWallpaper {
+                playlists.stop()
+                wallpapers.set(item)
+            }
+            refreshWebThumbnail(item)
+            "Showing ${item.filename}"
+        }
+        is AppCommand.Playlist -> {
+            val playlist = db.listPlaylists().firstOrNull { it.name.equals(command.name.trim(), ignoreCase = true) }
+                ?: throw IllegalArgumentException("There is no playlist called “${command.name}”")
+            val item = changeWallpaper { playlists.start(playlist.id) }
+            "Playing “${playlist.name}”: ${item.filename}"
+        }
+    }
+
+    private fun pauseLive(): String {
+        wallpapers.pauseVideo()
+        return "Live wallpaper paused"
+    }
+
+    private fun resumeLive(): String {
+        wallpapers.resumeVideo()
+        return "Live wallpaper playing"
+    }
+
+    private suspend fun liveControl(block: () -> String): String {
+        if (!wallpapers.videoActive) throw IllegalStateException("No live wallpaper is playing")
+        return changeWallpaper(block)
+    }
+
+    /**
+     * The library item a command line means: a file or folder on this PC (added to the library
+     * first if it isn't in it yet), or the name of a library item.
+     */
+    internal fun resolveTarget(target: String): MediaItem {
+        val text = target.trim().trim('"')
+        val path = runCatching { Path.of(text) }.getOrNull()?.takeIf { it.isAbsolute && it.exists() }?.normalize()
+        if (path != null) {
+            db.mediaByPath(path.toString())?.let { return it }
+            val id: Long? = when {
+                path.extension.lowercase() in SHADER_EXTENSIONS -> shaders.import(path)
+                WebWallpapers.looksLikeWebWallpaper(path) ->
+                    web.import(path) ?: db.mediaByPath((if (path.isDirectory()) path else path.parent).toString())?.id
+                mediaTypeFor(path.toString()) != null -> {
+                    val result = library.importFiles(listOf(path))
+                    result.failed.firstOrNull()?.let { throw IllegalArgumentException("Couldn't add ${path.fileName}: ${it.second}") }
+                    result.added.firstOrNull()
+                }
+                path.isDirectory() -> throw IllegalArgumentException("Choose a picture, video, web wallpaper or shader, not a folder of files")
+                else -> throw IllegalArgumentException("${path.fileName} isn't a supported wallpaper file")
+            }
+            libraryChanged()
+            return id?.let(db::getMedia) ?: throw IllegalStateException("Couldn't add ${path.fileName} to the library")
+        }
+        val items = db.listMedia()
+        fun String.base() = substringBeforeLast('.')
+        items.firstOrNull { it.filename.equals(text, ignoreCase = true) }?.let { return it }
+        items.filter { it.filename.base().equals(text.base(), ignoreCase = true) }.singleOrNull()?.let { return it }
+        val matches = items.filter { it.filename.contains(text, ignoreCase = true) }
+        return when (matches.size) {
+            1 -> matches.single()
+            0 -> throw IllegalArgumentException("Nothing called “$text” in your library, and no such file")
+            else -> throw IllegalArgumentException(
+                "“$text” matches ${matches.size} wallpapers: " + matches.take(3).joinToString { it.filename } + if (matches.size > 3) ", …" else "",
+            )
+        }
+    }
+
+    // -- global keyboard shortcuts ------------------------------------------------------
+
+    private val shortcutSerializer = MapSerializer(String.serializer(), String.serializer())
+    private var hotkeys: GlobalHotkeys? = null
+    /** Shortcuts Windows refused (action id -> why), for the Settings page. */
+    var shortcutProblems by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+
+    val shortcutsEnabled: Boolean get() = settings.boolean("shortcuts_enabled", false)
+
+    /** The keys for each action ("" = none). */
+    fun shortcutKeys(): Map<String, String> {
+        val saved = settings.obj("shortcuts", shortcutSerializer) ?: emptyMap()
+        return SHORTCUT_ACTIONS.associate { it.id to (saved[it.id] ?: it.defaultKeys) }
+    }
+
+    fun updateShortcuts(enabled: Boolean, keys: Map<String, String>) {
+        settings.set("shortcuts_enabled", enabled)
+        settings.set("shortcuts", shortcutSerializer, keys)
+        applyShortcuts()
+    }
+
+    /** Registers the saved shortcuts with Windows (or removes them when switched off). Blocks briefly. */
+    @Synchronized
+    fun applyShortcuts() {
+        val bindings = if (shortcutsEnabled) shortcutKeys().mapNotNull { (id, keys) -> Hotkey.parse(keys)?.let { id to it } }.toMap() else emptyMap()
+        if (bindings.isEmpty() && hotkeys == null) {
+            shortcutProblems = emptyMap()
+            return
+        }
+        val engine = hotkeys ?: GlobalHotkeys { id -> SHORTCUT_ACTIONS.firstOrNull { it.id == id }?.let { runCommand(it.command) } }
+            .also { hotkeys = it }
+        shortcutProblems = runCatching { engine.register(bindings) }.getOrElse { mapOf("" to "Couldn't register shortcuts: ${it.message}") }
     }
 
     /** Imports web wallpapers (folders with a page, .html or .zip files). */
@@ -354,7 +530,9 @@ class AppState(
             exclusive = { block -> changeWallpaper(block) },
             notify = { notify(it) },
             liveDisplays = { displays?.players()?.filterValues { it.active }?.keys ?: emptySet() },
+            onStarted = { ready.complete(Unit) },
         ).start()
+        scope.launch(Dispatchers.IO) { runCatching { applyShortcuts() }.onFailure { log.warning("Shortcuts: $it") } }
     }
 
     fun videoAction(success: String? = null, block: () -> Unit) =
@@ -363,6 +541,7 @@ class AppState(
     /** The app is exiting: stop the live wallpaper (it comes back on next start). */
     fun shutdown() {
         scope.cancel()
+        hotkeys?.close()
         audio.stop()
         runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
         wpm.engine.Chromium.shutdown()

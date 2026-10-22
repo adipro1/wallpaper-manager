@@ -86,6 +86,8 @@ class Automation(
     private val notify: (String) -> Unit,
     /** Displays that currently show a live wallpaper. */
     private val liveDisplays: () -> Set<String> = { emptySet() },
+    /** Called once the saved wallpaper has been restored (or that failed). */
+    private val onStarted: () -> Unit = {},
 ) {
     fun start() {
         DisplayState.start()
@@ -93,6 +95,7 @@ class Automation(
             delay(500)
             runCatching { exclusive { wallpapers.restoreOnStartup() } }
                 .onFailure { log.warning("Could not restore the live wallpaper: $it") }
+            onStarted()
         }
         every(3_000) {
             if (wallpapers.videoActive) exclusive { wallpapers.checkLive() }
