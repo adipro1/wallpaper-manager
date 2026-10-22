@@ -392,6 +392,16 @@ class AppState(
             refreshWebThumbnail(item)
             tr("Showing {0}", item.filename)
         }
+        AppCommand.Update -> {
+            val version = withContext(Dispatchers.IO) { updates.checkIfDue(force = true) }
+                ?: throw IllegalStateException(tr("You have the latest version"))
+            if (!wpm.services.Updater.canInstall) throw IllegalStateException(tr("Version {0} is available. Download it from {1}", version, wpm.services.RELEASES_PAGE))
+            val release = updates.availableRelease() ?: throw IllegalStateException(tr("Version {0} has no installer", version))
+            val installer = withContext(Dispatchers.IO) { wpm.services.Updater.download(release, paths.cacheDir.resolve("updates")) }
+            wpm.services.Updater.launch(installer)
+            scope.launch { delay(500); javax.swing.SwingUtilities.invokeLater { exitApp() } }
+            tr("Installing version {0}; the app restarts in a moment", version)
+        }
         is AppCommand.Playlist -> {
             val playlist = db.listPlaylists().firstOrNull { it.name.equals(command.name.trim(), ignoreCase = true) }
                 ?: throw IllegalArgumentException(tr("There is no playlist called “{0}”", command.name))

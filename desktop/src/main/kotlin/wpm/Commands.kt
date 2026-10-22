@@ -13,6 +13,8 @@ sealed class AppCommand {
     data object Resume : AppCommand()
     data object Stop : AppCommand()
     data object StopPlaylist : AppCommand()
+    /** Installs the newest version, if there is one (installed app only). */
+    data object Update : AppCommand()
     /** A library item (by file name) or a file/folder on this PC (added to the library if needed). */
     data class Set(val target: String) : AppCommand()
     data class Playlist(val name: String) : AppCommand()
@@ -42,6 +44,7 @@ val COMMAND_LINE_HELP = """
       --set <file|name>   Show a file (added to the library if needed) or a library item
       --playlist <name>   Start a playlist
       --stop-playlist     Stop the running playlist
+      --update            Install the newest version, if there is one
       --show              Open the window
       --minimized         Start hidden in the tray
       --self-test         Check every engine and write the results to the log
@@ -60,6 +63,7 @@ private val simpleCommands = mapOf(
     "--toggle-pause" to AppCommand.TogglePause,
     "--stop" to AppCommand.Stop,
     "--stop-playlist" to AppCommand.StopPlaylist,
+    "--update" to AppCommand.Update,
 )
 
 /** Reads the command line. Options are case-insensitive; at most one command is allowed. */

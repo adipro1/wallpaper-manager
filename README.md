@@ -104,7 +104,7 @@ go to the running copy (it is started first if needed):
 WallpaperManager.exe --next | --random | --pause | --resume | --toggle-pause | --stop
 WallpaperManager.exe --set "C:\Pictures\sunset.jpg"    (a file, added to the library if needed)
 WallpaperManager.exe --set "sunset"                    (or a library item by name)
-WallpaperManager.exe --playlist "Evenings" | --stop-playlist | --show | --help
+WallpaperManager.exe --playlist "Evenings" | --stop-playlist | --update | --show | --help
 ```
 
 The exit code is 0 when it worked, 1 when it didn't and 2 for unknown options; the
