@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
@@ -102,9 +103,9 @@ fun DesktopPage(app: AppState) {
         }
     }
 
-    PageScaffold("Desktop", "Choose what's behind your desktop icons.", actions = {
-        OutlinedButton(onClick = app::nextWallpaper) { ButtonIcon(Icons.Outlined.SkipNext); Text("Next") }
-        OutlinedButton(onClick = app::randomWallpaper) { ButtonIcon(Icons.Outlined.Shuffle); Text("Random") }
+    PageScaffold(tr("Desktop"), tr("Choose what's behind your desktop icons."), actions = {
+        OutlinedButton(onClick = app::nextWallpaper) { ButtonIcon(Icons.Outlined.SkipNext); Text(tr("Next")) }
+        OutlinedButton(onClick = app::randomWallpaper) { ButtonIcon(Icons.Outlined.Shuffle); Text(tr("Random")) }
     }) {
         Card(Modifier.fillMaxWidth(), padding = PaddingValues(20.dp), fold = 26.dp) {
             Adaptive(820.dp, gap = 28.dp, first = { m ->
@@ -119,19 +120,19 @@ fun DesktopPage(app: AppState) {
                 }
             }) { m ->
                 Column(m.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Eyebrow("Current wallpaper")
-                    Text(current?.filename ?: if (state.kind == null) "Set outside this app" else "Removed from the library",
+                    Eyebrow(tr("Current wallpaper"))
+                    Text(current?.filename ?: if (state.kind == null) tr("Set outside this app") else tr("Removed from the library"),
                         color = Theme.colors.text, style = MaterialTheme.typography.headlineSmall, maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     if (state.kind == "video" || state.kind == "web" || state.kind == "shader") {
                         VideoControls(app, state, live)
                     } else {
-                        Text("POSITION", color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall)
+                        Text(tr("POSITION"), color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall)
                         val style = state.style
                         SingleChoiceSegmentedButtonRow {
                             IMAGE_STYLES.forEachIndexed { i, s ->
                                 SegmentedButton(style == s, {
-                                    app.runTask(failure = "Couldn't change the position") {
+                                    app.runTask(failure = tr("Couldn't change the position")) {
                                         app.changeWallpaper { app.wallpapers.setImageStyle(s) }
                                     }
                                 }, SegmentedButtonDefaults.itemShape(i, IMAGE_STYLES.size)) {
@@ -142,7 +143,7 @@ fun DesktopPage(app: AppState) {
                     }
                     if (hasOriginal) {
                         TextButton(onClick = { confirmRestore = true }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp)) {
-                            ButtonIcon(Icons.Outlined.Restore); Text("Restore original wallpaper")
+                            ButtonIcon(Icons.Outlined.Restore); Text(tr("Restore original wallpaper"))
                         }
                     }
                 }
@@ -150,21 +151,21 @@ fun DesktopPage(app: AppState) {
         }
 
         live.error?.let { error ->
-            Notice("Couldn't play this wallpaper: $error. " +
-                (if (current?.isRemote == true) "The stream may be offline, or the site changed - try “Update yt-dlp” in Settings." else ""))
+            Notice(tr("Couldn't play this wallpaper: {0}. ", error) +
+                (if (current?.isRemote == true) tr("The stream may be offline, or the site changed - try “Update yt-dlp” in Settings.") else ""))
         }
         if (live.competing.isNotEmpty()) {
-            Notice("${live.competing.joinToString()} is also drawing on the desktop and may cover this wallpaper. " +
-                "Close it or pause its wallpaper.", Theme.colors.gold)
+            Notice(tr("{0} is also drawing on the desktop and may cover this wallpaper. ", live.competing.joinToString()) +
+                tr("Close it or pause its wallpaper."), Theme.colors.gold)
         }
         if (!app.videoSupport) {
-            Notice("Video wallpapers need libmpv-2.dll in the app's bin folder.", Theme.colors.gold)
+            Notice(tr("Video wallpapers need libmpv-2.dll in the app's bin folder."), Theme.colors.gold)
         }
         if (displays.size > 1) {
             Card(Modifier.fillMaxWidth()) {
-                SectionTitle("Displays")
+                SectionTitle(tr("Displays"))
                 Spacer(Modifier.height(14.dp))
-                val options = listOf<Pair<String?, String>>(null to "All displays") + displays.map { it.id to it.label + if (it.primary) " (main)" else "" }
+                val options = listOf<Pair<String?, String>>(null to tr("All displays")) + displays.map { it.id to it.label + if (it.primary) tr(" (main)") else "" }
                 SingleChoiceSegmentedButtonRow {
                     options.forEachIndexed { i, (id, label) ->
                         SegmentedButton(target == id, { target = id }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label) }
@@ -175,23 +176,23 @@ fun DesktopPage(app: AppState) {
                 val targetDisplay = displays.firstOrNull { it.id == target }
                 when {
                     targetDisplay == null -> MutedText(
-                        if (choices.isEmpty()) "Pick a wallpaper below to show it on every display."
-                        else "${choices.size} display(s) have their own wallpaper. Picking one below for all displays replaces them.",
+                        if (choices.isEmpty()) tr("Pick a wallpaper below to show it on every display.")
+                        else tr("{0} display(s) have their own wallpaper. Picking one below for all displays replaces them.", choices.size),
                     )
-                    chosen == null -> MutedText("${targetDisplay.label} shows the same wallpaper as the others. Pick one below to give it its own.")
+                    chosen == null -> MutedText(tr("{0} shows the same wallpaper as the others. Pick one below to give it its own.", targetDisplay.label))
                     else -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        MutedText("${targetDisplay.label} has its own wallpaper: ${app.db.getMedia(chosen.mediaId)?.filename ?: "removed"}",
+                        MutedText(tr("{0} has its own wallpaper: {1}", targetDisplay.label, app.db.getMedia(chosen.mediaId)?.filename ?: tr("removed")),
                             Modifier.weight(1f))
                         TextButton(onClick = {
-                            app.runTask(failure = "Couldn't change the display") { app.changeWallpaper { app.wallpapers.clearDisplay(targetDisplay) } }
-                        }) { Text("Use the shared wallpaper") }
+                            app.runTask(failure = tr("Couldn't change the display")) { app.changeWallpaper { app.wallpapers.clearDisplay(targetDisplay) } }
+                        }) { Text(tr("Use the shared wallpaper")) }
                     }
                 }
             }
         }
         val pickTarget = displays.firstOrNull { it.id == target }
         ChooserCard(
-            app, if (pickTarget == null) "Choose a wallpaper" else "Choose a wallpaper for ${pickTarget.label}",
+            app, if (pickTarget == null) tr("Choose a wallpaper") else tr("Choose a wallpaper for {0}", pickTarget.label),
             onPick = { item -> if (pickTarget == null) app.setDesktop(item) else app.setOnDisplay(pickTarget, item) },
             filter = { !it.isVideo || app.videoSupport },
             highlighted = pickTarget?.let { choices[it.id]?.mediaId } ?: state.mediaId,
@@ -200,10 +201,10 @@ fun DesktopPage(app: AppState) {
 
     if (confirmRestore) {
         ConfirmDialog(
-            "Restore original wallpaper?", "Puts back the wallpaper you had before using this app.", "Restore",
+            tr("Restore original wallpaper?"), tr("Puts back the wallpaper you had before using this app."), tr("Restore"),
             onDismiss = { confirmRestore = false },
             onConfirm = {
-                app.runTask("Original wallpaper restored", "Couldn't restore the wallpaper") {
+                app.runTask(tr("Original wallpaper restored"), tr("Couldn't restore the wallpaper")) {
                     app.changeWallpaper { app.wallpapers.restoreOriginal() }
                 }
             },
@@ -226,27 +227,27 @@ private fun VideoControls(app: AppState, state: DesktopState, live: LiveInfo) {
     app.webEngineStatus?.let { Text(it, color = Theme.colors.accent) }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         when {
-            !live.active -> Tag("Live · stopped", Theme.colors.textMuted)
-            live.autoReason != null || live.paused -> Tag("Live · paused", Theme.colors.gold)
-            else -> Tag("Live · playing", Theme.colors.teal)
+            !live.active -> Tag(tr("Live · stopped"), Theme.colors.textMuted)
+            live.autoReason != null || live.paused -> Tag(tr("Live · paused"), Theme.colors.gold)
+            else -> Tag(tr("Live · playing"), Theme.colors.teal)
         }
-        live.autoReason?.let { MutedText("because ${it.text}") }
+        live.autoReason?.let { MutedText(tr("because {0}", tr(it.text))) }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (live.active && live.paused) {
-            Button(onClick = { app.videoAction { w.resumeVideo() } }) { ButtonIcon(Icons.Outlined.PlayArrow); Text("Resume") }
+            Button(onClick = { app.videoAction { w.resumeVideo() } }) { ButtonIcon(Icons.Outlined.PlayArrow); Text(tr("Resume")) }
         } else if (live.active) {
-            OutlinedButton(onClick = { app.videoAction { w.pauseVideo() } }) { ButtonIcon(Icons.Outlined.Pause); Text("Pause") }
+            OutlinedButton(onClick = { app.videoAction { w.pauseVideo() } }) { ButtonIcon(Icons.Outlined.Pause); Text(tr("Pause")) }
         } else {
-            Button(onClick = { app.videoAction { w.currentItem()?.let(w::set) } }) { ButtonIcon(Icons.Outlined.PlayArrow); Text("Start") }
+            Button(onClick = { app.videoAction { w.currentItem()?.let(w::set) } }) { ButtonIcon(Icons.Outlined.PlayArrow); Text(tr("Start")) }
         }
-        OutlinedButton(onClick = { app.videoAction("Back to the picture underneath") { w.stopVideo() } }) {
-            ButtonIcon(Icons.Outlined.Stop); Text("Stop")
+        OutlinedButton(onClick = { app.videoAction(tr("Back to the picture underneath")) { w.stopVideo() } }) {
+            ButtonIcon(Icons.Outlined.Stop); Text(tr("Stop"))
         }
         if (state.kind == "video") {
             OutlinedButton(onClick = { app.videoAction { w.setMuted(!live.muted) } }) {
                 Icon(if (live.muted) Icons.AutoMirrored.Outlined.VolumeOff else Icons.AutoMirrored.Outlined.VolumeUp, null)
-                Text(if (live.muted) "  Sound off" else "  Sound on")
+                Text(if (live.muted) tr("  Sound off") else tr("  Sound on"))
             }
         }
     }

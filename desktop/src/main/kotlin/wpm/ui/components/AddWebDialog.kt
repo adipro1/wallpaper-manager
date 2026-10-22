@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,23 +41,23 @@ fun AddWebDialog(app: AppState, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add a web wallpaper") },
+        title = { Text(tr("Add a web wallpaper")) },
         text = {
             Column(Modifier.width(520.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                MutedText("Web wallpapers are pages with animations or games that react to your mouse. " +
-                    "Use a folder with an index.html, a single .html file, or a .zip (Lively wallpapers work too).")
+                MutedText(tr("Web wallpapers are pages with animations or games that react to your mouse. ") +
+                    tr("Use a folder with an index.html, a single .html file, or a .zip (Lively wallpapers work too)."))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { pickFolder(app.window, "Choose a web wallpaper folder")?.let(::add) }) {
-                        ButtonIcon(Icons.Outlined.Folder); Text("Folder…")
+                    OutlinedButton(onClick = { pickFolder(app.window, tr("Choose a web wallpaper folder"))?.let(::add) }) {
+                        ButtonIcon(Icons.Outlined.Folder); Text(tr("Folder…"))
                     }
                     OutlinedButton(onClick = {
-                        val dialog = FileDialog(app.window as? Frame, "Choose a web wallpaper", FileDialog.LOAD).apply { file = "*.html;*.htm;*.zip" }
+                        val dialog = FileDialog(app.window as? Frame, tr("Choose a web wallpaper"), FileDialog.LOAD).apply { file = "*.html;*.htm;*.zip" }
                         dialog.isVisible = true
                         dialog.files.firstOrNull()?.let { add(it.toPath()) }
-                    }) { ButtonIcon(Icons.Outlined.UploadFile); Text(".html or .zip file…") }
+                    }) { ButtonIcon(Icons.Outlined.UploadFile); Text(tr(".html or .zip file…")) }
                 }
-                MutedText("Or show a website as your wallpaper (it is loaded live and needs a connection):")
-                OutlinedTextField(website, { website = it }, singleLine = true, label = { Text("Website address") },
+                MutedText(tr("Or show a website as your wallpaper (it is loaded live and needs a connection):"))
+                OutlinedTextField(website, { website = it }, singleLine = true, label = { Text(tr("Website address")) },
                     leadingIcon = { Icon(Icons.Outlined.Language, null) }, modifier = Modifier.fillMaxWidth(),
                     isError = website.isNotBlank() && url == null)
             }
@@ -65,13 +66,13 @@ fun AddWebDialog(app: AppState, onDismiss: () -> Unit) {
             Button(onClick = {
                 val link = url ?: return@Button
                 onDismiss()
-                app.runTask(failure = "Couldn't add the website") {
+                app.runTask(failure = tr("Couldn't add the website")) {
                     val id = app.web.addWebsite(link)
                     app.libraryChanged()
-                    app.toast(if (id == null) "That website is already in your library" else "Website added", ToastKind.Success)
+                    app.toast(if (id == null) tr("That website is already in your library") else tr("Website added"), ToastKind.Success)
                 }
-            }, enabled = url != null) { Text("Add website") }
+            }, enabled = url != null) { Text(tr("Add website")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Close")) } },
     )
 }

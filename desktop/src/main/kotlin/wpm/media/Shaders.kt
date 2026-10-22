@@ -1,5 +1,6 @@
 package wpm.media
 
+import wpm.tr
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -120,9 +121,9 @@ class Shaders(
 
     /** Imports a .glsl/.frag file (copied, so editing it here doesn't change the original). */
     fun import(file: Path): Long {
-        require(file.extension.lowercase() in SHADER_EXTENSIONS) { "Choose a .glsl or .frag file" }
+        require(file.extension.lowercase() in SHADER_EXTENSIONS) { tr("Choose a .glsl or .frag file") }
         val code = file.readText()
-        require("mainImage" in code) { "This doesn't look like a Shadertoy shader (no mainImage function)" }
+        require("mainImage" in code) { tr("This doesn't look like a Shadertoy shader (no mainImage function)") }
         return create(file.nameWithoutExtension, code, interactive = "iMouse" in code, audio = "iChannel0" in code)
     }
 

@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.outlined.Delete
@@ -78,9 +79,9 @@ import wpm.ui.components.TextInputDialog
 fun formatCountdown(seconds: Double): String {
     val s = seconds.toLong().coerceAtLeast(0)
     return when {
-        s >= 3600 -> "in ${s / 3600} h ${s % 3600 / 60} min"
-        s >= 60 -> "in ${(s + 59) / 60} min"
-        else -> "in $s s"
+        s >= 3600 -> tr("in {0} h {1} min", s / 3600, s % 3600 / 60)
+        s >= 60 -> tr("in {0} min", (s + 59) / 60)
+        else -> tr("in {0} s", s)
     }
 }
 
@@ -107,20 +108,20 @@ fun PlaylistsPage(app: AppState) {
         countdown = null
     }
 
-    PageScaffold("Playlists", "Change the wallpaper automatically at an interval.", scroll = false, actions = {
-        Button(onClick = { creating = true }) { ButtonIcon(Icons.Outlined.Add); Text("New playlist") }
+    PageScaffold(tr("Playlists"), tr("Change the wallpaper automatically at an interval."), scroll = false, actions = {
+        Button(onClick = { creating = true }) { ButtonIcon(Icons.Outlined.Add); Text(tr("New playlist")) }
     }) {
         if (playlists.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
-                EmptyState("No playlists yet", "Create one, add wallpapers, choose an interval and press Play.") {
-                    Button(onClick = { creating = true }) { ButtonIcon(Icons.Outlined.Add); Text("New playlist") }
+                EmptyState(tr("No playlists yet"), tr("Create one, add wallpapers, choose an interval and press Play.")) {
+                    Button(onClick = { creating = true }) { ButtonIcon(Icons.Outlined.Add); Text(tr("New playlist")) }
                 }
             }
             return@PageScaffold
         }
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Card(Modifier.width(270.dp).fillMaxHeight(), padding = androidx.compose.foundation.layout.PaddingValues(10.dp), fold = 14.dp) {
-                Text("YOUR PLAYLISTS", color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall,
+                Text(tr("YOUR PLAYLISTS"), color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 10.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(playlists, key = { it.id }) { p ->
@@ -128,9 +129,9 @@ fun PlaylistsPage(app: AppState) {
                             Column(Modifier.weight(1f)) {
                                 Text(p.name, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (p.id == selectedId) FontWeight.SemiBold else FontWeight.Normal)
-                                Text("${p.itemCount} wallpapers · ${p.intervalText}", color = Theme.colors.textMuted, fontSize = 12.sp)
+                                Text(tr("{0} wallpapers · {1}", p.itemCount, p.intervalText), color = Theme.colors.textMuted, fontSize = 12.sp)
                             }
-                            if (p.id == activeId) Tag("Playing", Theme.colors.teal)
+                            if (p.id == activeId) Tag(tr("Playing"), Theme.colors.teal)
                         }
                     }
                 }
@@ -143,7 +144,7 @@ fun PlaylistsPage(app: AppState) {
     }
 
     if (creating) {
-        TextInputDialog("New playlist", "Name", confirm = "Create", onDismiss = { creating = false }, onConfirm = { name ->
+        TextInputDialog(tr("New playlist"), tr("Name"), confirm = tr("Create"), onDismiss = { creating = false }, onConfirm = { name ->
             app.runTask {
                 selectedId = app.db.createPlaylist(name)
                 app.libraryChanged()
@@ -174,25 +175,25 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
 
     Card(modifier, fold = 22.dp) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }, modifier = Modifier.weight(1f),
+            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(tr("Name")) }, modifier = Modifier.weight(1f),
                 textStyle = MaterialTheme.typography.titleLarge)
             if (name.isNotBlank() && name != playlist.name) {
-                TextButton(onClick = { app.runTask { app.db.updatePlaylist(playlist.id, name = name.trim()); app.libraryChanged() } }) { Text("Rename") }
+                TextButton(onClick = { app.runTask { app.db.updatePlaylist(playlist.id, name = name.trim()); app.libraryChanged() } }) { Text(tr("Rename")) }
             }
             if (playing) {
-                OutlinedButton(onClick = { app.runTask("Playlist stopped") { app.playlists.stop(); app.wallpaperChanged() } }) {
-                    ButtonIcon(Icons.Outlined.Stop); Text("Stop")
+                OutlinedButton(onClick = { app.runTask(tr("Playlist stopped")) { app.playlists.stop(); app.wallpaperChanged() } }) {
+                    ButtonIcon(Icons.Outlined.Stop); Text(tr("Stop"))
                 }
             } else {
                 Button(onClick = {
-                    app.runTask("Playing ${playlist.name}", "Couldn't start the playlist") { app.changeWallpaper { app.playlists.start(playlist.id) } }
-                }, enabled = items.isNotEmpty()) { ButtonIcon(Icons.Outlined.PlayArrow); Text("Play") }
+                    app.runTask(tr("Playing {0}", playlist.name), tr("Couldn't start the playlist")) { app.changeWallpaper { app.playlists.start(playlist.id) } }
+                }, enabled = items.isNotEmpty()) { ButtonIcon(Icons.Outlined.PlayArrow); Text(tr("Play")) }
             }
         }
         Spacer(Modifier.height(16.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("ORDER", color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
-            val modes = listOf("sequential" to "In order", "random" to "Shuffle")
+            Text(tr("ORDER"), color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
+            val modes = listOf("sequential" to tr("In order"), "random" to tr("Shuffle"))
             SingleChoiceSegmentedButtonRow {
                 modes.forEachIndexed { i, (key, label) ->
                     SegmentedButton(playlist.mode == key, {
@@ -201,7 +202,7 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Text("CHANGE EVERY", color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
+            Text(tr("CHANGE EVERY"), color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
             NumberField(amount, { amount = it.filter(Char::isDigit).take(4); saveInterval(amount) })
             SingleChoiceSegmentedButtonRow {
                 listOf(false to "min", true to "h").forEachIndexed { i, (inHours, label) ->
@@ -213,19 +214,19 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
         if (playing) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Tag("Playing", Theme.colors.teal)
-                Text("Next change ${countdown?.let(::formatCountdown) ?: "soon"}", color = Theme.colors.accent)
+                Tag(tr("Playing"), Theme.colors.teal)
+                Text(tr("Next change {0}", countdown?.let(::formatCountdown) ?: tr("soon")), color = Theme.colors.accent)
             }
         }
         Spacer(Modifier.height(18.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionTitle("${items.size} wallpapers")
             Spacer(Modifier.weight(1f))
-            OutlinedButton(onClick = { adding = true }) { ButtonIcon(Icons.Outlined.Add); Text("Add wallpapers") }
+            OutlinedButton(onClick = { adding = true }) { ButtonIcon(Icons.Outlined.Add); Text(tr("Add wallpapers")) }
         }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
-            EmptyState("Nothing to play yet", "Add wallpapers from your library, then press Play.", Modifier.weight(1f))
+            EmptyState(tr("Nothing to play yet"), tr("Add wallpapers from your library, then press Play."), Modifier.weight(1f))
         }
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(items, key = { _, it -> it.id }) { index, item ->
@@ -241,36 +242,36 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
                     }
                     Column(Modifier.weight(1f)) {
                         Text(item.filename, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(if (item.isVideo) "Video ${item.durationText}" else item.resolutionText, color = Theme.colors.textMuted, fontSize = 12.sp)
+                        Text(if (item.isVideo) tr("Video {0}", item.durationText) else item.resolutionText, color = Theme.colors.textMuted, fontSize = 12.sp)
                     }
                     IconButton(onClick = { app.runTask { app.db.moveInPlaylist(playlist.id, item.id, -1); app.libraryChanged() } }, enabled = index > 0) {
-                        Icon(Icons.Outlined.ArrowUpward, "Move up")
+                        Icon(Icons.Outlined.ArrowUpward, tr("Move up"))
                     }
                     IconButton(onClick = { app.runTask { app.db.moveInPlaylist(playlist.id, item.id, +1); app.libraryChanged() } }, enabled = index < items.lastIndex) {
-                        Icon(Icons.Outlined.ArrowDownward, "Move down")
+                        Icon(Icons.Outlined.ArrowDownward, tr("Move down"))
                     }
                     IconButton(onClick = { app.runTask { app.db.removeFromPlaylist(playlist.id, item.id); app.libraryChanged() } }) {
-                        Icon(Icons.Outlined.Close, "Remove from playlist")
+                        Icon(Icons.Outlined.Close, tr("Remove from playlist"))
                     }
                 }
             }
         }
         Row {
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { confirmDelete = true }, danger = true) { ButtonIcon(Icons.Outlined.Delete); Text("Delete playlist") }
+            TextButton(onClick = { confirmDelete = true }, danger = true) { ButtonIcon(Icons.Outlined.Delete); Text(tr("Delete playlist")) }
         }
     }
 
     if (adding) {
-        MediaPickerDialog(app, "Add to ${playlist.name}", multiple = true, exclude = items.mapTo(HashSet()) { it.id },
+        MediaPickerDialog(app, tr("Add to {0}", playlist.name), multiple = true, exclude = items.mapTo(HashSet()) { it.id },
             onDismiss = { adding = false }) { picked ->
-            app.runTask("Added ${picked.size}") { app.db.addToPlaylist(playlist.id, picked.map { it.id }); app.libraryChanged() }
+            app.runTask(tr("Added {0}", picked.size)) { app.db.addToPlaylist(playlist.id, picked.map { it.id }); app.libraryChanged() }
         }
     }
     if (confirmDelete) {
-        ConfirmDialog("Delete “${playlist.name}”?", "The wallpapers stay in your library. Schedule rules that use this playlist are removed too.",
-            "Delete", danger = true, onDismiss = { confirmDelete = false }, onConfirm = {
-                app.runTask("Playlist deleted") {
+        ConfirmDialog(tr("Delete “{0}”?", playlist.name), tr("The wallpapers stay in your library. Schedule rules that use this playlist are removed too."),
+            tr("Delete"), danger = true, onDismiss = { confirmDelete = false }, onConfirm = {
+                app.runTask(tr("Playlist deleted")) {
                     if (playing) app.playlists.stop()
                     app.db.deletePlaylist(playlist.id)
                     app.libraryChanged()

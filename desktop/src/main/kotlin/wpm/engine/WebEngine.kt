@@ -1,5 +1,6 @@
 package wpm.engine
 
+import wpm.tr
 import com.sun.jna.Native
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef.HWND
@@ -328,7 +329,7 @@ fun openBrowserWindow(
         Thread.sleep(50)
     }
     onEdt { browser.close(true); client.dispose() }
-    throw IllegalStateException("The web engine didn't create its window")
+    throw IllegalStateException(tr("The web engine didn't create its window"))
 }
 
 /** Chromium's browser windows in this process (JCEF's "CefBrowserWindow"), as handle values. */

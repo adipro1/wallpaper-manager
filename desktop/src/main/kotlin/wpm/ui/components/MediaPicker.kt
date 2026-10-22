@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,7 +44,7 @@ fun MediaPickerDialog(
     multiple: Boolean,
     onDismiss: () -> Unit,
     exclude: Set<Long> = emptySet(),
-    confirmLabel: String = "Add",
+    confirmLabel: String = tr("Add"),
     /** Only items this accepts are offered. */
     filter: (MediaItem) -> Boolean = { true },
     onPick: (List<MediaItem>) -> Unit,
@@ -60,13 +61,13 @@ fun MediaPickerDialog(
         AppTheme(app.darkTheme) {
             Column(Modifier.fillMaxSize().background(Theme.colors.windowBg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(search, { search = it }, singleLine = true, placeholder = { Text("Search") },
+                    OutlinedTextField(search, { search = it }, singleLine = true, placeholder = { Text(tr("Search")) },
                         leadingIcon = { Icon(Icons.Outlined.Search, null) }, modifier = Modifier.width(280.dp))
                     Spacer(Modifier.weight(1f))
                     if (multiple) MutedText("${selected.size} selected")
                 }
                 if (items.isEmpty()) {
-                    MutedText(if (search.isBlank()) "Nothing to add. Import wallpapers on the Library page." else "Nothing matches.")
+                    MutedText(if (search.isBlank()) tr("Nothing to add. Import wallpapers on the Library page.") else tr("Nothing matches."))
                     Spacer(Modifier.weight(1f))
                 } else {
                     MediaGrid(items, app.thumbs, selected, { item, _ ->
@@ -80,9 +81,9 @@ fun MediaPickerDialog(
                 }
                 if (multiple) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { selected = items.mapTo(HashSet()) { it.id } }) { Text("Select all") }
+                        TextButton(onClick = { selected = items.mapTo(HashSet()) { it.id } }) { Text(tr("Select all")) }
                         Spacer(Modifier.weight(1f))
-                        TextButton(onClick = onDismiss) { Text("Cancel") }
+                        TextButton(onClick = onDismiss) { Text(tr("Cancel")) }
                         Button(onClick = {
                             val picked = items.filter { it.id in selected }
                             onDismiss()

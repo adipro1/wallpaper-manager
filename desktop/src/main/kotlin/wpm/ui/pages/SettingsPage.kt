@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -64,13 +65,13 @@ private val log = logger("settings-page")
 
 @Composable
 fun SettingsPage(app: AppState) {
-    PageScaffold("Settings") {
+    PageScaffold(tr("Settings")) {
         Card(Modifier.fillMaxWidth()) {
-            SectionTitle("Appearance")
+            SectionTitle(tr("Appearance"))
             Spacer(Modifier.height(6.dp))
-            MutedText("Washi paper by day, indigo ink by night.")
+            MutedText(tr("Washi paper by day, indigo ink by night."))
             Spacer(Modifier.height(14.dp))
-            val modes = listOf("light" to "Light", "dark" to "Dark", "system" to "System")
+            val modes = listOf("light" to tr("Light"), "dark" to tr("Dark"), "system" to tr("System"))
             SingleChoiceSegmentedButtonRow {
                 modes.forEachIndexed { i, (key, label) ->
                     SegmentedButton(
@@ -81,11 +82,12 @@ fun SettingsPage(app: AppState) {
                 }
             }
             Spacer(Modifier.height(6.dp))
-            SettingSwitch("Reduce motion (no page animations)", app.reduceMotion) { app.updateReduceMotion(it) }
+            LanguageSetting(app)
+            SettingSwitch(tr("Reduce motion (no page animations)"), app.reduceMotion) { app.updateReduceMotion(it) }
             var accentOn by remember { mutableStateOf(app.accent.enabled) }
             SettingSwitch(
-                "Match the Windows accent color to the wallpaper", accentOn,
-                hint = "Taskbar, Start and window borders take the wallpaper's most striking color. Switching it off puts your own color back.",
+                tr("Match the Windows accent color to the wallpaper"), accentOn,
+                hint = tr("Taskbar, Start and window borders take the wallpaper's most striking color. Switching it off puts your own color back."),
             ) { on ->
                 accentOn = on
                 app.runTask {
@@ -98,18 +100,18 @@ fun SettingsPage(app: AppState) {
         WatchedFoldersCard(app)
 
         Card(Modifier.fillMaxWidth()) {
-            SectionTitle("Window")
+            SectionTitle(tr("Window"))
             var closeToTray by remember { mutableStateOf(app.settings.boolean("close_to_tray", true)) }
-            SettingSwitch("Keep running in the tray when the window is closed", closeToTray) {
+            SettingSwitch(tr("Keep running in the tray when the window is closed"), closeToTray) {
                 closeToTray = it
                 app.settings.set("close_to_tray", it)
             }
             var startup by remember { mutableStateOf(runCatching { Autostart.isEnabled() }.getOrDefault(false)) }
             SettingSwitch(
-                "Start with Windows (hidden in the tray)",
+                tr("Start with Windows (hidden in the tray)"),
                 startup,
                 enabled = Autostart.available,
-                hint = if (Autostart.available) null else "Available in the installed app.",
+                hint = if (Autostart.available) null else tr("Available in the installed app."),
             ) { wanted ->
                 try {
                     Autostart.setEnabled(wanted)
@@ -117,7 +119,7 @@ fun SettingsPage(app: AppState) {
                 } catch (e: Exception) {
                     log.warning("Changing start with Windows failed: ${e.message}")
                     startup = runCatching { Autostart.isEnabled() }.getOrDefault(false)
-                    app.toast("Couldn't change start with Windows: ${e.message}", ToastKind.Error)
+                    app.toast(tr("Couldn't change start with Windows: {0}", e.message), ToastKind.Error)
                 }
             }
         }
@@ -125,60 +127,60 @@ fun SettingsPage(app: AppState) {
         ShortcutsCard(app)
 
         Card(Modifier.fillMaxWidth()) {
-            SectionTitle("Live wallpapers")
+            SectionTitle(tr("Live wallpapers"))
             Spacer(Modifier.height(4.dp))
             MutedText(
-                if (app.videoSupport) "Video engine: libmpv found in ${NativeBin.dir.toAbsolutePath()}"
-                else "Video engine missing: put $LIBMPV_DLL into ${NativeBin.dir.toAbsolutePath()}",
+                if (app.videoSupport) tr("Video engine: libmpv found in {0}", NativeBin.dir.toAbsolutePath())
+                else tr("Video engine missing: put {0} into {1}", LIBMPV_DLL, NativeBin.dir.toAbsolutePath()),
             )
-            MutedText(if (app.ytDlp.available) "Video links: yt-dlp found" else "Video links need yt-dlp.exe in ${NativeBin.dir.toAbsolutePath()}")
+            MutedText(if (app.ytDlp.available) tr("Video links: yt-dlp found") else tr("Video links need yt-dlp.exe in {0}", NativeBin.dir.toAbsolutePath()))
             if (app.ytDlp.available) {
                 var updating by remember { mutableStateOf(false) }
                 TextButton(contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp), onClick = {
                     updating = true
-                    app.runTask(failure = "Couldn't update yt-dlp") {
+                    app.runTask(failure = tr("Couldn't update yt-dlp")) {
                         try {
                             app.toast(app.ytDlp.update(), ToastKind.Success)
                         } finally {
                             updating = false
                         }
                     }
-                }, enabled = !updating) { Text(if (updating) "Updating yt-dlp…" else "Update yt-dlp (if YouTube links stop working)") }
+                }, enabled = !updating) { Text(if (updating) tr("Updating yt-dlp…") else tr("Update yt-dlp (if YouTube links stop working)")) }
             }
-            BooleanSetting(app, "resume_live_wallpaper", true, "Start the live wallpaper again when the app starts")
+            BooleanSetting(app, "resume_live_wallpaper", true, tr("Start the live wallpaper again when the app starts"))
             var allDisplays by remember { mutableStateOf(app.settings.boolean("live_all_displays", true)) }
-            SettingSwitch("Show live wallpapers on every display (otherwise only the main one)", allDisplays) { on ->
+            SettingSwitch(tr("Show live wallpapers on every display (otherwise only the main one)"), allDisplays) { on ->
                 allDisplays = on
                 app.runTask { app.changeWallpaper { app.wallpapers.setAllDisplays(on) } }
             }
-            BooleanSetting(app, "web_interaction", true, "Web wallpapers react to the mouse on the empty desktop")
-            BooleanSetting(app, "web_muted", true, "Mute web wallpapers (applies after restarting the app)")
-            BooleanSetting(app, "audio_reactive", true, "Audio-reactive wallpapers may listen to what your PC plays (analysed live, never recorded)")
-            FrameRateSetting(app, "shader_fps", "60", "Shader frame rate (lower saves power)", listOf("15", "30", "60"), restartKind = "shader")
-            FrameRateSetting(app, "web_fps", "full", "Web wallpaper frame rate", listOf("30", "full"), restartKind = "web")
+            BooleanSetting(app, "web_interaction", true, tr("Web wallpapers react to the mouse on the empty desktop"))
+            BooleanSetting(app, "web_muted", true, tr("Mute web wallpapers (applies after restarting the app)"))
+            BooleanSetting(app, "audio_reactive", true, tr("Audio-reactive wallpapers may listen to what your PC plays (analysed live, never recorded)"))
+            FrameRateSetting(app, "shader_fps", "60", tr("Shader frame rate (lower saves power)"), listOf("15", "30", "60"), restartKind = "shader")
+            FrameRateSetting(app, "web_fps", "full", tr("Web wallpaper frame rate"), listOf("30", "full"), restartKind = "web")
             MutedText(
                 when {
-                    wpm.engine.Chromium.version() != null -> "Web engine: Chromium ${wpm.engine.Chromium.version()}"
-                    wpm.engine.Chromium.installed(app.chromiumDir) -> "Web engine: installed"
-                    else -> "Web engine: downloaded the first time you use a web wallpaper (about 150 MB)"
+                    wpm.engine.Chromium.version() != null -> tr("Web engine: Chromium {0}", wpm.engine.Chromium.version())
+                    wpm.engine.Chromium.installed(app.chromiumDir) -> tr("Web engine: installed")
+                    else -> tr("Web engine: downloaded the first time you use a web wallpaper (about 150 MB)")
                 },
             )
-            BooleanSetting(app, "pause_when_hidden", true, "Pause while the PC is locked or the screen is off")
-            BooleanSetting(app, "pause_on_fullscreen", true, "Pause while a game or video runs full screen")
-            BooleanSetting(app, "pause_when_covered", true, "Pause while maximized windows cover the desktop")
-            BooleanSetting(app, "pause_on_battery", false, "Pause while running on battery")
-            BooleanSetting(app, "pause_when_app_focused", false, "Pause while any other app is in front (resumes when you click the desktop)")
+            BooleanSetting(app, "pause_when_hidden", true, tr("Pause while the PC is locked or the screen is off"))
+            BooleanSetting(app, "pause_on_fullscreen", true, tr("Pause while a game or video runs full screen"))
+            BooleanSetting(app, "pause_when_covered", true, tr("Pause while maximized windows cover the desktop"))
+            BooleanSetting(app, "pause_on_battery", false, tr("Pause while running on battery"))
+            BooleanSetting(app, "pause_when_app_focused", false, tr("Pause while any other app is in front (resumes when you click the desktop)"))
             AppPauseRules(app, Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp))
         }
 
         Card(Modifier.fillMaxWidth()) {
-            SectionTitle("Storage")
+            SectionTitle(tr("Storage"))
             Spacer(Modifier.height(6.dp))
-            MutedText("Library, thumbnails and logs: ${app.paths.dataDir}")
+            MutedText(tr("Library, thumbnails and logs: {0}", app.paths.dataDir))
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { openFolder(app, app.paths.dataDir) }) { Text("Open data folder") }
-                OutlinedButton(onClick = { openFolder(app, app.paths.logDir) }) { Text("Open log folder") }
+                OutlinedButton(onClick = { openFolder(app, app.paths.dataDir) }) { Text(tr("Open data folder")) }
+                OutlinedButton(onClick = { openFolder(app, app.paths.logDir) }) { Text(tr("Open log folder")) }
             }
         }
 
@@ -187,27 +189,27 @@ fun SettingsPage(app: AppState) {
         BackupCard(app)
 
         Card(Modifier.fillMaxWidth()) {
-            SectionTitle("Updates")
-            BooleanSetting(app, "check_for_updates", true, "Check for new versions once a day")
+            SectionTitle(tr("Updates"))
+            BooleanSetting(app, "check_for_updates", true, tr("Check for new versions once a day"))
             var available by remember { mutableStateOf(app.updates.availableVersion()) }
             var checking by remember { mutableStateOf(false) }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MutedText(available?.let { "Version $it is available (you have $APP_VERSION)." } ?: "You have version $APP_VERSION.")
+                MutedText(available?.let { tr("Version {0} is available (you have {1}).", it, APP_VERSION) } ?: tr("You have version {0}.", APP_VERSION))
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(onClick = {
                     checking = true
-                    app.runTask(failure = "Couldn't check for updates") {
+                    app.runTask(failure = tr("Couldn't check for updates")) {
                         try {
                             available = app.updates.checkIfDue(force = true)
-                            app.toast(available?.let { "Version $it is available" } ?: "You have the latest version", ToastKind.Success)
+                            app.toast(available?.let { tr("Version {0} is available", it) } ?: tr("You have the latest version"), ToastKind.Success)
                         } finally {
                             checking = false
                         }
                     }
-                }, enabled = !checking) { Text(if (checking) "Checking…" else "Check now") }
+                }, enabled = !checking) { Text(if (checking) tr("Checking…") else tr("Check now")) }
                 if (available != null && !wpm.services.Updater.canInstall) {
-                    Button(onClick = { openLink(app, RELEASES_PAGE) }) { Text("Download") }
+                    Button(onClick = { openLink(app, RELEASES_PAGE) }) { Text(tr("Download")) }
                 }
             }
             if (available != null && wpm.services.Updater.canInstall) {
@@ -217,34 +219,59 @@ fun SettingsPage(app: AppState) {
         }
 
         Card(Modifier.fillMaxWidth()) {
-            SectionTitle("Diagnostics")
+            SectionTitle(tr("Diagnostics"))
             Spacer(Modifier.height(6.dp))
-            MutedText("If something doesn't work, save a diagnostics file and attach it to a bug report. It contains logs and settings, no pictures.")
+            MutedText(tr("If something doesn't work, save a diagnostics file and attach it to a bug report. It contains logs and settings, no pictures."))
             Spacer(Modifier.height(12.dp))
             OutlinedButton(onClick = {
-                val dialog = FileDialog(app.window as? Frame, "Save diagnostics", FileDialog.SAVE).apply {
-                    file = "WallpaperManager-diagnostics-${LocalDate.now()}.zip"
+                val dialog = FileDialog(app.window as? Frame, tr("Save diagnostics"), FileDialog.SAVE).apply {
+                    file = tr("WallpaperManager-diagnostics-{0}.zip", LocalDate.now())
                 }
                 dialog.isVisible = true
                 val name = dialog.file ?: return@OutlinedButton
                 val target = Path.of(dialog.directory, if (name.endsWith(".zip")) name else "$name.zip")
-                app.runTask("Diagnostics saved", "Couldn't save diagnostics") {
+                app.runTask(tr("Diagnostics saved"), tr("Couldn't save diagnostics")) {
                     saveDiagnostics(target, app.db, app.paths, app.wallpapers)
                 }
-            }) { Text("Save diagnostics…") }
+            }) { Text(tr("Save diagnostics…")) }
         }
 
         Card(Modifier.fillMaxWidth()) {
-            SectionTitle("About")
+            SectionTitle(tr("About"))
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OrigamiMark(34.dp)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(APP_NAME, color = Theme.colors.text, style = MaterialTheme.typography.titleMedium)
-                    MutedText("Version $APP_VERSION")
+                    MutedText(tr("Version {0}", APP_VERSION))
                 }
-                TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text("Project page"); ButtonIcon(Icons.AutoMirrored.Outlined.OpenInNew) }
+                TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text(tr("Project page")); ButtonIcon(Icons.AutoMirrored.Outlined.OpenInNew) }
+            }
+        }
+    }
+}
+
+/** System / English / Deutsch; takes effect after a restart (offered right away). */
+@Composable
+private fun LanguageSetting(app: AppState) {
+    val started = remember { wpm.I18n.language }
+    var choice by remember { mutableStateOf(app.settings.string("language", "system")) }
+    val options = listOf("system" to tr("Windows language")) + wpm.LANGUAGES.entries.map { it.key to it.value }
+    Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(tr("Language"), color = Theme.colors.text)
+            if (wpm.I18n.resolve(choice) != started) MutedText(tr("Restart the app to switch languages."))
+        }
+        if (wpm.I18n.resolve(choice) != started) {
+            TextButton(onClick = { app.restart() }) { Text(tr("Restart now")) }
+        }
+        SingleChoiceSegmentedButtonRow {
+            options.forEachIndexed { i, (code, label) ->
+                SegmentedButton(choice == code, {
+                    choice = code
+                    app.settings.set("language", code)
+                }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label) }
             }
         }
     }
@@ -260,12 +287,12 @@ private fun OneClickUpdate(app: AppState) {
             androidx.compose.material3.LinearProgressIndicator({ p.toFloat() }, Modifier.weight(1f))
             MutedText("Downloading… ${(p * 100).toInt()} %")
         } else {
-            MutedText("Installs in the background: the app closes for a moment and comes back updated.", Modifier.weight(1f))
-            TextButton(onClick = { openLink(app, RELEASES_PAGE) }) { Text("What's new") }
+            MutedText(tr("Installs in the background: the app closes for a moment and comes back updated."), Modifier.weight(1f))
+            TextButton(onClick = { openLink(app, RELEASES_PAGE) }) { Text(tr("What's new")) }
             Button(onClick = {
-                val release = app.updates.availableRelease() ?: return@Button app.toast("Check for updates again first")
+                val release = app.updates.availableRelease() ?: return@Button app.toast(tr("Check for updates again first"))
                 progress = 0.0
-                app.runTask(failure = "Couldn't update") {
+                app.runTask(failure = tr("Couldn't update")) {
                     try {
                         val installer = wpm.services.Updater.download(release, app.paths.cacheDir.resolve("updates")) { progress = it }
                         wpm.services.Updater.launch(installer)
@@ -274,7 +301,7 @@ private fun OneClickUpdate(app: AppState) {
                         progress = null
                     }
                 }
-            }) { Text("Install now") }
+            }) { Text(tr("Install now")) }
         }
     }
 }
@@ -291,7 +318,7 @@ private fun FrameRateSetting(app: AppState, key: String, default: String, label:
                     value = option
                     app.settings.set(key, option)
                     app.runTask { app.changeWallpaper { if (app.wallpapers.state.kind == restartKind) app.wallpapers.restartLive() } }
-                }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(if (option == "full") "Full" else "$option fps") }
+                }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(if (option == "full") tr("Full") else "$option fps") }
             }
         }
     }
@@ -313,15 +340,15 @@ private fun PerformanceCard(app: AppState) {
         }
     }
     Card(Modifier.fillMaxWidth()) {
-        SectionTitle("Performance")
+        SectionTitle(tr("Performance"))
         Spacer(Modifier.height(6.dp))
-        MutedText("Wallpaper Manager with its video and web engines, right now. Lower frame rates and the pause options above save the most.")
+        MutedText(tr("Wallpaper Manager with its video and web engines, right now. Lower frame rates and the pause options above save the most."))
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            UsageFigure("CPU", usage?.let { "%.1f %%".format(java.util.Locale.ROOT, it.cpuPercent) })
-            UsageFigure("Memory", usage?.let { "${it.memoryMb} MB" })
-            UsageFigure("GPU", usage?.let { u -> u.gpuPercent?.let { "%.0f %%".format(java.util.Locale.ROOT, it) } ?: "n/a" })
-            UsageFigure("Processes", usage?.processes?.toString())
+            UsageFigure(tr("CPU"), usage?.let { "%.1f %%".format(java.util.Locale.ROOT, it.cpuPercent) })
+            UsageFigure(tr("Memory"), usage?.let { "${it.memoryMb} MB" })
+            UsageFigure(tr("GPU"), usage?.let { u -> u.gpuPercent?.let { "%.0f %%".format(java.util.Locale.ROOT, it) } ?: "n/a" })
+            UsageFigure(tr("Processes"), usage?.processes?.toString())
         }
     }
 }
@@ -339,41 +366,41 @@ private fun UsageFigure(label: String, value: String?) {
 private fun WatchedFoldersCard(app: AppState) {
     var folders by remember { mutableStateOf(app.watched.folders) }
     Card(Modifier.fillMaxWidth()) {
-        SectionTitle("Watched folders")
+        SectionTitle(tr("Watched folders"))
         Spacer(Modifier.height(6.dp))
-        MutedText("New pictures and videos in these folders are added to the library, and deleted ones removed. Moving files around inside them keeps their playlists and tags.")
+        MutedText(tr("New pictures and videos in these folders are added to the library, and deleted ones removed. Moving files around inside them keeps their playlists and tags."))
         Spacer(Modifier.height(8.dp))
         folders.forEach { folder ->
             Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(folder.toString(), color = Theme.colors.text, modifier = Modifier.weight(1f), maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 TextButton(onClick = {
-                    app.runTask("Stopped watching ${folder.fileName}") {
+                    app.runTask(tr("Stopped watching {0}", folder.fileName)) {
                         app.watched.remove(folder)
                         folders = app.watched.folders
                     }
-                }) { Text("Stop watching") }
+                }) { Text(tr("Stop watching")) }
             }
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
-                val folder = wpm.ui.components.pickFolder(app.window, "Watch a folder") ?: return@OutlinedButton
-                app.runTask(failure = "Couldn't watch the folder") {
+                val folder = wpm.ui.components.pickFolder(app.window, tr("Watch a folder")) ?: return@OutlinedButton
+                app.runTask(failure = tr("Couldn't watch the folder")) {
                     val result = app.watched.add(folder)
                     folders = app.watched.folders
                     app.libraryChanged()
-                    app.toast("Watching ${folder.fileName}: ${result.added} added", ToastKind.Success)
+                    app.toast(tr("Watching {0}: {1} added", folder.fileName, result.added), ToastKind.Success)
                 }
-            }) { Text("Watch a folder…") }
+            }) { Text(tr("Watch a folder…")) }
             if (folders.isNotEmpty()) {
                 TextButton(onClick = {
-                    app.runTask(failure = "Couldn't check the folders") {
+                    app.runTask(failure = tr("Couldn't check the folders")) {
                         val result = app.watched.syncAll()
                         app.libraryChanged()
-                        app.toast(if (result.changed) "${result.added} added, ${result.removed} removed, ${result.moved} moved" else "Everything is up to date")
+                        app.toast(if (result.changed) tr("{0} added, {1} removed, {2} moved", result.added, result.removed, result.moved) else tr("Everything is up to date"))
                     }
-                }) { Text("Check now") }
+                }) { Text(tr("Check now")) }
             }
         }
     }
@@ -384,45 +411,45 @@ private fun WatchedFoldersCard(app: AppState) {
 private fun BackupCard(app: AppState) {
     var restoring by remember { mutableStateOf<Pair<Path, wpm.services.BackupInfo>?>(null) }
     Card(Modifier.fillMaxWidth()) {
-        SectionTitle("Backup")
+        SectionTitle(tr("Backup"))
         Spacer(Modifier.height(6.dp))
-        MutedText("One file with your library, playlists, schedule, settings, shaders and thumbnails. The wallpaper files themselves " +
-            "aren't included; on another PC, Library > Missing files finds them again.")
+        MutedText(tr("One file with your library, playlists, schedule, settings, shaders and thumbnails. The wallpaper files themselves ") +
+            tr("aren't included; on another PC, Library > Missing files finds them again."))
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
-                val dialog = FileDialog(app.window as? Frame, "Save a backup", FileDialog.SAVE).apply {
-                    file = "WallpaperManager-backup-${LocalDate.now()}.${wpm.services.Backup.EXTENSION}"
+                val dialog = FileDialog(app.window as? Frame, tr("Save a backup"), FileDialog.SAVE).apply {
+                    file = tr("WallpaperManager-backup-{0}.{1}", LocalDate.now(), wpm.services.Backup.EXTENSION)
                 }
                 dialog.isVisible = true
                 val name = dialog.file ?: return@OutlinedButton
                 val target = Path.of(dialog.directory, if (name.endsWith(".${wpm.services.Backup.EXTENSION}")) name else "$name.${wpm.services.Backup.EXTENSION}")
-                app.runTask(failure = "Couldn't save the backup") {
+                app.runTask(failure = tr("Couldn't save the backup")) {
                     val info = wpm.services.Backup.export(target, app.db, app.paths)
-                    app.toast("Backup saved (${info.items} wallpapers)", ToastKind.Success)
+                    app.toast(tr("Backup saved ({0} wallpapers)", info.items), ToastKind.Success)
                 }
-            }) { Text("Back up…") }
+            }) { Text(tr("Back up…")) }
             OutlinedButton(onClick = {
-                val dialog = FileDialog(app.window as? Frame, "Restore a backup", FileDialog.LOAD).apply {
+                val dialog = FileDialog(app.window as? Frame, tr("Restore a backup"), FileDialog.LOAD).apply {
                     file = "*.${wpm.services.Backup.EXTENSION}"
                 }
                 dialog.isVisible = true
                 val name = dialog.file ?: return@OutlinedButton
                 val file = Path.of(dialog.directory, name)
-                app.runTask(failure = "Couldn't read the backup") { restoring = file to wpm.services.Backup.inspect(file) }
-            }) { Text("Restore…") }
+                app.runTask(failure = tr("Couldn't read the backup")) { restoring = file to wpm.services.Backup.inspect(file) }
+            }) { Text(tr("Restore…")) }
         }
     }
     restoring?.let { (file, info) ->
         wpm.ui.components.ConfirmDialog(
-            "Restore this backup?",
-            "From ${info.created.take(16).replace('T', ' ')} (version ${info.version}, ${info.items} wallpapers). It replaces your current library, " +
-                "playlists, schedule and settings; they are kept in a before-restore folder in the data folder. The app restarts.",
-            "Restore and restart",
+            tr("Restore this backup?"),
+            tr("From {0} (version {1}, {2} wallpapers). It replaces your current library, ", info.created.take(16).replace('T', ' '), info.version, info.items) +
+                tr("playlists, schedule and settings; they are kept in a before-restore folder in the data folder. The app restarts."),
+            tr("Restore and restart"),
             onDismiss = { restoring = null },
             onConfirm = {
                 restoring = null
-                app.runTask(failure = "Couldn't restore the backup") {
+                app.runTask(failure = tr("Couldn't restore the backup")) {
                     wpm.services.Backup.stage(file, app.paths)
                     javax.swing.SwingUtilities.invokeLater { app.restart() }
                 }
@@ -434,13 +461,13 @@ private fun BackupCard(app: AppState) {
 @Composable
 private fun ShortcutsCard(app: AppState) {
     Card(Modifier.fillMaxWidth()) {
-        SectionTitle("Keyboard shortcuts")
+        SectionTitle(tr("Keyboard shortcuts"))
         Spacer(Modifier.height(6.dp))
-        MutedText("They work everywhere, even while another app is in front.")
+        MutedText(tr("They work everywhere, even while another app is in front."))
         var enabled by remember { mutableStateOf(app.shortcutsEnabled) }
         var keys by remember { mutableStateOf(app.shortcutKeys()) }
         fun save() = app.runTask { app.updateShortcuts(enabled, keys) }
-        SettingSwitch("Use global keyboard shortcuts", enabled) {
+        SettingSwitch(tr("Use global keyboard shortcuts"), enabled) {
             enabled = it
             save()
         }
@@ -463,7 +490,7 @@ private fun ShortcutsCard(app: AppState) {
             }
         }
         Spacer(Modifier.height(8.dp))
-        MutedText("Click a shortcut and press the new keys (Backspace removes it). Scripts can use the command line too, e.g. WallpaperManager.exe --next; --help lists every option.")
+        MutedText(tr("Click a shortcut and press the new keys (Backspace removes it). Scripts can use the command line too, e.g. WallpaperManager.exe --next; --help lists every option."))
     }
 }
 
@@ -498,7 +525,7 @@ private fun openLink(app: AppState, url: String) {
     try {
         Desktop.getDesktop().browse(java.net.URI(url))
     } catch (e: Exception) {
-        app.toast("Couldn't open the browser: ${e.message}", ToastKind.Error)
+        app.toast(tr("Couldn't open the browser: {0}", e.message), ToastKind.Error)
     }
 }
 
@@ -506,7 +533,7 @@ private fun openFolder(app: AppState, folder: Path) {
     try {
         Desktop.getDesktop().open(folder.toFile())
     } catch (e: Exception) {
-        app.toast("Couldn't open the folder: ${e.message}", ToastKind.Error)
+        app.toast(tr("Couldn't open the folder: {0}", e.message), ToastKind.Error)
     }
 }
 

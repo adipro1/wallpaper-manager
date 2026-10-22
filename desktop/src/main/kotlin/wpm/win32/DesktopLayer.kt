@@ -1,5 +1,6 @@
 package wpm.win32
 
+import wpm.tr
 import com.sun.jna.Native
 import com.sun.jna.platform.win32.Kernel32
 import com.sun.jna.platform.win32.User32
@@ -57,7 +58,7 @@ private const val HELP_TEXT = "Live wallpapers could not be attached to the desk
     "Please save a diagnostics file (Settings → Diagnostics) and send it to the developer."
 
 /** The desktop window layout is not what we expect (e.g. a new Windows version). */
-class DesktopLayerException(detail: String) : RuntimeException("$detail\n\n$HELP_TEXT")
+class DesktopLayerException(detail: String) : RuntimeException(tr("{0}\n\n{1}", detail, HELP_TEXT))
 
 /**
  * The window to attach to and, on 24H2+, the icon window to sit directly below (null for the
@@ -67,7 +68,7 @@ data class WallpaperLayer(val parent: HWND, val insertAfter: HWND?, val workerW:
 
 fun findWallpaperLayer(): WallpaperLayer {
     val progman = user32.FindWindow("Progman", null)
-        ?: throw DesktopLayerException("Explorer's desktop window (Progman) was not found. Is Explorer running?")
+        ?: throw DesktopLayerException(tr("Explorer's desktop window (Progman) was not found. Is Explorer running?"))
     val result = WinDef.DWORDByReference()
     user32.SendMessageTimeout(progman, SPAWN_WORKERW, WinDef.WPARAM(0xD), WinDef.LPARAM(0x1), 0, 1000, result)
     user32.SendMessageTimeout(progman, SPAWN_WORKERW, WinDef.WPARAM(0), WinDef.LPARAM(0), 0, 1000, result)
@@ -88,7 +89,7 @@ fun findWallpaperLayer(): WallpaperLayer {
         true
     }, null)
     log.fine("Desktop layout: classic (top-level WorkerW behind the icons)")
-    return WallpaperLayer(found ?: throw DesktopLayerException("The desktop wallpaper layer (WorkerW) was not found."), null)
+    return WallpaperLayer(found ?: throw DesktopLayerException(tr("The desktop wallpaper layer (WorkerW) was not found.")), null)
 }
 
 fun className(hwnd: HWND): String {
@@ -243,7 +244,7 @@ internal object HostWindowClass {
             hbrBackground = Gdi32Ex.INSTANCE.GetStockObject(BLACK_BRUSH)
             lpszClassName = CLASS_NAME
         }
-        if (user32.RegisterClassEx(wc) == null) throw IllegalStateException("RegisterClassEx failed (${Native.getLastError()})")
+        if (user32.RegisterClassEx(wc) == null) throw IllegalStateException(tr("RegisterClassEx failed ({0})", Native.getLastError()))
         registered = true
     }
 
@@ -251,7 +252,7 @@ internal object HostWindowClass {
         ensureRegistered()
         return user32.CreateWindowEx(exStyle, CLASS_NAME, title, style, rect.x, rect.y, rect.width, rect.height,
             parent, null, Kernel32.INSTANCE.GetModuleHandle(null), null)
-            ?: throw IllegalStateException("CreateWindowEx failed (${Native.getLastError()})")
+            ?: throw IllegalStateException(tr("CreateWindowEx failed ({0})", Native.getLastError()))
     }
 
     fun handle(hwnd: HWND, handler: (Int, WinDef.WPARAM, WinDef.LPARAM) -> WinDef.LRESULT?) {
@@ -283,7 +284,7 @@ internal fun messageLoopThread(name: String, timeoutMs: Long, setup: () -> HWND)
             user32.DispatchMessage(msg)
         }
     }
-    if (!ready.await(timeoutMs, TimeUnit.MILLISECONDS)) throw IllegalStateException("Timed out creating the $name window")
+    if (!ready.await(timeoutMs, TimeUnit.MILLISECONDS)) throw IllegalStateException(tr("Timed out creating the {0} window", name))
     error?.let { throw it }
     return created!! to t
 }

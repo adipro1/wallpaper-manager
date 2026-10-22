@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
@@ -43,12 +44,12 @@ fun ConfirmDialog(
                 danger = danger,
             ) { Text(confirm) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }
 
 @Composable
-fun TextInputDialog(title: String, label: String, initial: String = "", confirm: String = "OK", onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+fun TextInputDialog(title: String, label: String, initial: String = "", confirm: String = tr("OK"), onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var value by remember { mutableStateOf(initial) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -64,13 +65,13 @@ fun TextInputDialog(title: String, label: String, initial: String = "", confirm:
         confirmButton = {
             Button(onClick = { onDismiss(); onConfirm(value.trim()) }, enabled = value.isNotBlank()) { Text(confirm) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }
 
 /** Native Windows "open files" dialog filtered to supported media. */
 fun pickMediaFiles(owner: Window?): List<Path> {
-    val dialog = FileDialog(owner as? Frame, "Import wallpapers", FileDialog.LOAD).apply {
+    val dialog = FileDialog(owner as? Frame, tr("Import wallpapers"), FileDialog.LOAD).apply {
         isMultipleMode = true
         // Windows shows this pattern as the file type filter.
         file = (IMAGE_EXTENSIONS + VIDEO_EXTENSIONS).joinToString(";") { "*.$it" }
@@ -80,7 +81,7 @@ fun pickMediaFiles(owner: Window?): List<Path> {
 }
 
 /** Folder picker (FileDialog can't choose folders on Windows). */
-fun pickFolder(owner: Window?, title: String = "Import a folder"): Path? {
+fun pickFolder(owner: Window?, title: String = tr("Import a folder")): Path? {
     runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
     val chooser = JFileChooser().apply {
         dialogTitle = title

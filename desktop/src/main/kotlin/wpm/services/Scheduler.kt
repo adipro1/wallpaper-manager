@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -30,18 +31,18 @@ fun parseTime(text: String): String {
             second.isNotEmpty() -> first.toInt() * 60 + second.toInt()
             else -> first.toInt()
         }
-        if (minutes > 6 * 60) throw IllegalArgumentException("Keep it within 6 hours of ${event.lowercase()}")
+        if (minutes > 6 * 60) throw IllegalArgumentException(tr("Keep it within 6 hours of {0}", event.lowercase()))
         return event.lowercase() + if (minutes == 0) "" else "$sign$minutes"
     }
     val (h, m) = when {
         ':' in t -> t.substringBefore(':') to t.substringAfter(':')
         t.all(Char::isDigit) && t.length in 3..4 -> t.dropLast(2) to t.takeLast(2)
-        else -> throw IllegalArgumentException("“$t” is not a time (use HH:MM)")
+        else -> throw IllegalArgumentException(tr("“{0}” is not a time (use HH:MM)", t))
     }
     val hours = h.trim().takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toInt()
     val minutes = m.trim().takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toInt()
-    if (hours == null || minutes == null) throw IllegalArgumentException("“$t” is not a time (use HH:MM)")
-    if (hours !in 0..23 || minutes !in 0..59) throw IllegalArgumentException("“$t” is not a valid time")
+    if (hours == null || minutes == null) throw IllegalArgumentException(tr("“{0}” is not a time (use HH:MM)", t))
+    if (hours !in 0..23 || minutes !in 0..59) throw IllegalArgumentException(tr("“{0}” is not a valid time", t))
     return "%02d:%02d".format(java.util.Locale.ROOT, hours, minutes)
 }
 
@@ -173,7 +174,7 @@ class Scheduler(
         if (rule.playlistId != null) {
             playlists.start(rule.playlistId)
         } else {
-            val item = rule.mediaId?.let(db::getMedia) ?: throw IllegalStateException("The wallpaper of this rule is no longer in the library")
+            val item = rule.mediaId?.let(db::getMedia) ?: throw IllegalStateException(tr("The wallpaper of this rule is no longer in the library"))
             playlists.stop()
             wallpapers.set(item)
         }

@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import wpm.APP_VERSION
 import wpm.logger
 import java.io.IOException
@@ -37,15 +38,15 @@ object Updater {
 
     /** Downloads the installer into [folder]; [progress] gets 0..1. Throws if anything doesn't match. */
     fun download(release: ReleaseInfo, folder: Path, progress: (Double) -> Unit = {}): Path {
-        val url = release.setupUrl ?: throw IOException("Version ${release.version} has no installer")
-        require(url.startsWith(RELEASES)) { "Unexpected download address: $url" }
+        val url = release.setupUrl ?: throw IOException(tr("Version {0} has no installer", release.version))
+        require(url.startsWith(RELEASES)) { tr("Unexpected download address: {0}", url) }
         Files.createDirectories(folder)
         val target = folder.resolve(url.substringAfterLast('/'))
         if (target.exists() && verify(target, release)) return target
         val client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(Duration.ofSeconds(20)).build()
         val request = HttpRequest.newBuilder(URI(url)).header("User-Agent", "WallpaperManager/$APP_VERSION").build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofInputStream())
-        if (response.statusCode() != 200) throw IOException("GitHub answered ${response.statusCode()}")
+        if (response.statusCode() != 200) throw IOException(tr("GitHub answered {0}", response.statusCode()))
         val total = release.setupSize.takeIf { it > 0 } ?: response.headers().firstValueAsLong("Content-Length").orElse(0)
         val partial = folder.resolve(target.fileName.toString() + ".part")
         response.body().use { input ->
@@ -63,7 +64,7 @@ object Updater {
         }
         if (!verify(partial, release)) {
             Files.deleteIfExists(partial)
-            throw IOException("The download doesn't match the release (size or checksum); nothing was installed")
+            throw IOException(tr("The download doesn't match the release (size or checksum); nothing was installed"))
         }
         Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING)
         log.info("Downloaded the ${release.version} installer to $target")

@@ -1,5 +1,6 @@
 package wpm.media
 
+import wpm.tr
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -29,7 +30,7 @@ data class RemoteVideo(
     val isLive: Boolean,
 )
 
-class DownloadCancelledException : IOException("Download cancelled")
+class DownloadCancelledException : IOException(tr("Download cancelled"))
 
 /**
  * Runs yt-dlp.exe (https://github.com/yt-dlp/yt-dlp), which understands YouTube and
@@ -50,7 +51,7 @@ class YtDlp(val exe: Path) {
         val out = p.inputStream.bufferedReader().readText()
         if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
             p.destroyForcibly()
-            throw IOException("yt-dlp took too long")
+            throw IOException(tr("yt-dlp took too long"))
         }
         errReader.join(2_000)
         if (p.exitValue() != 0) throw IOException(friendlyError(stderr))
@@ -118,7 +119,7 @@ class YtDlp(val exe: Path) {
         errReader.join(2_000)
         if (cancelled()) throw DownloadCancelledException()
         if (p.exitValue() != 0) throw IOException(friendlyError(stderr))
-        val path = file?.let(Path::of)?.takeIf { it.exists() } ?: throw IOException("yt-dlp didn't report the downloaded file")
+        val path = file?.let(Path::of)?.takeIf { it.exists() } ?: throw IOException(tr("yt-dlp didn't report the downloaded file"))
         log.info("Downloaded $url to $path")
         return path
     }

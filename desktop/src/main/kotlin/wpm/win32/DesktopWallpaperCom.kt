@@ -1,5 +1,6 @@
 package wpm.win32
 
+import wpm.tr
 import com.sun.jna.Pointer
 import com.sun.jna.WString
 import com.sun.jna.platform.win32.COM.Unknown
@@ -30,7 +31,7 @@ object DesktopWallpaperCom {
         try {
             val ref = PointerByReference()
             val hr = Ole32.INSTANCE.CoCreateInstance(CLSID_DesktopWallpaper, null, CLSCTX_ALL, IID_IDesktopWallpaper, ref).toInt()
-            if (hr < 0) throw IllegalStateException("IDesktopWallpaper unavailable (0x${Integer.toHexString(hr)})")
+            if (hr < 0) throw IllegalStateException(tr("IDesktopWallpaper unavailable (0x{0})", Integer.toHexString(hr)))
             val com = Com(ref.value)
             try {
                 return block(com)
@@ -43,7 +44,7 @@ object DesktopWallpaperCom {
     }
 
     private fun check(hr: Int, what: String) {
-        if (hr < 0) throw IllegalStateException("$what failed (0x${Integer.toHexString(hr)})")
+        if (hr < 0) throw IllegalStateException(tr("{0} failed (0x{1})", what, Integer.toHexString(hr)))
     }
 
     /** Windows' display ids (device paths) with their screen rectangles. */
@@ -72,7 +73,7 @@ object DesktopWallpaperCom {
             Ole32.INSTANCE.CoTaskMemFree(idRef.value)
             val rect = WinDef.RECT()
             candidate.takeIf { com.call(7, WString(it), rect) >= 0 && ScreenRect.of(rect) == bounds }
-        } ?: throw IllegalStateException("That display isn't connected any more")
+        } ?: throw IllegalStateException(tr("That display isn't connected any more"))
         POSITIONS[style]?.let { com.call(10, it) } // SetPosition
         check(com.call(3, WString(id), WString(file)), "Setting the wallpaper") // SetWallpaper
     }

@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,7 +38,7 @@ fun FramePickerDialog(app: AppState, item: MediaItem, onClose: () -> Unit) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     DialogWindow(
         onCloseRequest = onClose,
-        title = "Pick a frame – ${item.filename}",
+        title = tr("Pick a frame – {0}", item.filename),
         state = rememberDialogState(width = 900.dp, height = 640.dp),
     ) {
         AppTheme(app.darkTheme) {
@@ -54,23 +55,23 @@ fun FramePickerDialog(app: AppState, item: MediaItem, onClose: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${formatTimestamp(controller.position)} / ${formatTimestamp(duration)}", color = Theme.colors.text)
                     Spacer(Modifier.weight(1f))
-                    OutlinedButton(onClick = { controller.seek((controller.position - 1).coerceAtLeast(0.0)) }) { Text("−1 s") }
-                    OutlinedButton(onClick = { controller.frameBackStep() }) { Text("◀ Frame") }
-                    OutlinedButton(onClick = { controller.frameStep() }) { Text("Frame ▶") }
-                    OutlinedButton(onClick = { controller.seek((controller.position + 1).coerceAtMost(duration)) }) { Text("+1 s") }
+                    OutlinedButton(onClick = { controller.seek((controller.position - 1).coerceAtLeast(0.0)) }) { Text(tr("−1 s")) }
+                    OutlinedButton(onClick = { controller.frameBackStep() }) { Text(tr("◀ Frame")) }
+                    OutlinedButton(onClick = { controller.frameStep() }) { Text(tr("Frame ▶")) }
+                    OutlinedButton(onClick = { controller.seek((controller.position + 1).coerceAtMost(duration)) }) { Text(tr("+1 s")) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Spacer(Modifier.weight(1f))
                     OutlinedButton(onClick = {
                         val at = controller.position
-                        val dialog = FileDialog(window as? Frame, "Save frame", FileDialog.SAVE).apply {
+                        val dialog = FileDialog(window as? Frame, tr("Save frame"), FileDialog.SAVE).apply {
                             file = "${item.filename.substringBeforeLast('.')}-${formatTimestamp(at).replace(':', '.')}.png"
                         }
                         dialog.isVisible = true
                         val name = dialog.file ?: return@OutlinedButton
                         val target = Path(dialog.directory, if ('.' in name) name else "$name.png")
-                        app.runTask("Frame saved", "Couldn't save the frame") {
-                            val reader = app.library.videos ?: error("Video support is unavailable")
+                        app.runTask(tr("Frame saved"), tr("Couldn't save the frame")) {
+                            val reader = app.library.videos ?: error(tr("Video support is unavailable"))
                             reader.frame(item.localPath!!, at).use {
                                 if (target.toString().lowercase().endsWith(".jpg") || target.toString().lowercase().endsWith(".jpeg")) {
                                     Imaging.saveJpeg(it, target, 95)
@@ -79,14 +80,14 @@ fun FramePickerDialog(app: AppState, item: MediaItem, onClose: () -> Unit) {
                                 }
                             }
                         }
-                    }, enabled = controller.ready) { Text("Save frame…") }
+                    }, enabled = controller.ready) { Text(tr("Save frame…")) }
                     Button(onClick = {
                         val at = controller.position
-                        app.runTask("Lock screen updated", "Couldn't set the lock screen") {
+                        app.runTask(tr("Lock screen updated"), tr("Couldn't set the lock screen")) {
                             app.changeWallpaper { app.lockScreen.setVideoFrame(item, at) }
                         }
                         onClose()
-                    }, enabled = controller.ready) { Text("Set as lock screen") }
+                    }, enabled = controller.ready) { Text(tr("Set as lock screen")) }
                 }
             }
         }

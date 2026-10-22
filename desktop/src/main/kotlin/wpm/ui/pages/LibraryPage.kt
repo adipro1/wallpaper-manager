@@ -1,5 +1,7 @@
 package wpm.ui.pages
 
+import wpm.tr
+import wpm.trCount
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.automirrored.outlined.Sort
@@ -96,8 +98,8 @@ import kotlin.io.path.Path
 import kotlin.io.path.exists
 import kotlin.io.path.pathString
 
-private val SORTS = listOf("newest" to "Newest first", "oldest" to "Oldest first", "name" to "Name A–Z", "name_desc" to "Name Z–A")
-private val TYPES = listOf(null to "All", "image" to "Images", "video" to "Videos", "interactive" to "Interactive")
+private val SORTS = listOf("newest" to tr("Newest first"), "oldest" to tr("Oldest first"), "name" to tr("Name A–Z"), "name_desc" to tr("Name Z–A"))
+private val TYPES = listOf(null to tr("All"), "image" to tr("Images"), "video" to tr("Videos"), "interactive" to tr("Interactive"))
 
 private sealed interface PendingAction {
     data class Remove(val ids: List<Long>) : PendingAction
@@ -165,38 +167,38 @@ fun LibraryPage(app: AppState) {
     }
 
     PageScaffold(
-        "Library",
-        items?.let { "${it.size} wallpaper${if (it.size == 1) "" else "s"}" + if (selected.size > 1) " · ${selected.size} selected" else "" },
+        tr("Library"),
+        items?.let { trCount(it.size, "{0} wallpaper", "{0} wallpapers") + if (selected.size > 1) tr(" · {0} selected", selected.size) else "" },
         scroll = false,
         actions = {
             var addMenu by remember { mutableStateOf(false) }
             Box {
-                OutlinedButton(onClick = { addMenu = true }) { ButtonIcon(Icons.Outlined.Language); Text("Add from…") }
+                OutlinedButton(onClick = { addMenu = true }) { ButtonIcon(Icons.Outlined.Language); Text(tr("Add from…")) }
                 DropdownMenu(addMenu, { addMenu = false }) {
-                    DropdownMenuItem(text = { Text("A web page or web wallpaper") }, leadingIcon = { Icon(Icons.Outlined.Language, null) },
+                    DropdownMenuItem(text = { Text(tr("A web page or web wallpaper")) }, leadingIcon = { Icon(Icons.Outlined.Language, null) },
                         onClick = { addMenu = false; addingWeb = true })
-                    DropdownMenuItem(text = { Text("A video link (YouTube, …)") }, leadingIcon = { Icon(Icons.Outlined.Link, null) },
+                    DropdownMenuItem(text = { Text(tr("A video link (YouTube, …)")) }, leadingIcon = { Icon(Icons.Outlined.Link, null) },
                         onClick = { addMenu = false; app.addUrl = "" })
-                    DropdownMenuItem(text = { Text("Wallpaper Engine") }, leadingIcon = { Icon(Icons.Outlined.Wallpaper, null) },
+                    DropdownMenuItem(text = { Text(tr("Wallpaper Engine")) }, leadingIcon = { Icon(Icons.Outlined.Wallpaper, null) },
                         onClick = { addMenu = false; importingEngine = true })
                 }
             }
             OutlinedButton(onClick = { pickFolder(app.window)?.let { app.import(listOf(it)) } }) {
-                ButtonIcon(Icons.Outlined.CreateNewFolder); Text("Import folder")
+                ButtonIcon(Icons.Outlined.CreateNewFolder); Text(tr("Import folder"))
             }
             Button(onClick = { pickMediaFiles(app.window).takeIf { it.isNotEmpty() }?.let(app::import) }) {
-                ButtonIcon(Icons.Outlined.FileUpload); Text("Import files")
+                ButtonIcon(Icons.Outlined.FileUpload); Text(tr("Import files"))
             }
         },
     ) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SearchField(search, { search = it }, Modifier.width(260.dp).focusRequester(searchFocus), placeholder = "Search by name")
+            SearchField(search, { search = it }, Modifier.width(260.dp).focusRequester(searchFocus), placeholder = tr("Search by name"))
             SingleChoiceSegmentedButtonRow {
                 TYPES.forEachIndexed { i, (key, label) ->
                     SegmentedButton(type == key, { type = key }, SegmentedButtonDefaults.itemShape(i, TYPES.size)) { Text(label) }
                 }
             }
-            FilterChip(favoritesOnly, { favoritesOnly = !favoritesOnly }, label = { Text("Favorites") },
+            FilterChip(favoritesOnly, { favoritesOnly = !favoritesOnly }, label = { Text(tr("Favorites")) },
                 leadingIcon = { Icon(if (favoritesOnly) Icons.Filled.Star else Icons.Outlined.StarBorder, null, Modifier.size(18.dp)) })
             SortMenu(sort) { sort = it; app.settings.set("library_sort", it) }
         }
@@ -209,15 +211,15 @@ fun LibraryPage(app: AppState) {
         }
         if (missing.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Notice("${missing.size} wallpaper${if (missing.size == 1) " can't" else "s can't"} be found (moved, renamed or deleted).",
+                Notice(trCount(missing.size, "{0} wallpaper can't be found (moved, renamed or deleted).", "{0} wallpapers can't be found (moved, renamed or deleted)."),
                     modifier = Modifier.weight(1f))
-                TextButton(onClick = { reviewingMissing = true }) { Text("Review") }
+                TextButton(onClick = { reviewingMissing = true }) { Text(tr("Review")) }
             }
         }
 
         app.importProgress?.let { progress ->
             Column(Modifier.fillMaxWidth()) {
-                MutedText(if (progress.total > 0) "Importing ${progress.done} of ${progress.total}: ${progress.current}" else progress.current)
+                MutedText(if (progress.total > 0) tr("Importing {0} of {1}: {2}", progress.done, progress.total, progress.current) else progress.current)
                 Spacer(Modifier.height(6.dp))
                 if (progress.total > 0) LinearProgressIndicator({ progress.done.toFloat() / progress.total }, Modifier.fillMaxWidth())
                 else LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -252,8 +254,8 @@ fun LibraryPage(app: AppState) {
     if (reviewingMissing) MissingFilesDialog(app, missing, onDismiss = { reviewingMissing = false })
     if (taggingSelection) {
         val ids = selected.toList()
-        TextInputDialog("Tag ${ids.size} wallpapers", "Tag", confirm = "Add tag", onDismiss = { taggingSelection = false }, onConfirm = { name ->
-            app.runTask("Tagged ${ids.size} with “$name”", "Couldn't add the tag") {
+        TextInputDialog(tr("Tag {0} wallpapers", ids.size), tr("Tag"), confirm = tr("Add tag"), onDismiss = { taggingSelection = false }, onConfirm = { name ->
+            app.runTask(tr("Tagged {0} with “{1}”", ids.size, name), tr("Couldn't add the tag")) {
                 app.db.addTag(ids, name)
                 app.libraryChanged()
             }
@@ -270,16 +272,16 @@ fun LibraryPage(app: AppState) {
             val (playlistEntries, rules) = remember(action) { app.db.removalImpact(action.ids) }
             val count = action.ids.size
             val extra = buildList {
-                if (playlistEntries > 0) add("$playlistEntries playlist entr${if (playlistEntries == 1) "y" else "ies"}")
-                if (rules > 0) add("$rules schedule rule${if (rules == 1) "" else "s"}")
+                if (playlistEntries > 0) add(trCount(playlistEntries, "{0} playlist entry", "{0} playlist entries"))
+                if (rules > 0) add(trCount(rules, "{0} schedule rule", "{0} schedule rules"))
             }
             ConfirmDialog(
-                title = if (count == 1) "Remove from library?" else "Remove $count wallpapers from library?",
-                text = "The files stay on your PC." + if (extra.isEmpty()) "" else " This also removes ${extra.joinToString(" and ")} that use ${if (count == 1) "it" else "them"}.",
-                confirm = "Remove",
+                title = if (count == 1) tr("Remove from library?") else tr("Remove {0} wallpapers from library?", count),
+                text = tr("The files stay on your PC.") + if (extra.isEmpty()) "" else " " + tr(if (count == 1) "This also removes {0} that use it." else "This also removes {0} that use them.", extra.joinToString(tr(" and "))),
+                confirm = tr("Remove"),
                 onDismiss = { pending = null },
                 onConfirm = {
-                    app.runTask("Removed $count from the library") {
+                    app.runTask(tr("Removed {0} from the library", count)) {
                         action.ids.forEach { id -> app.db.getMedia(id)?.let(app.library::deleteThumbnail); app.db.removeMedia(id) }
                         selected = emptySet()
                         app.libraryChanged()
@@ -288,12 +290,12 @@ fun LibraryPage(app: AppState) {
             )
         }
         is PendingAction.DeleteFile -> ConfirmDialog(
-            title = "Delete file?",
-            text = "${action.item.filename} will be moved to the Recycle Bin and removed from the library.",
-            confirm = "Delete", danger = true,
+            title = tr("Delete file?"),
+            text = tr("{0} will be moved to the Recycle Bin and removed from the library.", action.item.filename),
+            confirm = tr("Delete"), danger = true,
             onDismiss = { pending = null },
             onConfirm = {
-                app.runTask("Moved to the Recycle Bin", "Couldn't delete the file") {
+                app.runTask(tr("Moved to the Recycle Bin"), tr("Couldn't delete the file")) {
                     sendToRecycleBin(action.item.path!!)
                     app.library.deleteThumbnail(action.item)
                     app.db.removeMedia(action.item.id)
@@ -323,13 +325,13 @@ private fun SortMenu(sort: String, onChange: (String) -> Unit) {
 @Composable
 private fun EmptyLibrary(app: AppState, filtered: Boolean) {
     EmptyState(
-        if (filtered) "Nothing matches" else "Your library is empty",
-        if (filtered) "Try a different search or filter." else "Import pictures and videos, or drag them onto this window.",
+        if (filtered) tr("Nothing matches") else tr("Your library is empty"),
+        if (filtered) tr("Try a different search or filter.") else tr("Import pictures and videos, or drag them onto this window."),
         Modifier.padding(top = 40.dp),
     ) {
         if (!filtered) {
             Button(onClick = { pickMediaFiles(app.window).takeIf { it.isNotEmpty() }?.let(app::import) }) {
-                ButtonIcon(Icons.Outlined.FileUpload); Text("Import files")
+                ButtonIcon(Icons.Outlined.FileUpload); Text(tr("Import files"))
             }
         }
     }
@@ -341,12 +343,12 @@ private fun BulkBar(app: AppState, ids: List<Long>, onRemove: () -> Unit, onTag:
         fold = 14.dp, accent = Theme.colors.accent) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${ids.size} selected", color = Theme.colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            OutlinedButton(onClick = { setFavorites(app, ids, true) }) { Text("Add to favorites") }
-            OutlinedButton(onClick = { setFavorites(app, ids, false) }) { Text("Remove from favorites") }
+            OutlinedButton(onClick = { setFavorites(app, ids, true) }) { Text(tr("Add to favorites")) }
+            OutlinedButton(onClick = { setFavorites(app, ids, false) }) { Text(tr("Remove from favorites")) }
             AddToPlaylistButton(app, { ids })
-            OutlinedButton(onClick = onTag) { Text("Add tag…") }
-            OutlinedButton(onClick = onRemove) { Text("Remove") }
-            TextButton(onClick = onClear) { Text("Clear") }
+            OutlinedButton(onClick = onTag) { Text(tr("Add tag…")) }
+            OutlinedButton(onClick = onRemove) { Text(tr("Remove")) }
+            TextButton(onClick = onClear) { Text(tr("Clear")) }
         }
     }
 }
@@ -380,37 +382,37 @@ private fun DetailsPanel(
             }
             Spacer(Modifier.height(4.dp))
             Text(item.filename, color = Theme.colors.text, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            InfoRow("Type", when {
-                item.isWeb && item.isRemote -> "Website"
-                item.isWeb -> "Web wallpaper"
-                item.isShader -> "Shader"
-                item.isRemote -> "Online video (streamed)"
-                item.isVideo -> "Video"
-                else -> "Image"
+            InfoRow(tr("Type"), when {
+                item.isWeb && item.isRemote -> tr("Website")
+                item.isWeb -> tr("Web wallpaper")
+                item.isShader -> tr("Shader")
+                item.isRemote -> tr("Online video (streamed)")
+                item.isVideo -> tr("Video")
+                else -> tr("Image")
             })
-            if (item.isImage || item.isVideo) InfoRow("Resolution", item.resolutionText)
-            if (item.isVideo) InfoRow("Duration", item.durationText.ifEmpty { "Unknown" })
-            if (!item.isRemote && (item.isImage || item.isVideo)) InfoRow("Size", item.sizeText)
-            InfoRow("Added", item.dateAdded.take(16))
-            if (item.path != null) InfoRow("Folder", shortenMiddle(Path(item.path).parent?.pathString ?: "", 40))
-            item.sourceUrl?.let { InfoRow(if (item.isRemote) "Streams from" else "Downloaded from", shortenMiddle(it, 40)) }
+            if (item.isImage || item.isVideo) InfoRow(tr("Resolution"), item.resolutionText)
+            if (item.isVideo) InfoRow(tr("Duration"), item.durationText.ifEmpty { tr("Unknown") })
+            if (!item.isRemote && (item.isImage || item.isVideo)) InfoRow(tr("Size"), item.sizeText)
+            InfoRow(tr("Added"), item.dateAdded.take(16))
+            if (item.path != null) InfoRow(tr("Folder"), shortenMiddle(Path(item.path).parent?.pathString ?: "", 40))
+            item.sourceUrl?.let { InfoRow(if (item.isRemote) tr("Streams from") else tr("Downloaded from"), shortenMiddle(it, 40)) }
             if (!exists) {
-                Notice("The file is missing. It may have been moved or deleted.")
+                Notice(tr("The file is missing. It may have been moved or deleted."))
                 TextButton(onClick = {
-                    val path = if (item.isWeb) pickFolder(app.window, "Where is ${item.filename} now?") else {
-                        val dialog = java.awt.FileDialog(app.window as? java.awt.Frame, "Where is ${item.filename} now?", java.awt.FileDialog.LOAD)
+                    val path = if (item.isWeb) pickFolder(app.window, tr("Where is {0} now?", item.filename)) else {
+                        val dialog = java.awt.FileDialog(app.window as? java.awt.Frame, tr("Where is {0} now?", item.filename), java.awt.FileDialog.LOAD)
                             .apply { file = item.localPath?.fileName?.toString() }
                         dialog.isVisible = true
                         dialog.file?.let { java.nio.file.Path.of(dialog.directory, it) }
                     }
-                    if (path != null) app.runTask("Found ${item.filename}", "Couldn't use that file") { app.missing.relink(item, path); app.libraryChanged() }
-                }) { Text("Locate the file…") }
+                    if (path != null) app.runTask(tr("Found {0}", item.filename), tr("Couldn't use that file")) { app.missing.relink(item, path); app.libraryChanged() }
+                }) { Text(tr("Locate the file…")) }
             }
 
             Spacer(Modifier.height(4.dp))
             val usable = exists && (item.isImage || item.isWeb || item.isShader || app.videoSupport)
             Button(onClick = { app.setDesktop(item) }, enabled = usable, modifier = Modifier.fillMaxWidth()) {
-                Text(if (item.isLive) "Set as live wallpaper" else "Set as desktop wallpaper")
+                Text(if (item.isLive) tr("Set as live wallpaper") else tr("Set as desktop wallpaper"))
             }
             if (item.isWeb || item.isShader) {
                 WebOptions(app, item)
@@ -422,34 +424,34 @@ private fun DetailsPanel(
                         if (item.isVideo) {
                             onPickFrame()
                         } else {
-                            app.runTask("Lock screen updated", "Couldn't set the lock screen") {
+                            app.runTask(tr("Lock screen updated"), tr("Couldn't set the lock screen")) {
                                 app.changeWallpaper { app.lockScreen.setImage(item) }
                             }
                         }
                     },
                     enabled = usable && !item.isRemote, modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (item.isVideo) "Pick a frame for the lock screen…" else "Set as lock screen") }
+                ) { Text(if (item.isVideo) tr("Pick a frame for the lock screen…") else tr("Set as lock screen")) }
             }
             if (item.isImage && !item.isRemote) MakeAliveButton(app, item, enabled = usable)
-            if (item.isRemote && item.isVideo) MutedText("Streams play from the internet; save the video offline to use a frame on the lock screen.")
-            if (item.isVideo && !app.videoSupport) MutedText("Videos need libmpv-2.dll in the app's bin folder.")
+            if (item.isRemote && item.isVideo) MutedText(tr("Streams play from the internet; save the video offline to use a frame on the lock screen."))
+            if (item.isVideo && !app.videoSupport) MutedText(tr("Videos need libmpv-2.dll in the app's bin folder."))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
                     app.runTask { app.db.setFavorite(item.id, !item.favorite); app.libraryChanged() }
                 }) {
                     Icon(if (item.favorite) Icons.Filled.Star else Icons.Outlined.StarBorder, null,
                         tint = if (item.favorite) Theme.colors.star else Theme.colors.text, modifier = Modifier.size(18.dp))
-                    Text(if (item.favorite) "  Favorite" else "  Add favorite")
+                    Text(if (item.favorite) "  Favorite" else tr("  Add favorite"))
                 }
                 OutlinedButton(onClick = {
-                    runCatching { showInExplorer(item.path!!) }.onFailure { app.toast("Couldn't open Explorer", ToastKind.Error) }
-                }, enabled = exists && !item.isRemote) { Text("Show in folder") }
+                    runCatching { showInExplorer(item.path!!) }.onFailure { app.toast(tr("Couldn't open Explorer"), ToastKind.Error) }
+                }, enabled = exists && !item.isRemote) { Text(tr("Show in folder")) }
             }
             AddToPlaylistButton(app, { listOf(item.id) })
             TagEditor(app, item)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onRemove) { Text("Remove") }
-                TextButton(onClick = onDelete, enabled = exists, danger = true) { Text("Delete file…") }
+                TextButton(onClick = onRemove) { Text(tr("Remove")) }
+                TextButton(onClick = onDelete, enabled = exists, danger = true) { Text(tr("Delete file…")) }
             }
         }
     }
@@ -462,27 +464,27 @@ private fun MakeAliveButton(app: AppState, item: MediaItem, enabled: Boolean) {
     Box {
         OutlinedButton(onClick = { open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             ButtonIcon(Icons.Outlined.AutoAwesome)
-            Text("Make it alive…")
+            Text(tr("Make it alive…"))
         }
         DropdownMenu(open, { open = false }) {
             listOf(
-                "Ken Burns" to "Slow zoom and pan",
-                "Parallax" to "Leans towards the mouse",
-                "Rain on glass" to "Drops run down the window",
-                "Snowfall" to "Flakes drift down",
+                "Ken Burns" to tr("Slow zoom and pan"),
+                "Parallax" to tr("Leans towards the mouse"),
+                "Rain on glass" to tr("Drops run down the window"),
+                "Snowfall" to tr("Flakes drift down"),
             ).forEach { (effect, hint) ->
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text(effect)
+                            Text(tr(effect))
                             Text(hint, color = Theme.colors.textMuted, fontSize = 12.sp)
                         }
                     },
                     onClick = {
                         open = false
-                        app.runTask(failure = "Couldn't bring the picture to life") {
+                        app.runTask(failure = tr("Couldn't bring the picture to life")) {
                             val alive = app.makeAlive(item, effect)
-                            app.toast("Showing ${alive.filename}. Its settings are in the Library and on the Customize page.", ToastKind.Success)
+                            app.toast(tr("Showing {0}. Its settings are in the Library and on the Customize page.", alive.filename), ToastKind.Success)
                         }
                     },
                 )
@@ -510,15 +512,15 @@ private fun WebOptions(app: AppState, item: MediaItem) {
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("React to the mouse", color = Theme.colors.text, fontSize = 13.sp)
-            Text("Clicks and moves on the empty desktop reach the page", color = Theme.colors.textMuted, fontSize = 12.sp)
+            Text(tr("React to the mouse"), color = Theme.colors.text, fontSize = 13.sp)
+            Text(tr("Clicks and moves on the empty desktop reach the page"), color = Theme.colors.textMuted, fontSize = 12.sp)
         }
         Switch(interactive, { on -> interactive = on; save() })
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("React to audio", color = Theme.colors.text, fontSize = 13.sp)
-            Text("Gets the levels of what your PC is playing", color = Theme.colors.textMuted, fontSize = 12.sp)
+            Text(tr("React to audio"), color = Theme.colors.text, fontSize = 13.sp)
+            Text(tr("Gets the levels of what your PC is playing"), color = Theme.colors.textMuted, fontSize = 12.sp)
         }
         Switch(audio, { on -> audio = on; save() })
     }

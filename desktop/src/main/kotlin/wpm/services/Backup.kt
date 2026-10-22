@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import wpm.APP_VERSION
@@ -105,9 +106,9 @@ object Backup {
             }
         }
         val found = info?.takeIf { hasDatabase && it.app == "WallpaperManager" }
-            ?: throw IOException("This isn't a Wallpaper Manager backup")
+            ?: throw IOException(tr("This isn't a Wallpaper Manager backup"))
         if (found.schema > MIGRATIONS.size) {
-            throw IOException("This backup comes from a newer version (${found.version}). Update the app first.")
+            throw IOException(tr("This backup comes from a newer version ({0}). Update the app first.", found.version))
         }
         return found
     }
@@ -121,7 +122,7 @@ object Backup {
         ZipInputStream(Files.newInputStream(file)).use { zip ->
             generateSequence { zip.nextEntry }.forEach { entry ->
                 val out = pending.resolve(entry.name).normalize()
-                if (!out.startsWith(pending)) throw IOException("The backup contains an unsafe path: ${entry.name}")
+                if (!out.startsWith(pending)) throw IOException(tr("The backup contains an unsafe path: {0}", entry.name))
                 if (entry.isDirectory) Files.createDirectories(out) else {
                     Files.createDirectories(out.parent)
                     Files.copy(zip, out, StandardCopyOption.REPLACE_EXISTING)

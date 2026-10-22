@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,19 +43,19 @@ fun AppPauseRules(app: AppState, modifier: Modifier = Modifier) {
         app.settings.set("pause_apps", appRulesSerializer, rules)
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Pause for these apps", color = Theme.colors.text)
-        if (rules.isEmpty()) MutedText("None yet. Add a game, video player or anything else the wallpaper shouldn't run beside.")
+        Text(tr("Pause for these apps"), color = Theme.colors.text)
+        if (rules.isEmpty()) MutedText(tr("None yet. Add a game, video player or anything else the wallpaper shouldn't run beside."))
         rules.forEach { rule ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(rule.exe, color = Theme.colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                 SingleChoiceSegmentedButtonRow {
-                    listOf(false to "While in front", true to "While running").forEachIndexed { i, (running, label) ->
+                    listOf(false to tr("While in front"), true to tr("While running")).forEachIndexed { i, (running, label) ->
                         SegmentedButton(rule.whileRunning == running, {
                             save(rules.map { if (it.exe == rule.exe) it.copy(whileRunning = running) else it })
                         }, SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
                     }
                 }
-                IconButton(onClick = { save(rules - rule) }) { Icon(Icons.Outlined.Close, "Remove ${rule.exe}") }
+                IconButton(onClick = { save(rules - rule) }) { Icon(Icons.Outlined.Close, tr("Remove {0}", rule.exe)) }
             }
         }
         var open by remember { mutableStateOf(false) }
@@ -65,7 +66,7 @@ fun AppPauseRules(app: AppState, modifier: Modifier = Modifier) {
                 open = true
             }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 6.dp)) {
                 ButtonIcon(Icons.Outlined.Add)
-                Text("Add an app")
+                Text(tr("Add an app"))
             }
             DropdownMenu(open, { open = false }) {
                 running.forEach { exe ->
@@ -75,9 +76,9 @@ fun AppPauseRules(app: AppState, modifier: Modifier = Modifier) {
                     })
                 }
                 if (running.isNotEmpty()) HorizontalDivider()
-                DropdownMenuItem(text = { Text("Browse for a program…") }, onClick = {
+                DropdownMenuItem(text = { Text(tr("Browse for a program…")) }, onClick = {
                     open = false
-                    val dialog = FileDialog(app.window as? Frame, "Choose a program", FileDialog.LOAD).apply {
+                    val dialog = FileDialog(app.window as? Frame, tr("Choose a program"), FileDialog.LOAD).apply {
                         file = "*.exe"
                         setFilenameFilter { _, name -> name.endsWith(".exe", ignoreCase = true) }
                     }

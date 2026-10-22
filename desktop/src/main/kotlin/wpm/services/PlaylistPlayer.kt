@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import wpm.data.Database
@@ -61,8 +62,8 @@ class PlaylistPlayer(
 
     /** Starts a playlist: shows its first wallpaper right away. */
     fun start(playlistId: Long): MediaItem {
-        val playlist = db.getPlaylist(playlistId) ?: throw IllegalArgumentException("Playlist not found")
-        require(db.playlistItems(playlistId).isNotEmpty()) { "“${playlist.name}” is empty - add some wallpapers first." }
+        val playlist = db.getPlaylist(playlistId) ?: throw IllegalArgumentException(tr("Playlist not found"))
+        require(db.playlistItems(playlistId).isNotEmpty()) { tr("“{0}” is empty - add some wallpapers first.", playlist.name) }
         synchronized(lock) { save(PlaylistState(id = playlistId)) }
         log.info("Started playlist ${playlist.name}")
         return advance()
@@ -77,12 +78,12 @@ class PlaylistPlayer(
 
     /** Shows the next wallpaper of the running playlist and restarts the timer. */
     fun advance(): MediaItem = synchronized(lock) {
-        var s = state ?: throw IllegalStateException("No playlist is running")
-        val playlist = activePlaylist() ?: throw IllegalStateException("No playlist is running")
+        var s = state ?: throw IllegalStateException(tr("No playlist is running"))
+        val playlist = activePlaylist() ?: throw IllegalStateException(tr("No playlist is running"))
         val items = db.playlistItems(playlist.id)
         if (items.isEmpty()) {
             save(null)
-            throw IllegalStateException("“${playlist.name}” is empty")
+            throw IllegalStateException(tr("“{0}” is empty", playlist.name))
         }
         val interval = maxOf(playlist.intervalSeconds, MIN_INTERVAL_SECONDS)
 
@@ -108,7 +109,7 @@ class PlaylistPlayer(
         }
         // Nothing could be shown; don't keep retrying every few seconds.
         saveIfStillRunning(playlist.id, s.copy(nextChange = clock() + interval))
-        throw lastError ?: FileNotFoundException("None of the files in “${playlist.name}” can be found")
+        throw lastError ?: FileNotFoundException(tr("None of the files in “{0}” can be found", playlist.name))
     }
 
     /** Chooses the next item and returns the updated state (index / shuffle bag). */

@@ -1,5 +1,6 @@
 package wpm.engine
 
+import wpm.tr
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.COM.Unknown
 import com.sun.jna.platform.win32.Guid
@@ -103,7 +104,7 @@ private class Com(pointer: Pointer) : Unknown(pointer) {
 }
 
 private fun check(hr: Int, what: String) {
-    if (hr < 0) throw IllegalStateException("$what failed (0x${Integer.toHexString(hr)})")
+    if (hr < 0) throw IllegalStateException(tr("{0} failed (0x{1})", what, Integer.toHexString(hr)))
 }
 
 /**

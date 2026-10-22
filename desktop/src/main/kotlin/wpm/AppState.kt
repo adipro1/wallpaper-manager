@@ -152,11 +152,11 @@ class AppState(
     val watched = wpm.services.WatchedFolders(db, library) { change ->
         libraryChanged()
         val parts = buildList {
-            if (change.added > 0) add("${change.added} new")
-            if (change.removed > 0) add("${change.removed} removed")
-            if (change.moved > 0) add("${change.moved} moved")
+            if (change.added > 0) add(tr("{0} new", change.added))
+            if (change.removed > 0) add(tr("{0} removed", change.removed))
+            if (change.moved > 0) add(tr("{0} moved", change.moved))
         }
-        toast("Watched folders: ${parts.joinToString(", ")}")
+        toast(tr("Watched folders: {0}", parts.joinToString(", ")))
     }
     val scheduler = Scheduler(db, wallpapers, playlists)
     val updates = UpdateChecker(db)
@@ -308,7 +308,7 @@ class AppState(
     }
 
     /** Picking a wallpaper by hand stops the running playlist. */
-    fun setDesktop(item: MediaItem) = runTask("Desktop wallpaper set", "Couldn't set the wallpaper") {
+    fun setDesktop(item: MediaItem) = runTask(tr("Desktop wallpaper set"), tr("Couldn't set the wallpaper")) {
         changeWallpaper {
             playlists.stop()
             wallpapers.set(item)
@@ -317,7 +317,7 @@ class AppState(
     }
 
     /** Gives one display its own wallpaper. */
-    fun setOnDisplay(display: wpm.win32.Monitor, item: MediaItem) = runTask("${display.label} updated", "Couldn't set the wallpaper") {
+    fun setOnDisplay(display: wpm.win32.Monitor, item: MediaItem) = runTask(tr("{0} updated", display.label), tr("Couldn't set the wallpaper")) {
         changeWallpaper { wallpapers.setOnDisplay(display, item) }
     }
 
@@ -360,28 +360,28 @@ class AppState(
     suspend fun perform(command: AppCommand): String = when (command) {
         AppCommand.Show -> {
             showWindow()
-            "Window opened"
+            tr("Window opened")
         }
         AppCommand.Next -> {
             val item = changeWallpaper { if (playlists.state != null) playlists.advance() else wallpapers.nextFromLibrary() }
-            "Showing ${item?.filename ?: throw IllegalStateException("Your library is empty")}"
+            tr("Showing {0}", item?.filename ?: throw IllegalStateException(tr("Your library is empty")))
         }
         AppCommand.Random -> {
-            val item = changeWallpaper { wallpapers.randomFromLibrary() } ?: throw IllegalStateException("Add a few wallpapers first")
-            "Showing ${item.filename}"
+            val item = changeWallpaper { wallpapers.randomFromLibrary() } ?: throw IllegalStateException(tr("Add a few wallpapers first"))
+            tr("Showing {0}", item.filename)
         }
         AppCommand.TogglePause -> liveControl { if (wallpapers.videoPaused) resumeLive() else pauseLive() }
         AppCommand.Pause -> liveControl { pauseLive() }
         AppCommand.Resume -> liveControl { resumeLive() }
         AppCommand.Stop -> liveControl {
             wallpapers.stopVideo()
-            "Live wallpaper stopped"
+            tr("Live wallpaper stopped")
         }
         AppCommand.StopPlaylist -> {
-            if (playlists.state == null) throw IllegalStateException("No playlist is running")
+            if (playlists.state == null) throw IllegalStateException(tr("No playlist is running"))
             playlists.stop()
             wallpaperChanged()
-            "Playlist stopped"
+            tr("Playlist stopped")
         }
         is AppCommand.Set -> {
             val item = withContext(Dispatchers.IO) { resolveTarget(command.target) }
@@ -390,28 +390,28 @@ class AppState(
                 wallpapers.set(item)
             }
             refreshWebThumbnail(item)
-            "Showing ${item.filename}"
+            tr("Showing {0}", item.filename)
         }
         is AppCommand.Playlist -> {
             val playlist = db.listPlaylists().firstOrNull { it.name.equals(command.name.trim(), ignoreCase = true) }
-                ?: throw IllegalArgumentException("There is no playlist called “${command.name}”")
+                ?: throw IllegalArgumentException(tr("There is no playlist called “{0}”", command.name))
             val item = changeWallpaper { playlists.start(playlist.id) }
-            "Playing “${playlist.name}”: ${item.filename}"
+            tr("Playing “{0}”: {1}", playlist.name, item.filename)
         }
     }
 
     private fun pauseLive(): String {
         wallpapers.pauseVideo()
-        return "Live wallpaper paused"
+        return tr("Live wallpaper paused")
     }
 
     private fun resumeLive(): String {
         wallpapers.resumeVideo()
-        return "Live wallpaper playing"
+        return tr("Live wallpaper playing")
     }
 
     private suspend fun liveControl(block: () -> String): String {
-        if (!wallpapers.videoActive) throw IllegalStateException("No live wallpaper is playing")
+        if (!wallpapers.videoActive) throw IllegalStateException(tr("No live wallpaper is playing"))
         return changeWallpaper(block)
     }
 
@@ -430,14 +430,14 @@ class AppState(
                     web.import(path) ?: db.mediaByPath((if (path.isDirectory()) path else path.parent).toString())?.id
                 mediaTypeFor(path.toString()) != null -> {
                     val result = library.importFiles(listOf(path))
-                    result.failed.firstOrNull()?.let { throw IllegalArgumentException("Couldn't add ${path.fileName}: ${it.second}") }
+                    result.failed.firstOrNull()?.let { throw IllegalArgumentException(tr("Couldn't add {0}: {1}", path.fileName, it.second)) }
                     result.added.firstOrNull()
                 }
-                path.isDirectory() -> throw IllegalArgumentException("Choose a picture, video, web wallpaper or shader, not a folder of files")
-                else -> throw IllegalArgumentException("${path.fileName} isn't a supported wallpaper file")
+                path.isDirectory() -> throw IllegalArgumentException(tr("Choose a picture, video, web wallpaper or shader, not a folder of files"))
+                else -> throw IllegalArgumentException(tr("{0} isn't a supported wallpaper file", path.fileName))
             }
             libraryChanged()
-            return id?.let(db::getMedia) ?: throw IllegalStateException("Couldn't add ${path.fileName} to the library")
+            return id?.let(db::getMedia) ?: throw IllegalStateException(tr("Couldn't add {0} to the library", path.fileName))
         }
         val items = db.listMedia()
         fun String.base() = substringBeforeLast('.')
@@ -446,7 +446,7 @@ class AppState(
         val matches = items.filter { it.filename.contains(text, ignoreCase = true) }
         return when (matches.size) {
             1 -> matches.single()
-            0 -> throw IllegalArgumentException("Nothing called “$text” in your library, and no such file")
+            0 -> throw IllegalArgumentException(tr("Nothing called “{0}” in your library, and no such file", text))
             else -> throw IllegalArgumentException(
                 "“$text” matches ${matches.size} wallpapers: " + matches.take(3).joinToString { it.filename } + if (matches.size > 3) ", …" else "",
             )
@@ -494,7 +494,7 @@ class AppState(
         val file = wpm.media.downloadWallpaper(online, wallpaper, picturesFolder())
         val item = db.mediaByPath(file.toString()) ?: run {
             val result = library.importFiles(listOf(file))
-            result.failed.firstOrNull()?.let { throw IllegalStateException("Couldn't add it: ${it.second}") }
+            result.failed.firstOrNull()?.let { throw IllegalStateException(tr("Couldn't add it: {0}", it.second)) }
             db.getMedia(result.added.single())!!
         }
         runCatching { db.execute("UPDATE media SET source_url = ? WHERE id = ?", wallpaper.pageUrl, item.id) }
@@ -503,11 +503,11 @@ class AppState(
     }
 
     /** Imports web wallpapers (folders with a page, .html or .zip files). */
-    fun importWeb(paths: List<Path>) = runTask(failure = "Couldn't add the web wallpaper") {
+    fun importWeb(paths: List<Path>) = runTask(failure = tr("Couldn't add the web wallpaper")) {
         var added = 0
         paths.forEach { if (web.import(it) != null) added++ }
         libraryChanged()
-        toast(if (added > 0) "Added $added web wallpaper${if (added == 1) "" else "s"}" else "Already in your library", ToastKind.Success)
+        toast(if (added > 0) trCount(added, "Added {0} web wallpaper", "Added {0} web wallpapers") else tr("Already in your library"), ToastKind.Success)
     }
 
     /**
@@ -533,7 +533,7 @@ class AppState(
     /** Imports files and folders (folders recursively), showing progress. Web wallpapers are recognised and added as such. */
     fun import(paths: List<Path>) {
         val (shaderFiles, rest) = paths.partition { it.toString().substringAfterLast('.').lowercase() in SHADER_EXTENSIONS }
-        if (shaderFiles.isNotEmpty()) runTask("Shader added", "Couldn't add the shader") {
+        if (shaderFiles.isNotEmpty()) runTask(tr("Shader added"), tr("Couldn't add the shader")) {
             shaderFiles.forEach { shaders.import(it) }
             libraryChanged()
         }
@@ -545,7 +545,7 @@ class AppState(
 
     private fun importMedia(paths: List<Path>) {
         if (importProgress != null) {
-            toast("An import is already running")
+            toast(tr("An import is already running"))
             return
         }
         importProgress = ImportProgress(0, 0, "Looking for files…")
@@ -554,7 +554,7 @@ class AppState(
                 val files = paths.flatMap { if (it.isDirectory()) findMediaFiles(it) else listOf(it) }
                     .filter { mediaTypeFor(it.toString()) != null }
                 if (files.isEmpty()) {
-                    toast("No supported images or videos found")
+                    toast(tr("No supported images or videos found"))
                     return@launch
                 }
                 val result = library.importFiles(files) { i, total, path -> importProgress = ImportProgress(i, total, path.fileName.toString()) }
@@ -567,7 +567,7 @@ class AppState(
                 toast(parts.joinToString(", "), if (result.failed.isEmpty()) ToastKind.Success else ToastKind.Error)
             } catch (e: Exception) {
                 log.warning("Import failed: $e")
-                toast("Import failed: ${e.message}", ToastKind.Error)
+                toast(tr("Import failed: {0}", e.message), ToastKind.Error)
             } finally {
                 importProgress = null
             }
@@ -627,8 +627,8 @@ class AppState(
      * (a shader that shows it), adds that to the library and shows it.
      */
     suspend fun makeAlive(picture: MediaItem, effect: String): MediaItem {
-        val path = picture.localPath ?: throw IllegalArgumentException("Only pictures on this PC can be used")
-        val sample = shaders.effects().firstOrNull { it.name == effect } ?: throw IllegalArgumentException("Unknown effect: $effect")
+        val path = picture.localPath ?: throw IllegalArgumentException(tr("Only pictures on this PC can be used"))
+        val sample = shaders.effects().firstOrNull { it.name == effect } ?: throw IllegalArgumentException(tr("Unknown effect: {0}", effect))
         val item = withContext(Dispatchers.IO) {
             val title = "${picture.filename.substringBeforeLast('.')} · $effect"
             val id = shaders.create(title, sample.code, interactive = effect == "Parallax", preview = path)

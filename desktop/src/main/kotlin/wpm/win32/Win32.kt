@@ -1,5 +1,6 @@
 package wpm.win32
 
+import wpm.tr
 import com.sun.jna.Native
 import com.sun.jna.WString
 import com.sun.jna.platform.win32.Advapi32Util
@@ -133,7 +134,7 @@ object WindowsDesktop : DesktopWallpaperApi {
     override fun setWallpaper(path: String, persist: Boolean) {
         val flags = if (persist) SPIF_UPDATEINIFILE or SPIF_SENDCHANGE else 0
         if (!User32Ex.INSTANCE.SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, WString(path), flags)) {
-            throw IOException("Windows refused the wallpaper (error ${Native.getLastError()})")
+            throw IOException(tr("Windows refused the wallpaper (error {0})", Native.getLastError()))
         }
     }
 
@@ -164,5 +165,5 @@ fun showInExplorer(path: String) {
 /** Moves a file to the Recycle Bin, so an accidental delete can be undone. */
 fun sendToRecycleBin(path: String) {
     val desktop = java.awt.Desktop.getDesktop()
-    if (!desktop.moveToTrash(Path(path).toFile())) throw IOException("Could not move the file to the Recycle Bin")
+    if (!desktop.moveToTrash(Path(path).toFile())) throw IOException(tr("Could not move the file to the Recycle Bin"))
 }

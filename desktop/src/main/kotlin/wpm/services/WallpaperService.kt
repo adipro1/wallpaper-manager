@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.serializer
@@ -111,9 +112,9 @@ class WallpaperService(
 
     /** Makes an image the desktop wallpaper (stops a live wallpaper). */
     fun setImage(item: MediaItem, style: String? = null) {
-        require(item.isImage) { "Use setVideo for videos" }
-        val local = item.localPath ?: throw IllegalArgumentException("Pictures must be on this PC")
-        if (!local.exists()) throw FileNotFoundException("File not found: $local")
+        require(item.isImage) { tr("Use setVideo for videos") }
+        val local = item.localPath ?: throw IllegalArgumentException(tr("Pictures must be on this PC"))
+        if (!local.exists()) throw FileNotFoundException(tr("File not found: {0}", local))
         val chosen = style ?: settings.string("image_style", "fill")
         backupOriginal()
         apply(prepareImage(item, local), chosen, item.id)
@@ -169,8 +170,8 @@ class WallpaperService(
 
     /** Plays a video, web page or shader behind the desktop icons. */
     fun setLive(item: MediaItem, style: String? = null) {
-        require(item.isLive) { "Use setImage for images" }
-        if (!item.available()) throw FileNotFoundException("Not found: ${item.path}")
+        require(item.isLive) { tr("Use setImage for images") }
+        if (!item.available()) throw FileNotFoundException(tr("Not found: {0}", item.path))
         val chosen = style ?: settings.string("video_style", "fill")
         backupOriginal()
         if (displayChoices().isNotEmpty()) {
@@ -317,15 +318,15 @@ class WallpaperService(
 
     /** Gives one display its own wallpaper (a picture through Windows, or a live wallpaper window). */
     fun setOnDisplay(display: Monitor, item: MediaItem, style: String? = null) {
-        if (!item.available()) throw FileNotFoundException("Not found: ${item.path}")
+        if (!item.available()) throw FileNotFoundException(tr("Not found: {0}", item.path))
         backupOriginal()
         val chosen = style ?: settings.string(if (item.isImage) "image_style" else "video_style", "fill")
         if (item.isImage) {
-            val local = item.localPath ?: throw IllegalArgumentException("Pictures must be on this PC")
+            val local = item.localPath ?: throw IllegalArgumentException(tr("Pictures must be on this PC"))
             windows.setWallpaperFor(display, prepareImage(item, local), chosen)
             multi?.stopOn(display.id)
         } else {
-            val displays = multi ?: throw IllegalStateException("Live wallpapers per display aren't available")
+            val displays = multi ?: throw IllegalStateException(tr("Live wallpapers per display aren't available"))
             displays.playOn(display.id, sourceFor(item, chosen))
         }
         saveDisplayChoices(displayChoices() + (display.id to DisplayChoice(item.mediaType, item.id, item.source, chosen)))

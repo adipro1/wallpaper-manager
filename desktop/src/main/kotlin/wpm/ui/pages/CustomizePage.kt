@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.MaterialTheme
@@ -91,45 +92,45 @@ fun CustomizePage(app: AppState) {
         if (selectedId == null || shaders.none { it.id == selectedId }) selectedId = shaders.firstOrNull()?.id
     }
 
-    fun create(name: String, code: String) = app.runTask("Created “$name”", "Couldn't create the shader") {
+    fun create(name: String, code: String) = app.runTask(tr("Created “{0}”", name), tr("Couldn't create the shader")) {
         selectedId = app.shaders.create(name, code, interactive = "iMouse" in code, audio = "iChannel0" in code)
         app.libraryChanged()
     }
 
-    PageScaffold("Customize", "Make your own animated wallpapers with shaders (Shadertoy-style GLSL).", scroll = false, actions = {
+    PageScaffold(tr("Customize"), tr("Make your own animated wallpapers with shaders (Shadertoy-style GLSL)."), scroll = false, actions = {
         OutlinedButton(onClick = {
-            val dialog = FileDialog(app.window as? Frame, "Import a shader", FileDialog.LOAD).apply {
+            val dialog = FileDialog(app.window as? Frame, tr("Import a shader"), FileDialog.LOAD).apply {
                 file = SHADER_EXTENSIONS.joinToString(";") { "*.$it" }
             }
             dialog.isVisible = true
             dialog.files.firstOrNull()?.let { file ->
-                app.runTask("Shader imported", "Couldn't import the shader") {
+                app.runTask(tr("Shader imported"), tr("Couldn't import the shader")) {
                     selectedId = app.shaders.import(file.toPath())
                     app.libraryChanged()
                 }
             }
-        }) { ButtonIcon(Icons.Outlined.UploadFile); Text("Import .glsl") }
+        }) { ButtonIcon(Icons.Outlined.UploadFile); Text(tr("Import .glsl")) }
         Box {
-            Button(onClick = { newMenu = true }) { ButtonIcon(Icons.Outlined.Add); Text("New shader") }
+            Button(onClick = { newMenu = true }) { ButtonIcon(Icons.Outlined.Add); Text(tr("New shader")) }
             DropdownMenu(newMenu, { newMenu = false }) {
-                DropdownMenuItem(text = { Text("Blank") }, onClick = { newMenu = false; create("My shader", BLANK_SHADER) })
+                DropdownMenuItem(text = { Text(tr("Blank")) }, onClick = { newMenu = false; create(tr("My shader"), BLANK_SHADER) })
                 HorizontalDivider()
                 app.shaders.samples().forEach { sample ->
-                    DropdownMenuItem(text = { Text("Sample: ${sample.name}") }, onClick = { newMenu = false; create(sample.name, sample.code) })
+                    DropdownMenuItem(text = { Text(tr("Sample: {0}", sample.name)) }, onClick = { newMenu = false; create(sample.name, sample.code) })
                 }
             }
         }
     }) {
         if (shaders.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
-                EmptyState("No shaders yet", "Shaders are small programs that draw animated wallpapers on your graphics card. " +
-                    "Start from a sample with “New shader”, or import a .glsl file (for example from Shadertoy).")
+                EmptyState(tr("No shaders yet"), tr("Shaders are small programs that draw animated wallpapers on your graphics card. ") +
+                    tr("Start from a sample with “New shader”, or import a .glsl file (for example from Shadertoy)."))
             }
             return@PageScaffold
         }
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Card(Modifier.width(230.dp).fillMaxHeight(), padding = PaddingValues(10.dp), fold = 14.dp) {
-                Text("YOUR SHADERS", color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall,
+                Text(tr("YOUR SHADERS"), color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 10.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(shaders, key = { it.id }) { s ->
@@ -173,7 +174,7 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
         previewUrl = withContext(Dispatchers.IO) { app.shaders.previewPage(code, mediaId = item.id) }
     }
 
-    fun save(then: (() -> Unit)? = null) = app.runTask(if (then == null) "Saved" else null, "Couldn't save the shader") {
+    fun save(then: (() -> Unit)? = null) = app.runTask(if (then == null) tr("Saved") else null, tr("Couldn't save the shader")) {
         app.shaders.save(item, code)
         if (name.isNotBlank() && name != item.filename) app.db.rename(item.id, name.trim())
         app.db.updateItemOptions(item.id, interactive, audio)
@@ -185,24 +186,24 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
     val flapColor = Theme.colors.indigo
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(tr("Name")) }, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { save() }, enabled = code != saved || name != item.filename ||
-                interactive != item.interactive || audio != item.audio) { Text("Save") }
+                interactive != item.interactive || audio != item.audio) { Text(tr("Save")) }
             Button(onClick = {
                 save {
                     val fresh = app.db.getMedia(item.id) ?: return@save
                     app.setDesktop(fresh)
                 }
-            }) { Text("Set as wallpaper") }
+            }) { Text(tr("Set as wallpaper")) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Switch(interactive, { interactive = it })
-            Text("React to the mouse (iMouse)", color = Theme.colors.text, fontSize = 13.sp)
+            Text(tr("React to the mouse (iMouse)"), color = Theme.colors.text, fontSize = 13.sp)
             Spacer(Modifier.width(8.dp))
             Switch(audio, { audio = it })
-            Text("React to audio (iChannel0)", color = Theme.colors.text, fontSize = 13.sp)
+            Text(tr("React to audio (iChannel0)"), color = Theme.colors.text, fontSize = 13.sp)
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { confirmDelete = true }, danger = true) { ButtonIcon(Icons.Outlined.Delete); Text("Delete") }
+            TextButton(onClick = { confirmDelete = true }, danger = true) { ButtonIcon(Icons.Outlined.Delete); Text(tr("Delete")) }
         }
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -213,9 +214,9 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
                 ) {
                     Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.04f)).padding(horizontal = 14.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Tag("GLSL", Theme.colors.indigo)
+                        Tag(tr("GLSL"), Theme.colors.indigo)
                         Text("${code.lines().size} lines", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.45f), fontSize = 12.sp)
-                        if (code != saved) Text("• unsaved", color = Theme.colors.gold, fontSize = 12.sp)
+                        if (code != saved) Text(tr("• unsaved"), color = Theme.colors.gold, fontSize = 12.sp)
                     }
                     BasicTextField(
                         code, { code = it },
@@ -234,29 +235,29 @@ private fun ShaderEditor(app: AppState, item: MediaItem, modifier: Modifier) {
                     })
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        error ?: if (status == "ok") "Compiles fine" else "Compiling…",
+                        error ?: if (status == "ok") tr("Compiles fine") else tr("Compiling…"),
                         color = if (error != null) Theme.colors.danger else Theme.colors.textMuted, fontSize = 12.sp, maxLines = 3,
                     )
                 }
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                Eyebrow("Live preview", Theme.colors.indigo)
+                Eyebrow(tr("Live preview"), Theme.colors.indigo)
                 WebPreview(app, previewUrl, Modifier.fillMaxWidth().aspectRatio(16f / 9f)) { status = it }
                 Spacer(Modifier.height(8.dp))
                 app.webEngineStatus?.let { MutedText(it) }
-                MutedText("Write a mainImage(out vec4 fragColor, in vec2 fragCoord) function. Available: iResolution, iTime, " +
-                    "iTimeDelta, iFrame, iMouse, iPointer (mouse 0..1), iDate and iChannel0 (audio: spectrum in row 0).")
-                MutedText("Settings: a comment line such as // @slider speed 0 2 1 Speed, // @color tint #ff8800 Tint, " +
-                    "// @checkbox rain on Rain or // @image photo Picture (iChannel1-3) adds a control and a uniform of that name.")
+                MutedText(tr("Write a mainImage(out vec4 fragColor, in vec2 fragCoord) function. Available: iResolution, iTime, ") +
+                    tr("iTimeDelta, iFrame, iMouse, iPointer (mouse 0..1), iDate and iChannel0 (audio: spectrum in row 0)."))
+                MutedText(tr("Settings: a comment line such as // @slider speed 0 2 1 Speed, // @color tint #ff8800 Tint, ") +
+                    tr("// @checkbox rain on Rain or // @image photo Picture (iChannel1-3) adds a control and a uniform of that name."))
                 PropertyEditor(app, item, Modifier.padding(top = 12.dp), declared = declared) { settingsVersion++ }
             }
         }
     }
 
     if (confirmDelete) {
-        ConfirmDialog("Delete “${item.filename}”?", "The shader is removed from your library and its code is deleted.", "Delete", danger = true,
+        ConfirmDialog(tr("Delete “{0}”?", item.filename), tr("The shader is removed from your library and its code is deleted."), tr("Delete"), danger = true,
             onDismiss = { confirmDelete = false }, onConfirm = {
-                app.runTask("Shader deleted") {
+                app.runTask(tr("Shader deleted")) {
                     if (app.wallpapers.state.mediaId == item.id) app.changeWallpaper { app.wallpapers.stopVideo() }
                     app.library.deleteThumbnail(item)
                     app.db.removeMedia(item.id)

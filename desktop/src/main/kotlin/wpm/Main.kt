@@ -97,6 +97,8 @@ fun main(rawArgs: Array<String>) {
         exitProcess(if (passed) 0 else 1)
     }
     setAppUserModelId(APP_ID)
+    I18n.use(wpm.data.Settings(db).string("language", "system"))
+    log.info("Language: ${I18n.language}")
     val app = AppState(paths, db, startMinimized)
 
     app.startAutomation()
@@ -127,17 +129,17 @@ fun main(rawArgs: Array<String>) {
                 tooltip = APP_NAME,
                 onAction = app::showWindow,
                 menu = {
-                    Item("Open", onClick = app::showWindow)
+                    Item(tr("Open"), onClick = app::showWindow)
                     Separator()
-                    Item("Next wallpaper", onClick = app::nextWallpaper)
-                    Item("Random wallpaper", onClick = app::randomWallpaper)
+                    Item(tr("Next wallpaper"), onClick = app::nextWallpaper)
+                    Item(tr("Random wallpaper"), onClick = app::randomWallpaper)
                     if (app.videoSupport) {
                         Separator()
-                        Item("Pause / resume", onClick = { app.runCommand(AppCommand.TogglePause) })
-                        Item("Stop live wallpaper", onClick = { app.runCommand(AppCommand.Stop) })
+                        Item(tr("Pause / resume"), onClick = { app.runCommand(AppCommand.TogglePause) })
+                        Item(tr("Stop live wallpaper"), onClick = { app.runCommand(AppCommand.Stop) })
                     }
                     Separator()
-                    Item("Exit", onClick = ::exit)
+                    Item(tr("Exit"), onClick = ::exit)
                 },
             )
 
@@ -154,7 +156,7 @@ fun main(rawArgs: Array<String>) {
                         app.windowVisible = false
                         if (!app.settings.boolean("tray_hint_shown", false)) {
                             trayState.sendNotification(
-                                androidx.compose.ui.window.Notification(APP_NAME, "Still running here. Right-click the icon to exit."),
+                                androidx.compose.ui.window.Notification(APP_NAME, tr("Still running here. Right-click the icon to exit.")),
                             )
                             app.settings.set("tray_hint_shown", true)
                         }

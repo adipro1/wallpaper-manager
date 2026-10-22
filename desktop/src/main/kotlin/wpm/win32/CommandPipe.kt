@@ -1,5 +1,6 @@
 package wpm.win32
 
+import wpm.tr
 import com.sun.jna.Native
 import com.sun.jna.platform.win32.Kernel32
 import com.sun.jna.platform.win32.WinBase
@@ -102,11 +103,11 @@ class CommandPipe(private val name: String, private val handle: (List<String>) -
                         pipe.write(Json.encodeToString(ListSerializer(String.serializer()), args).toByteArray(Charsets.UTF_8))
                         val buffer = ByteArray(BUFFER)
                         val count = pipe.read(buffer)
-                        if (count <= 0) throw IOException("The running copy didn't answer")
+                        if (count <= 0) throw IOException(tr("The running copy didn't answer"))
                         return Json.decodeFromString(CommandReply.serializer(), String(buffer, 0, count, Charsets.UTF_8))
                     }
                 } catch (e: FileNotFoundException) { // not created yet, or every instance busy
-                    if (System.currentTimeMillis() > deadline) throw IOException("The running copy didn't answer in time", e)
+                    if (System.currentTimeMillis() > deadline) throw IOException(tr("The running copy didn't answer in time"), e)
                     Kernel32.INSTANCE.WaitNamedPipe(pipePath(name), 500).also { if (!it) Thread.sleep(200) }
                 }
             }

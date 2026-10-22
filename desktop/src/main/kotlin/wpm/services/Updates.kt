@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -58,7 +59,7 @@ fun fetchLatestRelease(): ReleaseInfo? {
         .timeout(Duration.ofSeconds(8)).build()
     val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
     if (response.statusCode() == 404) return null
-    if (response.statusCode() != 200) throw IOException("GitHub answered ${response.statusCode()}")
+    if (response.statusCode() != 200) throw IOException(tr("GitHub answered {0}", response.statusCode()))
     return parseRelease(response.body())
 }
 

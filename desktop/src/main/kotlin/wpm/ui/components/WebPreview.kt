@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -81,7 +82,7 @@ fun WebPreview(app: AppState, url: String?, modifier: Modifier = Modifier, onTit
     Box(modifier) {
         SwingPanel(background = Color.Black, factory = { canvas }, modifier = Modifier.matchParentSize())
         when {
-            failed != null -> Text("Preview unavailable: $failed", color = Color.White, modifier = Modifier.align(Alignment.Center))
+            failed != null -> Text(tr("Preview unavailable: {0}", failed), color = Color.White, modifier = Modifier.align(Alignment.Center))
             window == null -> Box(Modifier.align(Alignment.Center)) {
                 CircularProgressIndicator()
             }

@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -81,7 +82,8 @@ import wpm.ui.components.TextButton
 
 private val log = logger("discover")
 
-private val SORTS = listOf("toplist" to "Top this month", "date_added" to "Latest", "random" to "Random")
+private val SORTS = listOf("toplist" to tr("Top this month"), "date_added" to tr("Latest"), "random" to tr("Random"))
+/** Search words (English, like the site's tags); the chips show them translated. */
 private val IDEAS = listOf("Nature", "Mountains", "Space", "City", "Ocean", "Minimal", "Forest", "Abstract", "Night", "Japan")
 
 /** Thumbnails already loaded (shared while the app runs). */
@@ -121,7 +123,7 @@ fun DiscoverPage(app: AppState) {
             lastPage = found.lastPage
         } catch (e: Exception) {
             log.info("Search failed: $e")
-            error = "Couldn't reach wallhaven.cc: ${e.message ?: e.javaClass.simpleName}"
+            error = tr("Couldn't reach wallhaven.cc: {0}", e.message ?: e.javaClass.simpleName)
         } finally {
             loading = false
         }
@@ -134,39 +136,39 @@ fun DiscoverPage(app: AppState) {
             try {
                 val media = app.downloadOnline(item)
                 added[item.id] = media.id
-                if (thenSet) app.setDesktop(media) else app.toast("Added to your library", ToastKind.Success)
+                if (thenSet) app.setDesktop(media) else app.toast(tr("Added to your library"), ToastKind.Success)
             } catch (e: Exception) {
-                app.toast("Couldn't download it: ${e.message}", ToastKind.Error)
+                app.toast(tr("Couldn't download it: {0}", e.message), ToastKind.Error)
             } finally {
                 busy.remove(item.id)
             }
         }
     }
 
-    PageScaffold("Discover", "Wallpapers from wallhaven.cc, free to use. Safe-for-work only.", scroll = false) {
+    PageScaffold(tr("Discover"), tr("Wallpapers from wallhaven.cc, free to use. Safe-for-work only."), scroll = false) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchField(query, { query = it }, Modifier.width(260.dp).onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown && it.key == Key.Enter) { submitted = query; true } else false
-            }, placeholder = "Search, then press Enter")
+            }, placeholder = tr("Search, then press Enter"))
             SingleChoiceSegmentedButtonRow {
                 SORTS.forEachIndexed { i, (key, label) ->
                     SegmentedButton(sort == key, { sort = key }, SegmentedButtonDefaults.itemShape(i, SORTS.size)) { Text(label) }
                 }
             }
-            FilterChip(screenSize, { screenSize = !screenSize }, label = { Text("At least $atLeast") })
+            FilterChip(screenSize, { screenSize = !screenSize }, label = { Text(tr("At least {0}", atLeast)) })
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             IDEAS.forEach { idea ->
                 FilterChip(submitted.equals(idea, ignoreCase = true), {
                     query = if (submitted.equals(idea, ignoreCase = true)) "" else idea
                     submitted = query
-                }, label = { Text(idea) })
+                }, label = { Text(tr(idea)) })
             }
         }
         error?.let { Notice(it) }
         Box(Modifier.fillMaxSize()) {
             if (results.isEmpty() && !loading && error == null) {
-                EmptyState("Nothing found", "Try other words, or switch off “At least $atLeast”.")
+                EmptyState(tr("Nothing found"), tr("Try other words, or switch off “At least {0}”.", atLeast))
             }
             val grid = rememberLazyGridState()
             // More results when scrolled to the end.
@@ -215,10 +217,10 @@ private fun OnlineTile(
             Text(item.resolutionText, color = c.textMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
             when {
                 busy -> CircularProgressIndicator(Modifier.width(20.dp), color = c.accent, strokeWidth = 2.dp)
-                added -> TextButton(onClick = onOpenLibrary) { Text("In library") }
+                added -> TextButton(onClick = onOpenLibrary) { Text(tr("In library")) }
                 else -> {
-                    OutlinedButton(onClick = onAdd, modifier = Modifier.semantics { contentDescription = "Add to library" }) { ButtonIcon(Icons.Outlined.Download) }
-                    Button(onClick = onSet) { ButtonIcon(Icons.Outlined.Wallpaper); Text("Set") }
+                    OutlinedButton(onClick = onAdd, modifier = Modifier.semantics { contentDescription = tr("Add to library") }) { ButtonIcon(Icons.Outlined.Download) }
+                    Button(onClick = onSet) { ButtonIcon(Icons.Outlined.Wallpaper); Text(tr("Set")) }
                 }
             }
         }

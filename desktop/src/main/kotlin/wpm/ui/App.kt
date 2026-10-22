@@ -1,5 +1,6 @@
 package wpm.ui
 
+import wpm.tr
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -103,15 +104,15 @@ private fun Page.icon(): ImageVector = when (this) {
 }
 
 private fun Page.eyebrow(): String = when (this) {
-    Page.Home -> "Overview"
-    Page.Desktop -> "Wallpaper"
-    Page.LockScreen -> "Before sign-in"
-    Page.Library -> "Collection"
-    Page.Discover -> "From wallhaven.cc"
-    Page.Playlists -> "Rotation"
-    Page.Schedule -> "Through the day"
-    Page.Customize -> "Shader studio"
-    Page.Settings -> "Preferences"
+    Page.Home -> tr("Overview")
+    Page.Desktop -> tr("Wallpaper")
+    Page.LockScreen -> tr("Before sign-in")
+    Page.Library -> tr("Collection")
+    Page.Discover -> tr("From wallhaven.cc")
+    Page.Playlists -> tr("Rotation")
+    Page.Schedule -> tr("Through the day")
+    Page.Customize -> tr("Shader studio")
+    Page.Settings -> tr("Preferences")
 }
 
 private val NavItemHeight = 46.dp
@@ -216,7 +217,7 @@ private fun Sidebar(app: AppState, compact: Boolean) {
         }
         Spacer(Modifier.weight(1f))
         if (!compact) {
-            Text("Version $APP_VERSION", fontSize = 11.sp, color = c.sidebarTextMuted, letterSpacing = 0.6.sp,
+            Text(tr("Version {0}", APP_VERSION), fontSize = 11.sp, color = c.sidebarTextMuted, letterSpacing = 0.6.sp,
                 modifier = Modifier.padding(start = 12.dp, bottom = 18.dp))
         }
     }
@@ -268,11 +269,11 @@ private fun NavItem(page: Page, selected: Boolean, compact: Boolean, onClick: ()
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (compact) androidx.compose.foundation.layout.Arrangement.Center else androidx.compose.foundation.layout.Arrangement.Start,
     ) {
-        Icon(page.icon(), page.label, tint = fg, modifier = Modifier.size(19.dp).offset(x = (3 * nudge).dp))
+        Icon(page.icon(), tr(page.label), tint = fg, modifier = Modifier.size(19.dp).offset(x = (3 * nudge).dp))
         if (!compact) {
             Spacer(Modifier.width(14.dp))
             Text(
-                page.label, color = fg, style = MaterialTheme.typography.bodyMedium,
+                tr(page.label), color = fg, style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.offset(x = (3 * nudge).dp),
             )

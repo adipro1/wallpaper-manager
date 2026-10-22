@@ -1,5 +1,6 @@
 package wpm.media
 
+import wpm.tr
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -65,7 +66,7 @@ class WebWallpapers(private val db: Database, private val library: MediaLibrary,
         source.isDirectory() -> importFolder(source)
         source.extension.lowercase() in setOf("html", "htm") -> addPage(source.parent, source.name, source.nameWithoutExtension, null, source)
         source.extension.lowercase() == "zip" -> importFolder(extract(source))
-        else -> throw IllegalArgumentException("Choose a folder, an .html file or a .zip")
+        else -> throw IllegalArgumentException(tr("Choose a folder, an .html file or a .zip"))
     }
 
     private fun importFolder(folder: Path): Long? {
@@ -77,14 +78,14 @@ class WebWallpapers(private val db: Database, private val library: MediaLibrary,
         val entry = listOfNotNull(manifest?.entry, lively?.fileName, engine?.file, "index.html")
             .firstOrNull { folder.resolve(it).isRegularFile() }
             ?: folder.listDirectoryEntries("*.htm*").singleOrNull()?.name
-            ?: throw IllegalArgumentException("No index.html found in ${folder.name}")
+            ?: throw IllegalArgumentException(tr("No index.html found in {0}", folder.name))
         val preview = (listOfNotNull(manifest?.preview, lively?.thumbnail, lively?.preview).map(folder::resolve) + listOfNotNull(engine?.preview))
             .firstOrNull { it.isRegularFile() }
             ?: folder.listDirectoryEntries().firstOrNull { f ->
                 f.nameWithoutExtension.lowercase() in PREVIEW_NAMES && mediaTypeFor(f.toString()) == "image"
             }
         val title = manifest?.title ?: lively?.title ?: engine?.title ?: folder.name
-        if (manifest?.type == "shader") throw IllegalArgumentException("Import shaders with “Add shader”")
+        if (manifest?.type == "shader") throw IllegalArgumentException(tr("Import shaders with “Add shader”"))
         return addPage(folder, entry, title, manifest, preview, isFolder = true)
     }
 
@@ -133,7 +134,7 @@ class WebWallpapers(private val db: Database, private val library: MediaLibrary,
         ZipInputStream(Files.newInputStream(zip)).use { input ->
             generateSequence { input.nextEntry }.forEach { entry ->
                 val out = target.resolve(entry.name).normalize()
-                require(out.startsWith(target)) { "The zip contains an unsafe path: ${entry.name}" }
+                require(out.startsWith(target)) { tr("The zip contains an unsafe path: {0}", entry.name) }
                 if (entry.isDirectory) Files.createDirectories(out) else {
                     Files.createDirectories(out.parent)
                     Files.copy(input, out)

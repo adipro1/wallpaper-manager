@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import wpm.data.Database
@@ -47,8 +48,8 @@ class LockScreenSlideshow(
 
     /** Starts showing [playlistId] on the lock screen, the first picture right away. */
     fun start(playlistId: Long, intervalMinutes: Int): MediaItem {
-        val playlist = db.getPlaylist(playlistId) ?: throw IllegalArgumentException("Playlist not found")
-        require(db.playlistItems(playlistId).any(::usable)) { "“${playlist.name}” has no pictures for the lock screen" }
+        val playlist = db.getPlaylist(playlistId) ?: throw IllegalArgumentException(tr("Playlist not found"))
+        require(db.playlistItems(playlistId).any(::usable)) { tr("“{0}” has no pictures for the lock screen", playlist.name) }
         synchronized(lock) { save(LockSlideshowState(playlistId, maxOf(intervalMinutes, MIN_LOCK_INTERVAL_MINUTES))) }
         log.info("Lock screen slideshow: ${playlist.name}, every $intervalMinutes min")
         return advance()
@@ -65,16 +66,16 @@ class LockScreenSlideshow(
 
     /** Shows the next picture and restarts the timer. */
     fun advance(): MediaItem = synchronized(lock) {
-        var s = state ?: throw IllegalStateException("No lock screen slideshow is running")
+        var s = state ?: throw IllegalStateException(tr("No lock screen slideshow is running"))
         val playlist = db.getPlaylist(s.playlistId!!) ?: run {
             save(null)
-            throw IllegalStateException("The slideshow's playlist was deleted")
+            throw IllegalStateException(tr("The slideshow's playlist was deleted"))
         }
         val items = db.playlistItems(playlist.id).filter(::usable)
         val next = clock() + s.intervalMinutes * 60.0
         if (items.isEmpty()) {
             save(s.copy(nextChange = next))
-            throw IllegalStateException("“${playlist.name}” has no pictures for the lock screen")
+            throw IllegalStateException(tr("“{0}” has no pictures for the lock screen", playlist.name))
         }
         var lastError: Exception? = null
         repeat(items.size) {
@@ -104,7 +105,7 @@ class LockScreenSlideshow(
             }
         }
         if (state?.playlistId == playlist.id) save(s.copy(nextChange = next))
-        throw lastError ?: IllegalStateException("Nothing in “${playlist.name}” could be shown")
+        throw lastError ?: IllegalStateException(tr("Nothing in “{0}” could be shown", playlist.name))
     }
 
     /** A frame a little way into a video (the very first one is often black). */

@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -354,7 +355,7 @@ fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = "Search",
+    placeholder: String = tr("Search"),
 ) {
     val c = Theme.colors
     val interaction = remember { MutableInteractionSource() }
@@ -385,7 +386,7 @@ fun SearchField(
                 }
                 if (value.isNotEmpty()) {
                     Icon(
-                        Icons.Outlined.Close, "Clear", tint = c.textMuted,
+                        Icons.Outlined.Close, tr("Clear"), tint = c.textMuted,
                         modifier = Modifier.size(16.dp).clickable { onValueChange("") }.pointerHoverIcon(PointerIcon.Hand),
                     )
                 }

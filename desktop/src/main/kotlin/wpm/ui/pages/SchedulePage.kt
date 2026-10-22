@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -110,20 +111,20 @@ fun SchedulePage(app: AppState) {
     }
     fun changed() = app.libraryChanged()
 
-    PageScaffold("Schedule", "Show different wallpapers at different times of day.", actions = {
-        Button(onClick = { draft = RuleDraft() }) { ButtonIcon(Icons.Outlined.Add); Text("Add rule") }
+    PageScaffold(tr("Schedule"), tr("Show different wallpapers at different times of day."), actions = {
+        Button(onClick = { draft = RuleDraft() }) { ButtonIcon(Icons.Outlined.Add); Text(tr("Add rule")) }
     }) {
         Card(Modifier.fillMaxWidth(), accent = if (info.enabled) Theme.colors.teal else null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    SectionTitle(if (info.enabled) "Schedule is on" else "Schedule is off")
+                    SectionTitle(if (info.enabled) tr("Schedule is on") else tr("Schedule is off"))
                     MutedText(
                         when {
-                            !info.enabled -> "Off"
-                            info.rules.none { it.enabled } -> "No active rules"
+                            !info.enabled -> tr("Off")
+                            info.rules.none { it.enabled } -> tr("No active rules")
                             else -> buildString {
-                                info.active?.let { append("Now: ${it.rule.targetName} (since ${info.timeOf(it)})") }
-                                info.upcoming?.let { append("   ·   Next: ${it.rule.targetName} at ${info.timeOf(it)}") }
+                                info.active?.let { append(tr("Now: {0} (since {1})", it.rule.targetName, info.timeOf(it))) }
+                                info.upcoming?.let { append(tr("   ·   Next: {0} at {1}", it.rule.targetName, info.timeOf(it))) }
                             }
                         },
                     )
@@ -131,15 +132,15 @@ fun SchedulePage(app: AppState) {
                 Switch(info.enabled, { on -> app.runTask { app.scheduler.setEnabled(on); changed() } })
             }
             Spacer(Modifier.height(6.dp))
-            MutedText("Changes take effect at the next rule time. Use “Apply now” to switch straight away.")
+            MutedText(tr("Changes take effect at the next rule time. Use “Apply now” to switch straight away."))
         }
 
         SunCard(app, info) { changed() }
 
         if (info.rules.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
-                EmptyState("No rules yet", "For example: 07:00 → a bright picture, 18:00 → a city video, 22:00 → a night playlist.") {
-                    Button(onClick = { draft = RuleDraft() }) { ButtonIcon(Icons.Outlined.Add); Text("Add rule") }
+                EmptyState(tr("No rules yet"), tr("For example: 07:00 → a bright picture, 18:00 → a city video, 22:00 → a night playlist.")) {
+                    Button(onClick = { draft = RuleDraft() }) { ButtonIcon(Icons.Outlined.Add); Text(tr("Add rule")) }
                 }
             }
         } else {
@@ -159,27 +160,27 @@ fun SchedulePage(app: AppState) {
                             Text(rule.targetName.ifEmpty { "(missing)" }, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.titleSmall)
                             Text(
-                                (if (rule.playlistId != null) "Playlist" else "Wallpaper") + when {
+                                (if (rule.playlistId != null) tr("Playlist") else tr("Wallpaper")) + when {
                                     !solar -> ""
-                                    info.place == null -> "  ·  ${describeTime(rule.time)} (set your location)"
+                                    info.place == null -> tr("  ·  {0} (set your location)", describeTime(rule.time))
                                     else -> "  ·  ${describeTime(rule.time)}"
                                 },
                                 color = if (solar && info.place == null) Theme.colors.danger else Theme.colors.textMuted, fontSize = 12.sp,
                             )
                         }
-                        if (active) Tag("Now", Theme.colors.accent)
+                        if (active) Tag(tr("Now"), Theme.colors.accent)
                         TextButton(onClick = {
-                            app.runTask("Applied ${rule.targetName}", "Couldn't apply the rule") {
+                            app.runTask(tr("Applied {0}", rule.targetName), tr("Couldn't apply the rule")) {
                                 app.changeWallpaper {
                                     app.scheduler.applyRule(rule)
                                     app.scheduler.markCurrentApplied()
                                 }
                             }
-                        }) { Text("Apply now") }
-                        IconButton(onClick = { draft = RuleDraft(rule.id, rule.time, rule.mediaId, rule.playlistId) }) { Icon(Icons.Outlined.Edit, "Edit") }
+                        }) { Text(tr("Apply now")) }
+                        IconButton(onClick = { draft = RuleDraft(rule.id, rule.time, rule.mediaId, rule.playlistId) }) { Icon(Icons.Outlined.Edit, tr("Edit")) }
                         IconButton(onClick = {
                             app.runTask { app.db.deleteRule(rule.id); app.scheduler.markCurrentApplied(); changed() }
-                        }) { Icon(Icons.Outlined.Delete, "Delete") }
+                        }) { Icon(Icons.Outlined.Delete, tr("Delete")) }
                         Switch(rule.enabled, { on ->
                             app.runTask { app.db.setRuleEnabled(rule.id, on); app.scheduler.markCurrentApplied(); changed() }
                         })
@@ -191,7 +192,7 @@ fun SchedulePage(app: AppState) {
 
     draft?.let { d ->
         RuleDialog(app, d, onDismiss = { draft = null }) { saved ->
-            app.runTask(if (saved.id == null) "Rule added" else "Rule saved") {
+            app.runTask(if (saved.id == null) tr("Rule added") else tr("Rule saved")) {
                 if (saved.id == null) app.db.addRule(saved.time, saved.mediaId, saved.playlistId)
                 else app.db.updateRule(saved.id, saved.time, saved.mediaId, saved.playlistId)
                 app.scheduler.markCurrentApplied() // edits apply from the next rule time
@@ -222,14 +223,14 @@ private fun RuleDialog(app: AppState, initial: RuleDraft, onDismiss: () -> Unit,
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial.id == null) "Add rule" else "Edit rule") },
+        title = { Text(if (initial.id == null) tr("Add rule") else tr("Edit rule")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(time, { time = it }, label = { Text("Time (HH:MM, every day)") }, singleLine = true, isError = timeError,
+                OutlinedTextField(time, { time = it }, label = { Text(tr("Time (HH:MM, every day)")) }, singleLine = true, isError = timeError,
                     supportingText = {
                         Text(
                             if (timeError) runCatching { parseTime(time) }.exceptionOrNull()?.message ?: ""
-                            else "Or relative to the sun: sunrise, sunset, sunset - 30, sunrise + 1:00",
+                            else tr("Or relative to the sun: sunrise, sunset, sunset - 30, sunrise + 1:00"),
                         )
                     })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -238,23 +239,23 @@ private fun RuleDialog(app: AppState, initial: RuleDraft, onDismiss: () -> Unit,
                     }
                 }
                 if (!timeError && solarTime(runCatching { parseTime(time) }.getOrDefault("")) != null && app.scheduler.place == null) {
-                    Text("Set your location on the Schedule page so sunrise and sunset can be worked out.", color = Theme.colors.danger, fontSize = 12.sp)
+                    Text(tr("Set your location on the Schedule page so sunrise and sunset can be worked out."), color = Theme.colors.danger, fontSize = 12.sp)
                 }
                 SingleChoiceSegmentedButtonRow {
-                    SegmentedButton(!usePlaylist, { usePlaylist = false }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Wallpaper") }
-                    SegmentedButton(usePlaylist, { usePlaylist = true }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Playlist") }
+                    SegmentedButton(!usePlaylist, { usePlaylist = false }, SegmentedButtonDefaults.itemShape(0, 2)) { Text(tr("Wallpaper")) }
+                    SegmentedButton(usePlaylist, { usePlaylist = true }, SegmentedButtonDefaults.itemShape(1, 2)) { Text(tr("Playlist")) }
                 }
                 if (usePlaylist) {
                     Box {
                         OutlinedButton(onClick = { menuOpen = true }, enabled = playlists.isNotEmpty()) {
-                            Text(playlist?.name ?: if (playlists.isEmpty()) "No playlists yet" else "Choose a playlist")
+                            Text(playlist?.name ?: if (playlists.isEmpty()) tr("No playlists yet") else tr("Choose a playlist"))
                         }
                         DropdownMenu(menuOpen, { menuOpen = false }) {
                             playlists.forEach { p -> DropdownMenuItem(text = { Text(p.name) }, onClick = { playlist = p; menuOpen = false }) }
                         }
                     }
                 } else {
-                    OutlinedButton(onClick = { picking = true }) { Text(media?.filename ?: "Choose a wallpaper…", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    OutlinedButton(onClick = { picking = true }) { Text(media?.filename ?: tr("Choose a wallpaper…"), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         },
@@ -262,11 +263,11 @@ private fun RuleDialog(app: AppState, initial: RuleDraft, onDismiss: () -> Unit,
             Button(onClick = {
                 onDismiss()
                 onSave(RuleDraft(initial.id, parseTime(time), if (usePlaylist) null else media?.id, if (usePlaylist) playlist?.id else null))
-            }, enabled = valid) { Text("Save") }
+            }, enabled = valid) { Text(tr("Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
-    if (picking) MediaPickerDialog(app, "Choose a wallpaper", multiple = false, onDismiss = { picking = false }) { media = it.first() }
+    if (picking) MediaPickerDialog(app, tr("Choose a wallpaper"), multiple = false, onDismiss = { picking = false }) { media = it.first() }
 }
 
 /** One stop on the day's timeline: a fold line with a diamond, filled for the rule in effect. */
@@ -299,29 +300,29 @@ private fun SunCard(app: AppState, info: ScheduleInfo, onChanged: () -> Unit) {
     val anySolar = info.rules.any { solarTime(it.time) != null }
     if (info.place == null && !anySolar) {
         // Only a hint while nobody uses sun rules.
-        MutedText("Tip: rules can also follow the sun, e.g. “sunset - 30”.")
+        MutedText(tr("Tip: rules can also follow the sun, e.g. “sunset - 30”."))
         return
     }
     Card(Modifier.fillMaxWidth(), accent = if (info.place == null) Theme.colors.danger else Theme.colors.gold) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SectionTitle("Sunrise and sunset")
+                SectionTitle(tr("Sunrise and sunset"))
                 val place = info.place
                 if (place == null) {
-                    MutedText("Set your location so rules at sunrise or sunset know when to run.")
+                    MutedText(tr("Set your location so rules at sunrise or sunset know when to run."))
                 } else {
                     val zone = java.time.ZoneId.systemDefault()
                     val today = java.time.LocalDate.now()
                     fun hm(t: java.time.ZonedDateTime?) = t?.let { "%02d:%02d".format(java.util.Locale.ROOT, it.hour, it.minute) } ?: "none"
-                    MutedText("${place.name}: sunrise ${hm(Sun.sunrise(today, place, zone))}, sunset ${hm(Sun.sunset(today, place, zone))} today")
+                    MutedText(tr("{0}: sunrise {1}, sunset {2} today", place.name, hm(Sun.sunrise(today, place, zone)), hm(Sun.sunset(today, place, zone))))
                 }
             }
-            OutlinedButton(onClick = { editing = true }) { Text(if (info.place == null) "Set location" else "Change") }
+            OutlinedButton(onClick = { editing = true }) { Text(if (info.place == null) tr("Set location") else tr("Change")) }
         }
     }
     if (editing) {
         LocationDialog(info.place, onDismiss = { editing = false }) { place ->
-            app.runTask("Location saved") {
+            app.runTask(tr("Location saved")) {
                 app.scheduler.setPlace(place)
                 onChanged()
             }
@@ -340,11 +341,11 @@ private fun LocationDialog(current: Place?, onDismiss: () -> Unit, onSave: (Plac
     val longitude = lon.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in -180.0..180.0 }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Your location") },
+        title = { Text(tr("Your location")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MutedText("Pick a city near you, or enter the coordinates. Nothing is sent anywhere.")
-                OutlinedTextField(query, { query = it }, label = { Text("Search a city") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                MutedText(tr("Pick a city near you, or enter the coordinates. Nothing is sent anywhere."))
+                OutlinedTextField(query, { query = it }, label = { Text(tr("Search a city")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 findCities(query).forEach { city ->
                     TextButton(onClick = {
                         chosen = city
@@ -354,20 +355,20 @@ private fun LocationDialog(current: Place?, onDismiss: () -> Unit, onSave: (Plac
                     }) { Text("${city.name}  (${city.latitude}, ${city.longitude})") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(lat, { lat = it; chosen = null }, label = { Text("Latitude (N+)") }, singleLine = true,
+                    OutlinedTextField(lat, { lat = it; chosen = null }, label = { Text(tr("Latitude (N+)")) }, singleLine = true,
                         isError = lat.isNotBlank() && latitude == null, modifier = Modifier.weight(1f))
-                    OutlinedTextField(lon, { lon = it; chosen = null }, label = { Text("Longitude (E+)") }, singleLine = true,
+                    OutlinedTextField(lon, { lon = it; chosen = null }, label = { Text(tr("Longitude (E+)")) }, singleLine = true,
                         isError = lon.isNotBlank() && longitude == null, modifier = Modifier.weight(1f))
                 }
-                chosen?.let { MutedText("Near ${it.name}") }
+                chosen?.let { MutedText(tr("Near {0}", it.name)) }
             }
         },
         confirmButton = {
             Button(onClick = {
                 onDismiss()
                 onSave(Place(chosen?.name ?: "%.2f, %.2f".format(java.util.Locale.ROOT, latitude, longitude), latitude!!, longitude!!))
-            }, enabled = latitude != null && longitude != null) { Text("Save") }
+            }, enabled = latitude != null && longitude != null) { Text(tr("Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }

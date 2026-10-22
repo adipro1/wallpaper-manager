@@ -1,5 +1,7 @@
 package wpm.ui.components
 
+import wpm.tr
+import wpm.trCount
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -55,19 +57,19 @@ fun TagEditor(app: AppState, item: MediaItem) {
         val name = text.trim()
         if (name.isEmpty()) return
         text = ""
-        app.runTask(failure = "Couldn't add the tag") {
+        app.runTask(failure = tr("Couldn't add the tag")) {
             app.db.addTag(listOf(item.id), name)
             app.libraryChanged()
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("TAGS", color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall)
+        Text(tr("TAGS"), color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall)
         if (tags.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 tags.forEach { tag ->
                     FilterChip(selected = true, onClick = {
                         app.runTask { app.db.removeTag(item.id, tag); app.libraryChanged() }
-                    }, label = { Text(tag) }, leadingIcon = { Icon(Icons.Outlined.Close, "Remove $tag", Modifier.size(14.dp)) })
+                    }, label = { Text(tag) }, leadingIcon = { Icon(Icons.Outlined.Close, tr("Remove {0}", tag), Modifier.size(14.dp)) })
                 }
             }
         }
@@ -75,7 +77,7 @@ fun TagEditor(app: AppState, item: MediaItem) {
             NumberField(text, { text = it.take(40) }, Modifier.weight(1f).onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown && it.key == Key.Enter) { add(); true } else false
             })
-            OutlinedButton(onClick = ::add, enabled = text.isNotBlank()) { Text("Add tag") }
+            OutlinedButton(onClick = ::add, enabled = text.isNotBlank()) { Text(tr("Add tag")) }
         }
     }
 }
@@ -84,26 +86,26 @@ fun TagEditor(app: AppState, item: MediaItem) {
 @Composable
 fun MissingFilesDialog(app: AppState, missing: List<MediaItem>, onDismiss: () -> Unit) {
     fun locate(item: MediaItem) {
-        val path: Path? = if (item.isWeb) pickFolder(app.window, "Where is ${item.filename} now?") else {
-            val dialog = FileDialog(app.window as? Frame, "Where is ${item.filename} now?", FileDialog.LOAD).apply {
+        val path: Path? = if (item.isWeb) pickFolder(app.window, tr("Where is {0} now?", item.filename)) else {
+            val dialog = FileDialog(app.window as? Frame, tr("Where is {0} now?", item.filename), FileDialog.LOAD).apply {
                 file = item.localPath?.fileName?.toString()
             }
             dialog.isVisible = true
             dialog.file?.let { Path.of(dialog.directory, it) }
         }
         path ?: return
-        app.runTask("Found ${item.filename}", "Couldn't use that file") {
+        app.runTask(tr("Found {0}", item.filename), tr("Couldn't use that file")) {
             app.missing.relink(item, path)
             app.libraryChanged()
         }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("${missing.size} missing wallpaper${if (missing.size == 1) "" else "s"}") },
+        title = { Text(trCount(missing.size, "{0} missing wallpaper", "{0} missing wallpapers")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MutedText("These were moved, renamed or deleted, or are on a drive that isn't connected. If you moved a folder, " +
-                    "search it and they are found by name.")
+                MutedText(tr("These were moved, renamed or deleted, or are on a drive that isn't connected. If you moved a folder, ") +
+                    tr("search it and they are found by name."))
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                     items(missing, key = { it.id }) { item ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -112,10 +114,10 @@ fun MissingFilesDialog(app: AppState, missing: List<MediaItem>, onDismiss: () ->
                                 Text(item.path ?: "", color = Theme.colors.textMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Spacer(Modifier.width(8.dp))
-                            TextButton(onClick = { locate(item) }) { Text("Locate…") }
+                            TextButton(onClick = { locate(item) }) { Text(tr("Locate…")) }
                             TextButton(onClick = {
                                 app.runTask { app.library.deleteThumbnail(item); app.db.removeMedia(item.id); app.libraryChanged() }
-                            }) { Text("Remove") }
+                            }) { Text(tr("Remove")) }
                         }
                     }
                 }
@@ -123,24 +125,24 @@ fun MissingFilesDialog(app: AppState, missing: List<MediaItem>, onDismiss: () ->
         },
         confirmButton = {
             Button(onClick = {
-                val folder = pickFolder(app.window, "Search a folder for the missing files") ?: return@Button
-                app.runTask(failure = "Couldn't search the folder") {
+                val folder = pickFolder(app.window, tr("Search a folder for the missing files")) ?: return@Button
+                app.runTask(failure = tr("Couldn't search the folder")) {
                     val found = app.missing.searchFolder(folder, missing)
                     app.libraryChanged()
-                    app.toast(if (found > 0) "Found $found of ${missing.size}" else "None of them are in that folder", if (found > 0) ToastKind.Success else ToastKind.Info)
+                    app.toast(if (found > 0) tr("Found {0} of {1}", found, missing.size) else tr("None of them are in that folder"), if (found > 0) ToastKind.Success else ToastKind.Info)
                 }
-            }) { Text("Search a folder…") }
+            }) { Text(tr("Search a folder…")) }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = {
                     onDismiss()
-                    app.runTask("Removed ${missing.size} from the library") {
+                    app.runTask(tr("Removed {0} from the library", missing.size)) {
                         missing.forEach { app.library.deleteThumbnail(it); app.db.removeMedia(it.id) }
                         app.libraryChanged()
                     }
-                }, danger = true) { Text("Remove all") }
-                TextButton(onClick = onDismiss) { Text("Close") }
+                }, danger = true) { Text(tr("Remove all")) }
+                TextButton(onClick = onDismiss) { Text(tr("Close")) }
             }
         },
     )

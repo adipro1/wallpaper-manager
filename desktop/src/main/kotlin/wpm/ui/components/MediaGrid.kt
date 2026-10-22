@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -147,22 +148,22 @@ fun MediaTile(item: MediaItem, thumbs: ThumbnailCache, selected: Boolean, onClic
             Row(Modifier.align(Alignment.TopStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (selected) {
                     Box(Modifier.size(22.dp).background(c.accent, CutCornerShape(5.dp)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Check, "Selected", tint = c.accentText, modifier = Modifier.size(15.dp))
+                        Icon(Icons.Filled.Check, tr("Selected"), tint = c.accentText, modifier = Modifier.size(15.dp))
                     }
                 }
                 if (item.favorite) {
                     Box(Modifier.size(22.dp).background(Color.Black.copy(alpha = 0.55f), CutCornerShape(5.dp)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Star, "Favorite", tint = c.star, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Filled.Star, tr("Favorite"), tint = c.star, modifier = Modifier.size(14.dp))
                     }
                 }
             }
             val badge = when {
-                item.isShader -> "Shader"
-                item.isWeb && item.isRemote -> "Website"
-                item.isWeb -> "Web"
-                item.isRemote -> "Stream" + item.durationText.let { if (it.isEmpty()) "" else " · $it" }
-                item.isVideo -> item.durationText.ifEmpty { "Video" }
-                item.filename.endsWith(".gif", ignoreCase = true) -> "GIF"
+                item.isShader -> tr("Shader")
+                item.isWeb && item.isRemote -> tr("Website")
+                item.isWeb -> tr("Web")
+                item.isRemote -> tr("Stream") + item.durationText.let { if (it.isEmpty()) "" else " · $it" }
+                item.isVideo -> item.durationText.ifEmpty { tr("Video") }
+                item.filename.endsWith(".gif", ignoreCase = true) -> tr("GIF")
                 else -> null
             }
             if (badge != null) Badge(badge, Modifier.align(Alignment.BottomEnd).padding(8.dp), live = item.isLive)
@@ -190,7 +191,7 @@ fun MediaThumbnail(item: MediaItem, thumbs: ThumbnailCache, modifier: Modifier =
             }
             !item.available() -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Outlined.BrokenImage, null, tint = Color.Gray)
-                Text("File missing", color = Color.Gray, fontSize = 12.sp)
+                Text(tr("File missing"), color = Color.Gray, fontSize = 12.sp)
             }
             item.isVideo -> Icon(Icons.Outlined.Movie, null, tint = Color.Gray)
         }

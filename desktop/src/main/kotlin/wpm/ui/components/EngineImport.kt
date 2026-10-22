@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,14 +55,14 @@ fun EngineImportDialog(app: AppState, onDismiss: () -> Unit) {
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Import from Wallpaper Engine") },
+        title = { Text(tr("Import from Wallpaper Engine")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MutedText("Video and web wallpapers from your Steam workshop subscriptions play here too. Scene wallpapers need Wallpaper Engine itself.")
+                MutedText(tr("Video and web wallpapers from your Steam workshop subscriptions play here too. Scene wallpapers need Wallpaper Engine itself."))
                 val list = projects
                 when {
                     list == null -> CircularProgressIndicator(color = Theme.colors.accent)
-                    list.isEmpty() -> MutedText("No Wallpaper Engine projects found. If they are somewhere else, choose the folder.")
+                    list.isEmpty() -> MutedText(tr("No Wallpaper Engine projects found. If they are somewhere else, choose the folder."))
                     else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 340.dp)) {
                         items(list, key = { it.folder.toString() }) { project ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -77,8 +78,8 @@ fun EngineImportDialog(app: AppState, onDismiss: () -> Unit) {
                         }
                     }
                 }
-                TextButton(onClick = { pickFolder(app.window, "Choose a Wallpaper Engine project folder")?.let { extraFolder = it } }) {
-                    Text("Choose a folder…")
+                TextButton(onClick = { pickFolder(app.window, tr("Choose a Wallpaper Engine project folder"))?.let { extraFolder = it } }) {
+                    Text(tr("Choose a folder…"))
                 }
             }
         },
@@ -86,7 +87,7 @@ fun EngineImportDialog(app: AppState, onDismiss: () -> Unit) {
             Button(onClick = {
                 val picked = projects.orEmpty().filter { it.folder in chosen && it.supported }
                 onDismiss()
-                app.runTask(failure = "Couldn't import from Wallpaper Engine") {
+                app.runTask(failure = tr("Couldn't import from Wallpaper Engine")) {
                     var added = 0
                     val failed = mutableListOf<String>()
                     for (project in picked) {
@@ -96,13 +97,13 @@ fun EngineImportDialog(app: AppState, onDismiss: () -> Unit) {
                     }
                     app.libraryChanged()
                     app.toast(
-                        "Added $added" + (if (picked.size - added - failed.size > 0) ", ${picked.size - added - failed.size} already in your library" else "") +
-                            (if (failed.isNotEmpty()) ", couldn't add ${failed.joinToString()}" else ""),
+                        tr("Added {0}", added) + (if (picked.size - added - failed.size > 0) tr(", {0} already in your library", picked.size - added - failed.size) else "") +
+                            (if (failed.isNotEmpty()) tr(", couldn't add {0}", failed.joinToString()) else ""),
                         if (failed.isEmpty()) ToastKind.Success else ToastKind.Error,
                     )
                 }
-            }, enabled = chosen.isNotEmpty()) { Text("Import ${chosen.size}") }
+            }, enabled = chosen.isNotEmpty()) { Text(tr("Import {0}", chosen.size)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }

@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
@@ -76,9 +77,9 @@ import java.nio.file.Path
 import java.time.LocalTime
 
 private fun greeting(): String = when (LocalTime.now().hour) {
-    in 5..11 -> "Good morning"
-    in 12..17 -> "Good afternoon"
-    else -> "Good evening"
+    in 5..11 -> tr("Good morning")
+    in 12..17 -> tr("Good afternoon")
+    else -> tr("Good evening")
 }
 
 private data class HomeInfo(
@@ -117,7 +118,7 @@ fun HomePage(app: AppState) {
         }
     }
 
-    PageScaffold(greeting(), "Here's your wallpaper collection.") {
+    PageScaffold(greeting(), tr("Here's your wallpaper collection.")) {
         Card(Modifier.fillMaxWidth(), padding = PaddingValues(20.dp), fold = 26.dp) {
             Adaptive(820.dp, gap = 28.dp, first = { m ->
                 PreviewFrame(m.widthIn(max = 460.dp).fillMaxWidth().aspectRatio(16f / 9f)) {
@@ -132,37 +133,37 @@ fun HomePage(app: AppState) {
                 }
             }) { m ->
                 Column(m.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Eyebrow("Now showing")
+                    Eyebrow(tr("Now showing"))
                     Text(
-                        info.current?.filename ?: "Set outside this app", color = Theme.colors.text,
+                        info.current?.filename ?: tr("Set outside this app"), color = Theme.colors.text,
                         style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val live = info.kind != null && info.kind != "image"
                         when {
-                            !live -> Tag("Picture", Theme.colors.indigo)
-                            !info.videoActive -> Tag("Live · stopped", Theme.colors.textMuted)
-                            info.videoPaused || info.autoReason != null -> Tag("Live · paused", Theme.colors.gold)
-                            else -> Tag("Live · playing", Theme.colors.teal)
+                            !live -> Tag(tr("Picture"), Theme.colors.indigo)
+                            !info.videoActive -> Tag(tr("Live · stopped"), Theme.colors.textMuted)
+                            info.videoPaused || info.autoReason != null -> Tag(tr("Live · paused"), Theme.colors.gold)
+                            else -> Tag(tr("Live · playing"), Theme.colors.teal)
                         }
-                        if (info.playlist != null) Tag("Playlist", Theme.colors.accent)
+                        if (info.playlist != null) Tag(tr("Playlist"), Theme.colors.accent)
                     }
-                    info.autoReason?.let { MutedText("Paused because ${it.text}") }
+                    info.autoReason?.let { MutedText(tr("Paused because {0}", tr(it.text))) }
                     info.playlist?.let { name ->
                         IconLine(Icons.AutoMirrored.Outlined.PlaylistPlay,
-                            "“$name” · next change ${info.playlistCountdown?.let(::formatCountdown) ?: "soon"}", Theme.colors.accent)
+                            tr("“{0}” · next change {1}", name, info.playlistCountdown?.let(::formatCountdown) ?: tr("soon")), Theme.colors.accent)
                     }
-                    info.upcoming?.let { IconLine(Icons.Outlined.Schedule, "Schedule: ${it.rule.targetName} at ${"%02d:%02d".format(java.util.Locale.ROOT, it.time.hour, it.time.minute)}", Theme.colors.textMuted) }
+                    info.upcoming?.let { IconLine(Icons.Outlined.Schedule, tr("Schedule: {0} at {1}", it.rule.targetName, "%02d:%02d".format(java.util.Locale.ROOT, it.time.hour, it.time.minute)), Theme.colors.textMuted) }
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = app::nextWallpaper) { ButtonIcon(Icons.Outlined.SkipNext); Text("Next") }
-                        OutlinedButton(onClick = app::randomWallpaper) { ButtonIcon(Icons.Outlined.Shuffle); Text("Random") }
+                        Button(onClick = app::nextWallpaper) { ButtonIcon(Icons.Outlined.SkipNext); Text(tr("Next")) }
+                        OutlinedButton(onClick = app::randomWallpaper) { ButtonIcon(Icons.Outlined.Shuffle); Text(tr("Random")) }
                         if (info.videoActive) {
                             OutlinedButton(onClick = {
                                 app.videoAction { if (app.wallpapers.videoPaused) app.wallpapers.resumeVideo() else app.wallpapers.pauseVideo() }
                             }) {
                                 ButtonIcon(if (info.videoPaused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause)
-                                Text(if (info.videoPaused) "Resume" else "Pause")
+                                Text(if (info.videoPaused) tr("Resume") else tr("Pause"))
                             }
                         }
                     }
@@ -172,17 +173,17 @@ fun HomePage(app: AppState) {
 
         val s = info.stats
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            StatCard("Wallpapers", s?.total, Icons.Outlined.PhotoLibrary, Theme.colors.accent, Modifier.weight(1f))
-            StatCard("Pictures", s?.images, Icons.Outlined.Image, Theme.colors.indigo, Modifier.weight(1f))
-            StatCard("Videos", s?.videos, Icons.Outlined.Movie, Theme.colors.teal, Modifier.weight(1f))
-            StatCard("Favorites", s?.favorites, Icons.Outlined.StarOutline, Theme.colors.gold, Modifier.weight(1f))
+            StatCard(tr("Wallpapers"), s?.total, Icons.Outlined.PhotoLibrary, Theme.colors.accent, Modifier.weight(1f))
+            StatCard(tr("Pictures"), s?.images, Icons.Outlined.Image, Theme.colors.indigo, Modifier.weight(1f))
+            StatCard(tr("Videos"), s?.videos, Icons.Outlined.Movie, Theme.colors.teal, Modifier.weight(1f))
+            StatCard(tr("Favorites"), s?.favorites, Icons.Outlined.StarOutline, Theme.colors.gold, Modifier.weight(1f))
         }
 
         if (info.recent.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Recently added")
+                SectionTitle(tr("Recently added"))
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { app.page = Page.Library }) { Text("Open library"); ButtonIcon(Icons.AutoMirrored.Outlined.ArrowForward) }
+                TextButton(onClick = { app.page = Page.Library }) { Text(tr("Open library")); ButtonIcon(Icons.AutoMirrored.Outlined.ArrowForward) }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 info.recent.forEach { item ->
@@ -192,8 +193,8 @@ fun HomePage(app: AppState) {
             }
         } else if (info.stats?.total == 0) {
             Card(Modifier.fillMaxWidth()) {
-                EmptyState("Welcome!", "Start by importing pictures and videos on the Library page, or drag them onto this window.") {
-                    Button(onClick = { app.page = Page.Library }) { ButtonIcon(Icons.Outlined.PhotoLibrary); Text("Open the library") }
+                EmptyState(tr("Welcome!"), tr("Start by importing pictures and videos on the Library page, or drag them onto this window.")) {
+                    Button(onClick = { app.page = Page.Library }) { ButtonIcon(Icons.Outlined.PhotoLibrary); Text(tr("Open the library")) }
                 }
             }
         }

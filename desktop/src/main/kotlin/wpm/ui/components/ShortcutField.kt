@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,8 +62,8 @@ fun ShortcutField(keys: String, onChange: (String) -> Unit, onHint: (String) -> 
                         val code = windowsKeyCode(event.key.nativeKeyCode)
                         val hotkey = Hotkey(code, ctrl = event.isCtrlPressed, alt = event.isAltPressed, shift = event.isShiftPressed)
                         when {
-                            Hotkey.keyName(code) == null -> onHint("Use a letter, digit, F-key or arrow key")
-                            !hotkey.hasModifier -> onHint("Hold Ctrl, Alt or Shift too, so the keys still type normally elsewhere")
+                            Hotkey.keyName(code) == null -> onHint(tr("Use a letter, digit, F-key or arrow key"))
+                            !hotkey.hasModifier -> onHint(tr("Hold Ctrl, Alt or Shift too, so the keys still type normally elsewhere"))
                             else -> {
                                 recording = false
                                 onChange(hotkey.toString())
@@ -73,6 +74,6 @@ fun ShortcutField(keys: String, onChange: (String) -> Unit, onHint: (String) -> 
                 true
             },
     ) {
-        Text(if (recording) "Press keys…" else keys.ifEmpty { "None" })
+        Text(if (recording) tr("Press keys…") else keys.ifEmpty { tr("None") })
     }
 }

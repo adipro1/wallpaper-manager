@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import wpm.data.Database
@@ -55,7 +56,7 @@ class WatchedFolders(
 
     fun add(folder: Path): FolderSync {
         val path = folder.toAbsolutePath().normalize()
-        require(path.isDirectory()) { "${path.name} isn't a folder" }
+        require(path.isDirectory()) { tr("{0} isn't a folder", path.name) }
         val current = folders
         require(current.none { path.startsWith(it) }) { "${path.name} is already watched" }
         // A parent of watched folders replaces them.

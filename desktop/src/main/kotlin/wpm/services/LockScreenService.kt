@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
 import kotlinx.serialization.SerialName
@@ -53,7 +54,7 @@ class PowerShellLockScreen(private val scriptDir: Path) : LockScreenApi {
         val output = process.inputStream.bufferedReader().readText()
         if (!process.waitFor(60, TimeUnit.SECONDS)) {
             process.destroyForcibly()
-            throw IOException("Windows didn't respond in time")
+            throw IOException(tr("Windows didn't respond in time"))
         }
         if (process.exitValue() != 0) {
             log.warning("lockscreen.ps1 $action failed: $output")
@@ -114,9 +115,9 @@ class LockScreenService(
     }
 
     fun setImage(item: MediaItem) {
-        require(item.isImage) { "Pick a frame with setVideoFrame for videos" }
-        val local = item.localPath ?: throw IllegalArgumentException("Only pictures on this PC can be used")
-        if (!local.exists()) throw FileNotFoundException("File not found: $local")
+        require(item.isImage) { tr("Pick a frame with setVideoFrame for videos") }
+        val local = item.localPath ?: throw IllegalArgumentException(tr("Only pictures on this PC can be used"))
+        if (!local.exists()) throw FileNotFoundException(tr("File not found: {0}", local))
         backupOriginal()
         var file = local
         if (file.extension.lowercase() !in NATIVE_FORMATS) { // WEBP / GIF / BMP -> PNG
@@ -128,10 +129,10 @@ class LockScreenService(
 
     /** Extracts the frame at [seconds] and uses it as the lock screen. Returns the frame file. */
     fun setVideoFrame(item: MediaItem, seconds: Double): Path {
-        require(item.isVideo) { "Not a video" }
-        val local = item.localPath ?: throw IllegalArgumentException("Save the video for offline use first")
-        if (!local.exists()) throw FileNotFoundException("File not found: $local")
-        val reader = videos ?: throw IllegalStateException("Video playback isn't available")
+        require(item.isVideo) { tr("Not a video") }
+        val local = item.localPath ?: throw IllegalArgumentException(tr("Save the video for offline use first"))
+        if (!local.exists()) throw FileNotFoundException(tr("File not found: {0}", local))
+        val reader = videos ?: throw IllegalStateException(tr("Video playback isn't available"))
         backupOriginal()
         Files.createDirectories(folder)
         folder.listDirectoryEntries("frame-*.jpg").forEach { Files.deleteIfExists(it) } // keep only the current frame

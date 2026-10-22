@@ -1,5 +1,6 @@
 package wpm.media
 
+import wpm.tr
 import wpm.data.Database
 import wpm.data.MediaItem
 import wpm.logger
@@ -25,10 +26,10 @@ class MissingFiles(private val db: Database) {
     /** Points [item] at [newPath] (the same picture, video or web wallpaper somewhere else). */
     fun relink(item: MediaItem, newPath: Path) {
         val target = newPath.toAbsolutePath().normalize()
-        require(target.exists()) { "${target.name} doesn't exist" }
-        require(item.isWeb == target.isDirectory() || (item.isWeb && target.isRegularFile())) { "Choose a ${if (item.isWeb) "folder" else "file"}" }
+        require(target.exists()) { tr("{0} doesn't exist", target.name) }
+        require(item.isWeb == target.isDirectory() || (item.isWeb && target.isRegularFile())) { tr(if (item.isWeb) "Choose a folder" else "Choose a file") }
         db.mediaByPath(target.toString())?.let { other ->
-            require(other.id == item.id) { "${target.name} is already in your library (as ${other.filename})" }
+            require(other.id == item.id) { tr("{0} is already in your library (as {1})", target.name, other.filename) }
             return
         }
         val oldName = item.localPath?.name

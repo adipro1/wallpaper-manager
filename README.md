@@ -84,6 +84,9 @@ Python app; your library, playlists and schedule carry over.)
   GitHub (size and SHA-256 checked), installs it in the background and restarts.
 - **Accessible**: keyboard focus is always visible, switches, choices and chips tell
   screen readers their state, and setting rows toggle when you click their label.
+- **Languages**: English and German (Settings > Appearance > Language, or the Windows
+  language). Translations live in `desktop/src/main/resources/i18n/<code>.json`, keyed by
+  the English text; a test lists any text that still needs translating.
 - **Backup**: one `.wpmbackup` file with the library, playlists, schedule, settings,
   shaders and thumbnails; restore it on another PC (the files you replace are kept).
 

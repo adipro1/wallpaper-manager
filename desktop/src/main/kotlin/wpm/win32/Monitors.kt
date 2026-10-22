@@ -1,5 +1,6 @@
 package wpm.win32
 
+import wpm.tr
 import com.sun.jna.Native
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
@@ -20,7 +21,7 @@ data class ScreenRect(val x: Int, val y: Int, val width: Int, val height: Int) {
 /** A display. [id] is the device name (e.g. \\.\DISPLAY1), stable while the setup doesn't change. */
 data class Monitor(val id: String, val bounds: ScreenRect, val primary: Boolean) {
     /** "Display 1", for the UI. */
-    val label: String get() = "Display " + id.substringAfter("DISPLAY", id).trimStart('\\', '.')
+    val label: String get() = tr("Display {0}", id.substringAfter("DISPLAY", id).trimStart('\\', '.'))
 }
 
 object Monitors {

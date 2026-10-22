@@ -1,5 +1,6 @@
 package wpm.ui.pages
 
+import wpm.tr
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
@@ -86,7 +87,7 @@ fun LockScreenPage(app: AppState) {
     }
 
     val clock = remember { java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("H:mm")) }
-    PageScaffold("Lock Screen", "The picture you see before signing in.") {
+    PageScaffold(tr("Lock Screen"), tr("The picture you see before signing in.")) {
         Card(Modifier.fillMaxWidth(), padding = PaddingValues(20.dp), fold = 26.dp) {
             Adaptive(820.dp, gap = 28.dp, first = { m ->
                 PreviewFrame(m.widthIn(max = 420.dp).fillMaxWidth().aspectRatio(16f / 9f)) {
@@ -94,7 +95,7 @@ fun LockScreenPage(app: AppState) {
                     when {
                         preview != null -> Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                         loading -> CircularProgressIndicator(color = Theme.colors.accent)
-                        else -> Text("Couldn't read the lock screen picture", color = Color.White.copy(alpha = 0.7f))
+                        else -> Text(tr("Couldn't read the lock screen picture"), color = Color.White.copy(alpha = 0.7f))
                     }
                     // A clock, like on the real lock screen.
                     Column(Modifier.align(Alignment.TopCenter).padding(top = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -103,14 +104,14 @@ fun LockScreenPage(app: AppState) {
                 }
             }) { m ->
                 Column(m.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Eyebrow("Current lock screen")
-                    Text(current?.filename ?: "Set outside this app", color = Theme.colors.text, style = MaterialTheme.typography.headlineSmall,
+                    Eyebrow(tr("Current lock screen"))
+                    Text(current?.filename ?: tr("Set outside this app"), color = Theme.colors.text, style = MaterialTheme.typography.headlineSmall,
                         maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    timestamp?.let { Tag("Frame at ${formatTimestamp(it)}", Theme.colors.indigo) }
-                    MutedText("Windows only shows still pictures here. For videos you pick one frame.")
+                    timestamp?.let { Tag(tr("Frame at {0}", formatTimestamp(it)), Theme.colors.indigo) }
+                    MutedText(tr("Windows only shows still pictures here. For videos you pick one frame."))
                     if (hasOriginal) {
                         TextButton(onClick = { confirmRestore = true }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp)) {
-                            ButtonIcon(Icons.Outlined.Restore); Text("Restore original lock screen")
+                            ButtonIcon(Icons.Outlined.Restore); Text(tr("Restore original lock screen"))
                         }
                     }
                 }
@@ -118,13 +119,13 @@ fun LockScreenPage(app: AppState) {
         }
         SlideshowCard(app)
         ChooserCard(
-            app, if (app.videoSupport) "Choose a picture or a video frame" else "Choose a picture",
+            app, if (app.videoSupport) tr("Choose a picture or a video frame") else tr("Choose a picture"),
             filter = { it.isImage || (it.isVideo && !it.isRemote && app.videoSupport) }, highlighted = current?.id,
             onPick = { item ->
                 if (item.isVideo) {
                     picking = item
                 } else {
-                    app.runTask("Lock screen updated", "Couldn't set the lock screen") {
+                    app.runTask(tr("Lock screen updated"), tr("Couldn't set the lock screen")) {
                         app.changeWallpaper { app.lockScreen.setImage(item) }
                     }
                 }
@@ -136,10 +137,10 @@ fun LockScreenPage(app: AppState) {
 
     if (confirmRestore) {
         ConfirmDialog(
-            "Restore original lock screen?", "Puts back the lock screen picture you had before using this app.", "Restore",
+            tr("Restore original lock screen?"), tr("Puts back the lock screen picture you had before using this app."), tr("Restore"),
             onDismiss = { confirmRestore = false },
             onConfirm = {
-                app.runTask("Original lock screen restored", "Couldn't restore the lock screen") {
+                app.runTask(tr("Original lock screen restored"), tr("Couldn't restore the lock screen")) {
                     app.changeWallpaper { app.lockScreen.restoreOriginal() }
                 }
             },
@@ -171,23 +172,23 @@ private fun SlideshowCard(app: AppState) {
     val minutes = amount.trim().toIntOrNull()?.let { if (hours) it * 60 else it }
     val valid = chosen != null && minutes != null && minutes >= wpm.services.MIN_LOCK_INTERVAL_MINUTES
     wpm.ui.components.Card(Modifier.fillMaxWidth(), accent = if (running != null) Theme.colors.teal else null) {
-        SectionTitle("Slideshow")
+        SectionTitle(tr("Slideshow"))
         Spacer(Modifier.height(6.dp))
         val current = running
         MutedText(
             if (current != null) {
-                val name = playlists.firstOrNull { it.id == current.playlistId }?.name ?: "a playlist"
+                val name = playlists.firstOrNull { it.id == current.playlistId }?.name ?: tr("a playlist")
                 val next = app.lockSlideshow.secondsUntilChange()?.let { ((it + 59) / 60).toInt() }
-                "Showing “$name” on the lock screen" + (next?.let { ", next picture in $it min" } ?: "")
+                tr("Showing “{0}” on the lock screen", name) + (next?.let { tr(", next picture in {0} min", it) } ?: "")
             } else {
-                "Let a playlist change the lock screen picture (at most every ${wpm.services.MIN_LOCK_INTERVAL_MINUTES} minutes)."
+                tr("Let a playlist change the lock screen picture (at most every {0} minutes).", wpm.services.MIN_LOCK_INTERVAL_MINUTES)
             },
         )
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box {
                 OutlinedButton(onClick = { menuOpen = true }, enabled = playlists.isNotEmpty()) {
-                    Text(playlists.firstOrNull { it.id == chosen }?.name ?: if (playlists.isEmpty()) "Make a playlist first" else "Choose a playlist")
+                    Text(playlists.firstOrNull { it.id == chosen }?.name ?: if (playlists.isEmpty()) tr("Make a playlist first") else tr("Choose a playlist"))
                 }
                 androidx.compose.material3.DropdownMenu(menuOpen, { menuOpen = false }) {
                     playlists.forEach { p ->
@@ -204,15 +205,15 @@ private fun SlideshowCard(app: AppState) {
             Spacer(Modifier.weight(1f))
             if (current != null) {
                 TextButton(onClick = {
-                    app.runTask("Slideshow stopped") { app.lockSlideshow.stop(); app.wallpaperChanged() }
-                }) { Text("Stop") }
+                    app.runTask(tr("Slideshow stopped")) { app.lockSlideshow.stop(); app.wallpaperChanged() }
+                }) { Text(tr("Stop")) }
             }
             wpm.ui.components.Button(onClick = {
-                app.runTask(failure = "Couldn't start the slideshow") {
+                app.runTask(failure = tr("Couldn't start the slideshow")) {
                     val item = app.changeWallpaper { app.lockSlideshow.start(chosen!!, minutes!!) }
-                    app.toast("Lock screen slideshow: ${item.filename}", ToastKind.Success)
+                    app.toast(tr("Lock screen slideshow: {0}", item.filename), ToastKind.Success)
                 }
-            }, enabled = valid) { Text(if (current != null) "Restart" else "Start") }
+            }, enabled = valid) { Text(if (current != null) tr("Restart") else tr("Start")) }
         }
     }
 }

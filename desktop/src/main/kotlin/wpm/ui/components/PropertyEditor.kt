@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -78,20 +79,20 @@ fun PropertyEditor(
                 withContext(Dispatchers.IO) { app.setProperty(item, property, value) }
                 onChanged()
             } catch (e: Exception) {
-                app.toast("Couldn't change ${property.label}: ${e.message}", ToastKind.Error)
+                app.toast(tr("Couldn't change {0}: {1}", property.label, e.message), ToastKind.Error)
             }
         }
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("WALLPAPER SETTINGS", color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+            Text(tr("WALLPAPER SETTINGS"), color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
             TextButton(onClick = {
                 values = properties.associate { it.name to it.default }
                 scope.launch {
                     withContext(Dispatchers.IO) { app.resetProperties(item) }
                     onChanged()
                 }
-            }) { Text("Reset") }
+            }) { Text(tr("Reset")) }
         }
         properties.forEach { property ->
             PropertyControl(app, item, property, values[property.name] ?: property.default) { change(property, it) }
@@ -153,7 +154,7 @@ private fun PropertyControl(app: AppState, item: MediaItem, property: WallpaperP
             var open by remember { mutableStateOf(false) }
             Box {
                 OutlinedButton(onClick = { open = true }, enabled = choices.isNotEmpty()) {
-                    Text(current?.takeIf { it.isNotEmpty() } ?: "Choose…", maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 2.dp))
+                    Text(current?.takeIf { it.isNotEmpty() } ?: tr("Choose…"), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 2.dp))
                 }
                 DropdownMenu(open, { open = false }) {
                     choices.forEachIndexed { i, choice ->
@@ -180,13 +181,13 @@ private fun PropertyControl(app: AppState, item: MediaItem, property: WallpaperP
         PropertyType.IMAGE -> Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(property.label, color = c.text, fontSize = 13.sp)
-                Text(value.content.takeIf { it.isNotEmpty() }?.let { Path(it).name } ?: "No picture yet", color = c.textMuted, fontSize = 12.sp,
+                Text(value.content.takeIf { it.isNotEmpty() }?.let { Path(it).name } ?: tr("No picture yet"), color = c.textMuted, fontSize = 12.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             var picking by remember { mutableStateOf(false) }
-            OutlinedButton(onClick = { picking = true }) { Text("Choose…") }
+            OutlinedButton(onClick = { picking = true }) { Text(tr("Choose…")) }
             if (picking) {
-                MediaPickerDialog(app, "Choose a picture", multiple = false, onDismiss = { picking = false },
+                MediaPickerDialog(app, tr("Choose a picture"), multiple = false, onDismiss = { picking = false },
                     filter = { it.isImage && !it.isRemote }) { picked ->
                     picked.firstOrNull()?.path?.let { onChange(JsonPrimitive(it)) }
                 }

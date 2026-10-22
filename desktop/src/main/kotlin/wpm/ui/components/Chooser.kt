@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,8 +45,8 @@ fun ChooserCard(
         Spacer(Modifier.height(16.dp))
         if (items.isEmpty()) {
             EmptyState(
-                if (search.isBlank()) "Nothing here yet" else "Nothing matches",
-                if (search.isBlank()) "Import wallpapers on the Library page." else "Try a different search.",
+                if (search.isBlank()) tr("Nothing here yet") else tr("Nothing matches"),
+                if (search.isBlank()) tr("Import wallpapers on the Library page.") else tr("Try a different search."),
             )
         } else {
             MediaGrid(items, app.thumbs, setOfNotNull(highlighted), { item, _ -> onPick(item) },

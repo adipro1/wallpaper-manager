@@ -1,5 +1,6 @@
 package wpm.media
 
+import wpm.tr
 import org.jetbrains.skia.Image
 import wpm.data.Database
 import wpm.data.MediaItem
@@ -68,12 +69,12 @@ class MediaLibrary(private val db: Database, val thumbDir: Path, var videos: Vid
             val (w, h) = try {
                 Imaging.size(path)
             } catch (e: IllegalArgumentException) {
-                throw IllegalArgumentException("Can't decode: not a valid image file", e)
+                throw IllegalArgumentException(tr("Can't decode: not a valid image file"), e)
             }
             MediaInfo("image", w, h)
         }
-        "video" -> (videos ?: throw IllegalStateException("video playback isn't available")).probe(path)
-        else -> throw IllegalArgumentException("Unsupported file type: $path")
+        "video" -> (videos ?: throw IllegalStateException(tr("video playback isn't available"))).probe(path)
+        else -> throw IllegalArgumentException(tr("Unsupported file type: {0}", path))
     }
 
     /** Thumbnail file name from the media path and modification time, so an edited file gets a fresh one. */

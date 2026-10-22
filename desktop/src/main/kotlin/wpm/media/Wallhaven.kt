@@ -1,5 +1,6 @@
 package wpm.media
 
+import wpm.tr
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -58,8 +59,8 @@ class Wallhaven(private val client: HttpClient = HttpClient.newBuilder().followR
         val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
         when (response.statusCode()) {
             200 -> return response
-            429 -> throw IOException("Wallhaven is busy (too many requests); try again in a minute")
-            else -> throw IOException("Wallhaven answered ${response.statusCode()}")
+            429 -> throw IOException(tr("Wallhaven is busy (too many requests); try again in a minute"))
+            else -> throw IOException(tr("Wallhaven answered {0}", response.statusCode()))
         }
     }
 
@@ -93,7 +94,7 @@ class Wallhaven(private val client: HttpClient = HttpClient.newBuilder().followR
     }
 
     override fun bytes(url: String): ByteArray {
-        require(isWallhavenHost(url)) { "Not a Wallhaven address: $url" }
+        require(isWallhavenHost(url)) { tr("Not a Wallhaven address: {0}", url) }
         return get(url).body()
     }
 
@@ -112,7 +113,7 @@ fun downloadWallpaper(source: WallpaperSource, wallpaper: OnlineWallpaper, folde
     val target = folder.resolve("wallhaven-${wallpaper.id.filter(Char::isLetterOrDigit)}.$ext")
     if (Files.exists(target)) return target
     val bytes = source.bytes(wallpaper.imageUrl)
-    require(bytes.size in 1..80_000_000) { "The download is empty or too big" }
+    require(bytes.size in 1..80_000_000) { tr("The download is empty or too big") }
     Imaging.decode(bytes).close() // must be a real picture
     Files.createDirectories(folder)
     val partial = target.resolveSibling(target.fileName.toString() + ".part")

@@ -1,5 +1,6 @@
 package wpm.services
 
+import wpm.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -156,7 +157,7 @@ class Automation(
                 runCatching { updates.checkIfDue() }.getOrNull()?.let { version ->
                     if (settings.string("notified_version", "") != version) {
                         settings.set("notified_version", version)
-                        notify("Version $version is available. Open Settings to install it.")
+                        notify(tr("Version {0} is available. Open Settings to install it.", version))
                     }
                 }
                 delay(3_600_000)

@@ -1,5 +1,6 @@
 package wpm.ui.components
 
+import wpm.tr
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -78,7 +79,7 @@ fun AddUrlDialog(app: AppState, initialUrl: String = "", onDismiss: () -> Unit) 
                 UrlStep.Found(video, preview)
             } catch (e: Exception) {
                 log.info("Look-up failed for $link: $e")
-                UrlStep.Failed(e.message ?: "Couldn't read this link")
+                UrlStep.Failed(e.message ?: tr("Couldn't read this link"))
             }
         }
     }
@@ -94,12 +95,12 @@ fun AddUrlDialog(app: AppState, initialUrl: String = "", onDismiss: () -> Unit) 
         try {
             val id = withContext(Dispatchers.IO) { app.urls.addStream(video) }
             if (id == null) {
-                step = UrlStep.Failed("This video is already in your library")
+                step = UrlStep.Failed(tr("This video is already in your library"))
                 return@launch
             }
-            finish(withContext(Dispatchers.IO) { app.db.getMedia(id) }, "Added “${video.title}”", setNow)
+            finish(withContext(Dispatchers.IO) { app.db.getMedia(id) }, tr("Added “{0}”", video.title), setNow)
         } catch (e: Exception) {
-            step = UrlStep.Failed(e.message ?: "Couldn't add the video")
+            step = UrlStep.Failed(e.message ?: tr("Couldn't add the video"))
         }
     }
 
@@ -112,12 +113,12 @@ fun AddUrlDialog(app: AppState, initialUrl: String = "", onDismiss: () -> Unit) 
                 val id = withContext(Dispatchers.IO) {
                     app.urls.download(video, maxHeight, { p -> step = UrlStep.Downloading(video, p) }, { cancelled })
                 }
-                finish(id?.let { withContext(Dispatchers.IO) { app.db.getMedia(it) } }, "Saved “${video.title}” for offline use", setNow)
+                finish(id?.let { withContext(Dispatchers.IO) { app.db.getMedia(it) } }, tr("Saved “{0}” for offline use", video.title), setNow)
             } catch (e: DownloadCancelledException) {
                 step = UrlStep.Typing
             } catch (e: Exception) {
                 log.info("Download failed: $e")
-                step = UrlStep.Failed(e.message ?: "The download failed")
+                step = UrlStep.Failed(e.message ?: tr("The download failed"))
             }
         }
     }
@@ -126,25 +127,25 @@ fun AddUrlDialog(app: AppState, initialUrl: String = "", onDismiss: () -> Unit) 
 
     AlertDialog(
         onDismissRequest = { if (step !is UrlStep.Downloading) onDismiss() },
-        title = { Text("Add a video from the internet") },
+        title = { Text(tr("Add a video from the internet")) },
         text = {
             Column(Modifier.width(520.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (!app.urls.available) {
-                    Text("Video links need yt-dlp.exe in ${app.ytDlp.exe.parent}.", color = Theme.colors.danger)
+                    Text(tr("Video links need yt-dlp.exe in {0}.", app.ytDlp.exe.parent), color = Theme.colors.danger)
                 }
                 OutlinedTextField(
                     text, { text = it; if (step !is UrlStep.LookingUp && step !is UrlStep.Downloading) step = UrlStep.Typing },
-                    label = { Text("Link (YouTube, Vimeo, or a direct .mp4 / .webm / .m3u8 link)") },
+                    label = { Text(tr("Link (YouTube, Vimeo, or a direct .mp4 / .webm / .m3u8 link)")) },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
                     enabled = step !is UrlStep.Downloading,
                     isError = text.isNotBlank() && url == null,
                 )
                 when (val s = step) {
-                    UrlStep.Typing -> MutedText("Streamed videos play straight from the internet and need a connection. " +
-                        "Saved videos are downloaded to ${app.urls.downloadDir} and work offline (without sound).")
+                    UrlStep.Typing -> MutedText(tr("Streamed videos play straight from the internet and need a connection. ") +
+                        tr("Saved videos are downloaded to {0} and work offline (without sound).", app.urls.downloadDir))
                     UrlStep.LookingUp -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         CircularProgressIndicator(Modifier.width(24.dp).height(24.dp), strokeWidth = 3.dp)
-                        MutedText("Looking up the video…")
+                        MutedText(tr("Looking up the video…"))
                     }
                     is UrlStep.Found -> VideoSummary(s.video, s.preview)
                     is UrlStep.Downloading -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -159,16 +160,16 @@ fun AddUrlDialog(app: AppState, initialUrl: String = "", onDismiss: () -> Unit) 
         confirmButton = {
             when (val s = step) {
                 is UrlStep.Found -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { download(s.video, setNow = false) }, enabled = !s.video.isLive) { Text("Save offline") }
-                    OutlinedButton(onClick = { stream(s.video, setNow = false) }) { Text("Add stream") }
-                    Button(onClick = { stream(s.video, setNow = true) }) { Text("Stream as wallpaper") }
+                    OutlinedButton(onClick = { download(s.video, setNow = false) }, enabled = !s.video.isLive) { Text(tr("Save offline")) }
+                    OutlinedButton(onClick = { stream(s.video, setNow = false) }) { Text(tr("Add stream")) }
+                    Button(onClick = { stream(s.video, setNow = true) }) { Text(tr("Stream as wallpaper")) }
                 }
-                is UrlStep.Downloading -> TextButton(onClick = { cancelled = true }) { Text("Cancel download") }
-                else -> Button(onClick = ::lookUp, enabled = url != null && step !is UrlStep.LookingUp && app.urls.available) { Text("Look up") }
+                is UrlStep.Downloading -> TextButton(onClick = { cancelled = true }) { Text(tr("Cancel download")) }
+                else -> Button(onClick = ::lookUp, enabled = url != null && step !is UrlStep.LookingUp && app.urls.available) { Text(tr("Look up")) }
             }
         },
         dismissButton = {
-            if (step !is UrlStep.Downloading) TextButton(onClick = onDismiss) { Text("Close") }
+            if (step !is UrlStep.Downloading) TextButton(onClick = onDismiss) { Text(tr("Close")) }
         },
     )
 }
@@ -182,10 +183,10 @@ private fun VideoSummary(video: RemoteVideo, preview: ImageBitmap?) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(video.title, color = Theme.colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val details = listOfNotNull(
-                if (video.isLive) "Live stream" else video.duration?.let { d -> "%d:%02d".format(d.toInt() / 60, d.toInt() % 60) },
+                if (video.isLive) tr("Live stream") else video.duration?.let { d -> "%d:%02d".format(d.toInt() / 60, d.toInt() % 60) },
                 if (video.width != null && video.height != null) "${video.width} × ${video.height}" else null,
             )
-            MutedText(details.joinToString(" · ").ifEmpty { "Video" })
+            MutedText(details.joinToString(" · ").ifEmpty { tr("Video") })
         }
     }
 }
