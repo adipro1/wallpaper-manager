@@ -43,7 +43,8 @@ fun runSelfTest(paths: AppPaths): Boolean {
         "${updates.get()} updates in 1.5 s"
     }
     check("Chromium") {
-        val app = Chromium.get(paths.dataDir.resolve("chromium"), muted = true) { log.info(it) }
+        // Download progress comes every 1%; every 10% is enough for the log.
+        val app = Chromium.get(paths.dataDir.resolve("chromium"), muted = true) { if (!it.endsWith("%") || it.endsWith("0%")) log.info(it) }
         val window = openBrowserWindow(app, "about:blank")
         window.close()
         "Chromium ${Chromium.version()}"

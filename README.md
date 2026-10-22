@@ -8,6 +8,11 @@ pictures, playlists and a daily schedule.
 Version 2 is written in Kotlin with Compose for Desktop. (Version 1.x was a
 Python app; your library, playlists and schedule carry over.)
 
+| | |
+| --- | --- |
+| ![Home](docs/screenshots/home-dark.png) | ![Library](docs/screenshots/library-light.png) |
+| ![Schedule](docs/screenshots/schedule-dark.png) | ![Playlists](docs/screenshots/playlists-light.png) |
+
 ## Features
 
 - **Library** of JPG, PNG, WEBP, GIF, BMP, MP4, WEBM, MKV and MOV files: import

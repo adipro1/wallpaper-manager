@@ -23,7 +23,7 @@ jobs:
         with:
           distribution: microsoft
           java-version: "21"
-          cache: gradle
+      - uses: gradle/actions/setup-gradle@v6
       - name: Fetch libmpv (for the video tests)
         run: ./gradlew getLibmpv --console=plain
       - run: ./gradlew check --console=plain
@@ -44,7 +44,7 @@ jobs:
         with:
           distribution: microsoft
           java-version: "21"
-          cache: gradle
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Check that the tag matches the app version
         if: startsWith(github.ref, 'refs/tags/v')
@@ -71,4 +71,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         working-directory: .
-        run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*-setup.exe --title "Wallpaper Manager ${GITHUB_REF_NAME#v}" --generate-notes
+        # Hand-written notes in docs/release-notes-<version>.md if there are any, otherwise GitHub's list of changes.
+        run: |
+          notes="docs/release-notes-${GITHUB_REF_NAME#v}.md"
+          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*-setup.exe --title "Wallpaper Manager ${GITHUB_REF_NAME#v}" "$@"
