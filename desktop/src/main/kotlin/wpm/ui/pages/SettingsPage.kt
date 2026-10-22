@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import wpm.ui.components.OrigamiMark
 import wpm.ui.components.ButtonIcon
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import wpm.ui.components.SingleChoiceSegmentedButtonRow
 import wpm.ui.components.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -152,19 +154,8 @@ fun SettingsPage(app: AppState) {
             BooleanSetting(app, "web_interaction", true, "Web wallpapers react to the mouse on the empty desktop")
             BooleanSetting(app, "web_muted", true, "Mute web wallpapers (applies after restarting the app)")
             BooleanSetting(app, "audio_reactive", true, "Audio-reactive wallpapers may listen to what your PC plays (analysed live, never recorded)")
-            var fps by remember { mutableStateOf(app.settings.string("shader_fps", "60")) }
-            Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Shader frame rate (lower saves power)", color = Theme.colors.text, modifier = Modifier.weight(1f))
-                SingleChoiceSegmentedButtonRow {
-                    listOf("30", "60").forEachIndexed { i, value ->
-                        SegmentedButton(fps == value, {
-                            fps = value
-                            app.settings.set("shader_fps", value)
-                            app.runTask { app.changeWallpaper { if (app.wallpapers.state.kind == "shader") app.wallpapers.restartLive() } }
-                        }, SegmentedButtonDefaults.itemShape(i, 2)) { Text("$value fps") }
-                    }
-                }
-            }
+            FrameRateSetting(app, "shader_fps", "60", "Shader frame rate (lower saves power)", listOf("15", "30", "60"), restartKind = "shader")
+            FrameRateSetting(app, "web_fps", "full", "Web wallpaper frame rate", listOf("30", "full"), restartKind = "web")
             MutedText(
                 when {
                     wpm.engine.Chromium.version() != null -> "Web engine: Chromium ${wpm.engine.Chromium.version()}"
@@ -191,6 +182,8 @@ fun SettingsPage(app: AppState) {
             }
         }
 
+        PerformanceCard(app)
+
         BackupCard(app)
 
         Card(Modifier.fillMaxWidth()) {
@@ -213,9 +206,13 @@ fun SettingsPage(app: AppState) {
                         }
                     }
                 }, enabled = !checking) { Text(if (checking) "Checking…" else "Check now") }
-                if (available != null) {
+                if (available != null && !wpm.services.Updater.canInstall) {
                     Button(onClick = { openLink(app, RELEASES_PAGE) }) { Text("Download") }
                 }
+            }
+            if (available != null && wpm.services.Updater.canInstall) {
+                Spacer(Modifier.height(10.dp))
+                OneClickUpdate(app)
             }
         }
 
@@ -250,6 +247,90 @@ fun SettingsPage(app: AppState) {
                 TextButton(onClick = { openLink(app, "https://github.com/$REPO") }) { Text("Project page"); ButtonIcon(Icons.AutoMirrored.Outlined.OpenInNew) }
             }
         }
+    }
+}
+
+/** Downloads the new version's installer and runs it; the app closes and comes back updated. */
+@Composable
+private fun OneClickUpdate(app: AppState) {
+    var progress by remember { mutableStateOf<Double?>(null) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val p = progress
+        if (p != null) {
+            androidx.compose.material3.LinearProgressIndicator({ p.toFloat() }, Modifier.weight(1f))
+            MutedText("Downloading… ${(p * 100).toInt()} %")
+        } else {
+            MutedText("Installs in the background: the app closes for a moment and comes back updated.", Modifier.weight(1f))
+            TextButton(onClick = { openLink(app, RELEASES_PAGE) }) { Text("What's new") }
+            Button(onClick = {
+                val release = app.updates.availableRelease() ?: return@Button app.toast("Check for updates again first")
+                progress = 0.0
+                app.runTask(failure = "Couldn't update") {
+                    try {
+                        val installer = wpm.services.Updater.download(release, app.paths.cacheDir.resolve("updates")) { progress = it }
+                        wpm.services.Updater.launch(installer)
+                        javax.swing.SwingUtilities.invokeLater { app.exitApp() }
+                    } finally {
+                        progress = null
+                    }
+                }
+            }) { Text("Install now") }
+        }
+    }
+}
+
+/** A frame rate choice; the live wallpaper of [restartKind] restarts to use it. */
+@Composable
+private fun FrameRateSetting(app: AppState, key: String, default: String, label: String, options: List<String>, restartKind: String) {
+    var value by remember { mutableStateOf(app.settings.string(key, default)) }
+    Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Theme.colors.text, modifier = Modifier.weight(1f))
+        SingleChoiceSegmentedButtonRow {
+            options.forEachIndexed { i, option ->
+                SegmentedButton(value == option, {
+                    value = option
+                    app.settings.set(key, option)
+                    app.runTask { app.changeWallpaper { if (app.wallpapers.state.kind == restartKind) app.wallpapers.restartLive() } }
+                }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(if (option == "full") "Full" else "$option fps") }
+            }
+        }
+    }
+}
+
+/** What the app and its engines use right now, refreshed every two seconds while visible. */
+@Composable
+private fun PerformanceCard(app: AppState) {
+    var usage by remember { mutableStateOf<wpm.win32.ResourceUsage?>(null) }
+    LaunchedEffect(Unit) {
+        // On a background thread with real time, so the page counts as idle between samples.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            wpm.win32.ResourceMonitor().use { monitor ->
+                while (true) {
+                    kotlinx.coroutines.delay(2_000)
+                    usage = runCatching { monitor.sample() }.getOrNull()
+                }
+            }
+        }
+    }
+    Card(Modifier.fillMaxWidth()) {
+        SectionTitle("Performance")
+        Spacer(Modifier.height(6.dp))
+        MutedText("Wallpaper Manager with its video and web engines, right now. Lower frame rates and the pause options above save the most.")
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            UsageFigure("CPU", usage?.let { "%.1f %%".format(java.util.Locale.ROOT, it.cpuPercent) })
+            UsageFigure("Memory", usage?.let { "${it.memoryMb} MB" })
+            UsageFigure("GPU", usage?.let { u -> u.gpuPercent?.let { "%.0f %%".format(java.util.Locale.ROOT, it) } ?: "n/a" })
+            UsageFigure("Processes", usage?.processes?.toString())
+        }
+    }
+}
+
+@Composable
+private fun UsageFigure(label: String, value: String?) {
+    Column {
+        Text(label.uppercase(), color = Theme.colors.textSubtle, style = MaterialTheme.typography.labelSmall)
+        Text(value ?: "…", color = Theme.colors.text, style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -398,12 +479,18 @@ private fun BooleanSetting(app: AppState, key: String, default: Boolean, label: 
 @Composable
 private fun SettingSwitch(label: String, checked: Boolean, enabled: Boolean = true, hint: String? = null,
                           onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    // The whole row is the switch: clicking the label toggles it, and screen readers read label and state together.
+    Row(
+        Modifier.fillMaxWidth().settingDivider()
+            .toggleable(checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f).padding(end = 16.dp)) {
             Text(label, color = if (enabled) Theme.colors.text else Theme.colors.textSubtle)
             if (hint != null) MutedText(hint)
         }
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

@@ -146,6 +146,16 @@ class WebWallpapers(private val db: Database, private val library: MediaLibrary,
     }
 
     companion object {
+        /**
+         * Caps a page's animations at [fps]: requestAnimationFrame callbacks only run on frames at
+         * least 1/fps apart (all callbacks of such a frame run, so pages with several loops stay in step).
+         */
+        fun frameRateLimit(fps: Int): String = """
+            (function(fps){if(window.__wpmFps)return;window.__wpmFps=fps;var raf=window.requestAnimationFrame.bind(window),
+            gap=1000/fps,next=0,allowed=-1;window.requestAnimationFrame=function(cb){return raf(function run(t){
+            if(t===allowed||t>=next){if(t!==allowed){allowed=t;next=t+gap-1;}cb(t);}else{raf(run);}});};})($fps);
+        """.trimIndent().replace("\n", "")
+
         /** File name prefix of generated title-card thumbnails. */
         const val CARD_PREFIX = "card-"
 

@@ -1,6 +1,13 @@
 package wpm.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -74,6 +81,24 @@ class UiSmokeTest {
         onNodeWithText("Wave speed").assertExists()
         onNodeWithText("Rain").assertExists()
         onNodeWithText("Tint").assertExists()
+    }
+
+    @Test
+    fun controlsTellScreenReadersTheirState() = runComposeUiTest {
+        app.page = Page.Settings
+        setContent { App(app) }
+        waitForIdle()
+        // A settings row is one switch: its label and on/off state are read together, and clicking the label toggles it.
+        val row = onNode(hasText("Use global keyboard shortcuts") and isToggleable())
+        row.performScrollTo().assertIsOff()
+        row.performClick()
+        waitUntil(timeoutMillis = 5_000) { app.shortcutsEnabled }
+        row.assertIsOn()
+        row.performClick()
+        waitUntil(timeoutMillis = 5_000) { !app.shortcutsEnabled }
+        // Segmented choices say which one is selected.
+        onNode(hasText("Dark") and isSelectable()).performScrollTo().assertIsSelected()
+        onNode(hasText("Light") and isSelectable()).assertIsNotSelected()
     }
 
     @Test

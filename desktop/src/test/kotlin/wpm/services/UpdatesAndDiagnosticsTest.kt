@@ -25,7 +25,7 @@ class UpdatesAndDiagnosticsTest {
     private val checker = UpdateChecker(db, fetch = {
         calls++
         if (failing) throw IOException("offline")
-        latest
+        latest?.let { ReleaseInfo(it) }
     }, clock = { now }, current = "2.0.0")
 
     @AfterTest

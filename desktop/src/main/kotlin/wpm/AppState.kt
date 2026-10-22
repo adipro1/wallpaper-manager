@@ -582,7 +582,10 @@ class AppState(
             muted = settings.boolean("web_muted", true),
             interactive = item.interactive && settings.boolean("web_interaction", true),
             audio = item.audio && settings.boolean("audio_reactive", true),
-            onLoadScript = propertyScript(item),
+            onLoadScript = listOfNotNull(
+                settings.string("web_fps", "full").toIntOrNull()?.takeIf { !item.isShader }?.let(WebWallpapers::frameRateLimit),
+                propertyScript(item),
+            ).joinToString("").ifEmpty { null },
         )
     }
 

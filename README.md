@@ -78,6 +78,12 @@ Python app; your library, playlists and schedule carry over.)
   Windows, one copy at a time, daily update check, a diagnostics zip for bug
   reports, dark / light / system theme, and "reduce motion" (follows Windows'
   animation setting).
+- **Performance**: Settings shows the CPU, memory and GPU the app and its engines
+  use right now; frame rate caps for shaders (15/30/60 fps) and web wallpapers (30 fps).
+- **One-click updates**: when a new version is out, "Install now" downloads it from
+  GitHub (size and SHA-256 checked), installs it in the background and restarts.
+- **Accessible**: keyboard focus is always visible, switches, choices and chips tell
+  screen readers their state, and setting rows toggle when you click their label.
 - **Backup**: one `.wpmbackup` file with the library, playlists, schedule, settings,
   shaders and thumbnails; restore it on another PC (the files you replace are kept).
 

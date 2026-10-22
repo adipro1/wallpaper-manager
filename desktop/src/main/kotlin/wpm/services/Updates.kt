@@ -40,8 +40,18 @@ fun isNewer(candidate: String, current: String): Boolean {
     return false
 }
 
-/** The latest published release's version, or null if there is none yet (404). */
-fun fetchLatestVersion(): String? {
+/** A published release: its version and, if it has one, the installer. */
+@kotlinx.serialization.Serializable
+data class ReleaseInfo(
+    val version: String,
+    val setupUrl: String? = null,
+    val setupSize: Long = 0,
+    /** "sha256:<hex>", as GitHub reports it. */
+    val digest: String? = null,
+)
+
+/** The latest published release, or null if there is none yet (404). */
+fun fetchLatestRelease(): ReleaseInfo? {
     val request = HttpRequest.newBuilder(URI(LATEST_RELEASE_API))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "WallpaperManager/$APP_VERSION")
@@ -49,7 +59,21 @@ fun fetchLatestVersion(): String? {
     val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
     if (response.statusCode() == 404) return null
     if (response.statusCode() != 200) throw IOException("GitHub answered ${response.statusCode()}")
-    return Json.parseToJsonElement(response.body()).jsonObject["tag_name"]?.jsonPrimitive?.contentOrNull?.trimStart('v', 'V')
+    return parseRelease(response.body())
+}
+
+internal fun parseRelease(body: String): ReleaseInfo? {
+    val json = Json.parseToJsonElement(body).jsonObject
+    val version = json["tag_name"]?.jsonPrimitive?.contentOrNull?.trimStart('v', 'V') ?: return null
+    val setup = (json["assets"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+        .mapNotNull { it as? kotlinx.serialization.json.JsonObject }
+        .firstOrNull { it["name"]?.jsonPrimitive?.contentOrNull?.endsWith("-setup.exe", ignoreCase = true) == true }
+    return ReleaseInfo(
+        version,
+        setupUrl = setup?.get("browser_download_url")?.jsonPrimitive?.contentOrNull,
+        setupSize = setup?.get("size")?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0,
+        digest = setup?.get("digest")?.jsonPrimitive?.contentOrNull,
+    )
 }
 
 /**
@@ -58,7 +82,7 @@ fun fetchLatestVersion(): String? {
  */
 class UpdateChecker(
     private val db: Database,
-    private val fetch: () -> String? = ::fetchLatestVersion,
+    private val fetch: () -> ReleaseInfo? = ::fetchLatestRelease,
     private val clock: () -> Double = { System.currentTimeMillis() / 1000.0 },
     private val current: String = APP_VERSION,
 ) {
@@ -71,6 +95,10 @@ class UpdateChecker(
         val latest = runCatching { db.getSetting("latest_version")?.jsonPrimitive?.contentOrNull }.getOrNull()
         return latest?.takeIf { isNewer(it, current) }
     }
+
+    /** The newer release found by the last check, with its installer (no network access). */
+    fun availableRelease(): ReleaseInfo? =
+        settings.obj("latest_release", ReleaseInfo.serializer())?.takeIf { availableVersion() != null && it.version == availableVersion() }
 
     /** Asks GitHub at most once a day (or now with [force]). Returns the newer version, or null. */
     fun checkIfDue(force: Boolean = false): String? {
@@ -85,8 +113,9 @@ class UpdateChecker(
                 return availableVersion()
             }
             db.setSetting("last_update_check", JsonPrimitive(clock()))
-            db.setSetting("latest_version", latest?.let(::JsonPrimitive) ?: JsonNull)
-            log.info("Update check: latest release is $latest (running $current)")
+            db.setSetting("latest_version", latest?.version?.let(::JsonPrimitive) ?: JsonNull)
+            if (latest != null) settings.set("latest_release", ReleaseInfo.serializer(), latest)
+            log.info("Update check: latest release is ${latest?.version} (running $current)")
         }
         return availableVersion()
     }

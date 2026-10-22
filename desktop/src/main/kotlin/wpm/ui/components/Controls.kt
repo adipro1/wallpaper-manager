@@ -1,5 +1,12 @@
 package wpm.ui.components
 
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -88,6 +95,7 @@ private fun FoldButton(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
+    val focused by interaction.collectIsFocusedAsState()
     val tone = if (danger) c.danger else c.accent
     val bg by animateColorAsState(
         when {
@@ -121,6 +129,7 @@ private fun FoldButton(
             .background(bg)
             .then(if (kind == ButtonKind.Filled && enabled) Modifier.crease(if (hovered) 0.20f else 0.13f) else Modifier)
             .then(if (kind == ButtonKind.Outlined) Modifier.border(1.dp, borderColor, shape) else Modifier)
+            .focusRing(focused, shape)
             .hoverable(interaction, enabled)
             .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .then(if (enabled) Modifier.pointerHoverIcon(PointerIcon.Hand) else Modifier)
@@ -180,10 +189,12 @@ fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Bool
     val c = Theme.colors
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val bg by animateColorAsState(if (hovered && enabled) c.accent.copy(alpha = 0.12f) else Color.Transparent, tween(140))
-    val tilt by animateFloatAsState(if (hovered && enabled) 45f else 0f, spring(stiffness = Spring.StiffnessMediumLow))
+    val focused by interaction.collectIsFocusedAsState()
+    val bg by animateColorAsState(if ((hovered || focused) && enabled) c.accent.copy(alpha = 0.12f) else Color.Transparent, tween(140))
+    val tilt by animateFloatAsState(if ((hovered || focused) && enabled) 45f else 0f, spring(stiffness = Spring.StiffnessMediumLow))
     Box(
         modifier.size(36.dp)
+            .focusRing(focused, CutCornerShape(6.dp))
             .hoverable(interaction, enabled)
             .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .then(if (enabled) Modifier.pointerHoverIcon(PointerIcon.Hand) else Modifier),
@@ -202,6 +213,7 @@ fun Switch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Mo
     val c = Theme.colors
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    val focused by interaction.collectIsFocusedAsState()
     val track by animateColorAsState(
         when {
             !enabled -> c.inset
@@ -219,12 +231,13 @@ fun Switch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Mo
             .background(track)
             .then(if (checked && enabled) Modifier.crease(0.14f) else Modifier)
             .border(1.dp, if (checked && enabled) Color.Transparent else if (hovered) c.accent else c.cardBorder, shape)
+            .focusRing(focused, shape)
             .hoverable(interaction, enabled)
             .then(
                 if (onCheckedChange != null) {
-                    Modifier.clickable(interaction, indication = null, enabled = enabled, role = Role.Switch) { onCheckedChange(!checked) }
+                    Modifier.toggleable(checked, interaction, indication = null, enabled = enabled, role = Role.Switch) { onCheckedChange(it) }
                         .pointerHoverIcon(PointerIcon.Hand)
-                } else Modifier,
+                } else Modifier.semantics { toggleableState = if (checked) ToggleableState.On else ToggleableState.Off },
             ),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -242,7 +255,7 @@ fun SingleChoiceSegmentedButtonRow(modifier: Modifier = Modifier, content: @Comp
     val c = Theme.colors
     val shape = foldedShape(9.dp)
     Row(
-        modifier.height(38.dp).clip(shape).background(c.inset).border(1.dp, c.cardBorder, shape).padding(3.dp),
+        modifier.height(38.dp).clip(shape).background(c.inset).border(1.dp, c.cardBorder, shape).padding(3.dp).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -268,6 +281,7 @@ fun SegmentedButton(
     val c = Theme.colors
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    val focused by interaction.collectIsFocusedAsState()
     val bg by animateColorAsState(
         when {
             selected -> c.cardLit
@@ -287,8 +301,9 @@ fun SegmentedButton(
                 drawContent()
                 if (selected) drawFoldFlap(6.dp.toPx(), c.accent.copy(alpha = 0.55f), c.shadow)
             }
+            .focusRing(focused, tab)
             .hoverable(interaction, enabled)
-            .clickable(interaction, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .selectable(selected, interaction, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
@@ -309,13 +324,15 @@ fun FilterChip(
     val c = Theme.colors
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    val focused by interaction.collectIsFocusedAsState()
     val bg by animateColorAsState(if (selected) c.accentSoft else if (hovered) c.cardBg else Color.Transparent, tween(160))
     val shape = foldedShape(8.dp)
     Row(
         modifier.height(38.dp).clip(shape).background(bg)
             .border(1.dp, if (selected || hovered) c.accent else c.cardBorder, shape)
+            .focusRing(focused, shape)
             .hoverable(interaction)
-            .clickable(interaction, indication = null, role = Role.Checkbox, onClick = onClick)
+            .toggleable(selected, interaction, indication = null, role = Role.Checkbox) { onClick() }
             .pointerHoverIcon(PointerIcon.Hand)
             .padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -429,4 +446,11 @@ fun NumberField(value: String, onValueChange: (String) -> Unit, modifier: Modifi
             ) { field() }
         },
     )
+}
+
+/** A clear outline while a control has the keyboard focus (Tab), so keyboard users see where they are. */
+@Composable
+fun Modifier.focusRing(focused: Boolean, shape: Shape): Modifier {
+    val color = Theme.colors.accent
+    return if (focused) this.border(2.dp, color, shape) else this
 }

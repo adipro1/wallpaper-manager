@@ -55,6 +55,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+; Silent installs come from the app's "Install now" (one-click update): start it again afterwards.
+Filename: "{app}\{#AppExe}"; Flags: nowait skipifnotsilent
 
 [UninstallRun]
 ; Stop the app so the live wallpaper windows go away and files can be removed.

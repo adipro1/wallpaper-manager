@@ -156,7 +156,7 @@ class Automation(
                 runCatching { updates.checkIfDue() }.getOrNull()?.let { version ->
                     if (settings.string("notified_version", "") != version) {
                         settings.set("notified_version", version)
-                        notify("Version $version is available. Open Settings to download it.")
+                        notify("Version $version is available. Open Settings to install it.")
                     }
                 }
                 delay(3_600_000)

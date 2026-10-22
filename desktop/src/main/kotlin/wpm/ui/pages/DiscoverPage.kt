@@ -49,6 +49,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -215,7 +217,7 @@ private fun OnlineTile(
                 busy -> CircularProgressIndicator(Modifier.width(20.dp), color = c.accent, strokeWidth = 2.dp)
                 added -> TextButton(onClick = onOpenLibrary) { Text("In library") }
                 else -> {
-                    OutlinedButton(onClick = onAdd) { ButtonIcon(Icons.Outlined.Download) }
+                    OutlinedButton(onClick = onAdd, modifier = Modifier.semantics { contentDescription = "Add to library" }) { ButtonIcon(Icons.Outlined.Download) }
                     Button(onClick = onSet) { ButtonIcon(Icons.Outlined.Wallpaper); Text("Set") }
                 }
             }
