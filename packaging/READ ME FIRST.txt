@@ -29,10 +29,16 @@ Getting started
 - Library -> "Import files" / "Import folder" adds JPG, PNG, WEBP, GIF, BMP,
   MP4, WEBM, MKV and MOV files (they are not copied or moved). You can also
   drag files, folders or links onto the window.
-- Library -> "Video URL": paste a YouTube (or Vimeo, ...) link or a plain
-  .mp4/.webm/.m3u8 link. Stream it, or save it for offline use.
-- Library -> "Web wallpaper": a folder with an index.html, an .html file, a
-  .zip (wallpapers made for Lively work too) or a website.
+- Library -> "Add from..." -> "A video link": paste a YouTube (or Vimeo, ...)
+  link or a plain .mp4/.webm/.m3u8 link. Stream it, or save it for offline use.
+- Library -> "Add from..." -> "A web page or web wallpaper": a folder with an
+  index.html, an .html file, a .zip (wallpapers made for Lively work too) or a
+  website. Wallpapers with settings show them in the Library details.
+- Library -> "Add from..." -> "Wallpaper Engine": video and web wallpapers from
+  your Steam workshop subscriptions.
+- Discover: search wallhaven.cc and add pictures with one click.
+- Library: pick a picture -> "Make it alive..." for a zoom, parallax, rain or
+  snow effect.
 - Customize: make animated shader wallpapers (Shadertoy-style GLSL) with a live
   preview, or start from one of the samples.
 - Desktop: click a picture or a live wallpaper to use it. With more than one

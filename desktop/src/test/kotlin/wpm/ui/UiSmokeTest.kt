@@ -34,6 +34,7 @@ class UiSmokeTest {
         live = FakeLivePlayer(),
         videoReader = null,
         systemProbe = FakeProbe(),
+        online = wpm.media.FakeOnline(Files.readAllBytes(Samples.image(dir.resolve("online.png")))),
     )
 
     init {

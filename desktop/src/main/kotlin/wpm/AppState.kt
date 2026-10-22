@@ -75,6 +75,7 @@ enum class Page(val label: String) {
     Desktop("Desktop"),
     LockScreen("Lock Screen"),
     Library("Library"),
+    Discover("Discover"),
     Playlists("Playlists"),
     Schedule("Schedule"),
     Customize("Customize"),
@@ -102,6 +103,8 @@ class AppState(
     live: LivePlayer? = null,
     videoReader: VideoReader? = if (Mpv.available) MpvVideoReader(paths.cacheDir.resolve("frames")) else null,
     private val systemProbe: SystemProbe = WindowsSystemProbe,
+    /** Where the Discover page finds wallpapers online. */
+    val online: wpm.media.WallpaperSource = wpm.media.Wallhaven(),
 ) {
     val settings = Settings(db)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -485,6 +488,20 @@ class AppState(
         shortcutProblems = runCatching { engine.register(bindings) }.getOrElse { mapOf("" to "Couldn't register shortcuts: ${it.message}") }
     }
 
+    /** Downloads an online wallpaper into Pictures\Wallpapers and adds it to the library (once). */
+    suspend fun downloadOnline(wallpaper: wpm.media.OnlineWallpaper): MediaItem = withContext(Dispatchers.IO) {
+        db.listMedia().firstOrNull { it.sourceUrl == wallpaper.pageUrl }?.takeIf { it.available() }?.let { return@withContext it }
+        val file = wpm.media.downloadWallpaper(online, wallpaper, picturesFolder())
+        val item = db.mediaByPath(file.toString()) ?: run {
+            val result = library.importFiles(listOf(file))
+            result.failed.firstOrNull()?.let { throw IllegalStateException("Couldn't add it: ${it.second}") }
+            db.getMedia(result.added.single())!!
+        }
+        runCatching { db.execute("UPDATE media SET source_url = ? WHERE id = ?", wallpaper.pageUrl, item.id) }
+        libraryChanged()
+        db.getMedia(item.id)!!
+    }
+
     /** Imports web wallpapers (folders with a page, .html or .zip files). */
     fun importWeb(paths: List<Path>) = runTask(failure = "Couldn't add the web wallpaper") {
         var added = 0
@@ -599,7 +616,7 @@ class AppState(
         val normalized = if (property.type == wpm.media.PropertyType.BUTTON) JsonPrimitive(true) else property.normalize(value)
         if (property.type != wpm.media.PropertyType.BUTTON) properties.set(item.id, property.name, normalized)
         if (property.type == wpm.media.PropertyType.IMAGE) restartIfShowing(item)
-        else sendToPage(item, WallpaperProperties.script(listOf(property.name to WallpaperProperties.pageValue(property, normalized))))
+        else sendToPage(item, WallpaperProperties.script(listOf(property.name to WallpaperProperties.pageValue(property, normalized)), property.engine))
     }
 
     /**
@@ -680,6 +697,14 @@ class AppState(
     fun close() {
         scope.cancel()
     }
+}
+
+/** Downloaded pictures go to Pictures\Wallpapers. */
+private fun picturesFolder(): Path {
+    val pictures = runCatching {
+        com.sun.jna.platform.win32.Shell32Util.getKnownFolderPath(com.sun.jna.platform.win32.KnownFolders.FOLDERID_Pictures)
+    }.getOrNull() ?: Path.of(System.getProperty("user.home"), "Pictures").toString()
+    return Path.of(pictures, "Wallpapers")
 }
 
 /** Offline copies of online videos go where people look for videos: Videos\Wallpapers. */

@@ -22,10 +22,10 @@ import java.nio.file.Path
 
 private val log = logger("input")
 
-private val pageKeys = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight)
+private val pageKeys = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine)
 
 /**
- * Window-wide shortcuts: Ctrl+1…8 switch pages, Ctrl+F searches, Ctrl+I imports, and
+ * Window-wide shortcuts: Ctrl+1…9 switch pages, Ctrl+F searches, Ctrl+I imports, and
  * Ctrl+A / Delete / Esc act on the library. Runs after focused text fields, so typing isn't affected.
  */
 fun handleShortcut(app: AppState, event: KeyEvent): Boolean {

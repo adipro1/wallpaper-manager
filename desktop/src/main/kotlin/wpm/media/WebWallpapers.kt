@@ -73,15 +73,17 @@ class WebWallpapers(private val db: Database, private val library: MediaLibrary,
             ?.let { runCatching { json.decodeFromString(WebManifest.serializer(), it.readText()) }.getOrNull() }
         val lively = folder.resolve("LivelyInfo.json").takeIf { it.isRegularFile() }
             ?.let { runCatching { json.decodeFromString(LivelyInfo.serializer(), it.readText()) }.getOrNull() }
-        val entry = listOfNotNull(manifest?.entry, lively?.fileName, "index.html")
+        val engine = WallpaperEngine.read(folder)?.takeIf { it.type == "web" }
+        val entry = listOfNotNull(manifest?.entry, lively?.fileName, engine?.file, "index.html")
             .firstOrNull { folder.resolve(it).isRegularFile() }
             ?: folder.listDirectoryEntries("*.htm*").singleOrNull()?.name
             ?: throw IllegalArgumentException("No index.html found in ${folder.name}")
-        val preview = listOfNotNull(manifest?.preview, lively?.thumbnail, lively?.preview).map(folder::resolve).firstOrNull { it.isRegularFile() }
+        val preview = (listOfNotNull(manifest?.preview, lively?.thumbnail, lively?.preview).map(folder::resolve) + listOfNotNull(engine?.preview))
+            .firstOrNull { it.isRegularFile() }
             ?: folder.listDirectoryEntries().firstOrNull { f ->
                 f.nameWithoutExtension.lowercase() in PREVIEW_NAMES && mediaTypeFor(f.toString()) == "image"
             }
-        val title = manifest?.title ?: lively?.title ?: folder.name
+        val title = manifest?.title ?: lively?.title ?: engine?.title ?: folder.name
         if (manifest?.type == "shader") throw IllegalArgumentException("Import shaders with “Add shader”")
         return addPage(folder, entry, title, manifest, preview, isFolder = true)
     }
@@ -149,7 +151,8 @@ class WebWallpapers(private val db: Database, private val library: MediaLibrary,
 
         /** A .html/.zip file, or a folder with a page at its top level (rather than a folder of pictures). */
         fun looksLikeWebWallpaper(path: Path): Boolean = when {
-            path.isDirectory() -> listOf("index.html", "wpm.json", "LivelyInfo.json").any { path.resolve(it).isRegularFile() }
+            path.isDirectory() -> listOf("index.html", "wpm.json", "LivelyInfo.json").any { path.resolve(it).isRegularFile() } ||
+                WallpaperEngine.read(path)?.type == "web"
             else -> path.extension.lowercase() in setOf("html", "htm", "zip")
         }
 

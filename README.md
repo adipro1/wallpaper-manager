@@ -45,6 +45,11 @@ Python app; your library, playlists and schedule carry over.)
   is the audio spectrum. A comment adds a setting with a control and a uniform:
   `// @slider speed 0 2 1 Speed`, `// @color tint #ff8800 Tint`,
   `// @checkbox rain on Rain`, `// @image photo Picture` (`iChannel1`-`3`).
+- **Discover**: search wallhaven.cc (safe-for-work pictures, at least your screen's
+  resolution if you like) and add a picture to the library - or set it - with one click.
+- **Wallpaper Engine**: video and web wallpapers from your Steam workshop
+  subscriptions import as they are, settings included (scene wallpapers need
+  Wallpaper Engine itself).
 - **Make a picture alive**: turn any picture into a live wallpaper with a slow
   Ken Burns zoom, parallax that follows the mouse, rain running down the glass, or
   snowfall - each with its own settings.
@@ -76,7 +81,7 @@ Python app; your library, playlists and schedule carry over.)
 - **Backup**: one `.wpmbackup` file with the library, playlists, schedule, settings,
   shaders and thumbnails; restore it on another PC (the files you replace are kept).
 
-**Keyboard shortcuts**: Ctrl+1 … Ctrl+8 switch pages, Ctrl+F searches the
+**Keyboard shortcuts**: Ctrl+1 … Ctrl+9 switch pages, Ctrl+F searches the
 library, Ctrl+I imports files, Ctrl+A / Delete / Esc work on the library selection.
 
 **Global shortcuts** (switch them on in Settings; they work while any app is in front):

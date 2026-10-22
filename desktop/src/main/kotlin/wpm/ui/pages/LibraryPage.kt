@@ -31,6 +31,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.FileUpload
@@ -116,6 +117,7 @@ fun LibraryPage(app: AppState) {
     var pending by remember { mutableStateOf<PendingAction?>(null) }
     var pickerOpen by remember { mutableStateOf(false) }
     var addingWeb by remember { mutableStateOf(false) }
+    var importingEngine by remember { mutableStateOf(false) }
     var tag by remember { mutableStateOf<String?>(null) }
     var tags by remember { mutableStateOf(emptyList<Pair<String, Int>>()) }
     var missing by remember { mutableStateOf(emptyList<MediaItem>()) }
@@ -167,8 +169,18 @@ fun LibraryPage(app: AppState) {
         items?.let { "${it.size} wallpaper${if (it.size == 1) "" else "s"}" + if (selected.size > 1) " · ${selected.size} selected" else "" },
         scroll = false,
         actions = {
-            OutlinedButton(onClick = { addingWeb = true }) { ButtonIcon(Icons.Outlined.Language); Text("Web wallpaper") }
-            OutlinedButton(onClick = { app.addUrl = "" }) { ButtonIcon(Icons.Outlined.Link); Text("Video URL") }
+            var addMenu by remember { mutableStateOf(false) }
+            Box {
+                OutlinedButton(onClick = { addMenu = true }) { ButtonIcon(Icons.Outlined.Language); Text("Add from…") }
+                DropdownMenu(addMenu, { addMenu = false }) {
+                    DropdownMenuItem(text = { Text("A web page or web wallpaper") }, leadingIcon = { Icon(Icons.Outlined.Language, null) },
+                        onClick = { addMenu = false; addingWeb = true })
+                    DropdownMenuItem(text = { Text("A video link (YouTube, …)") }, leadingIcon = { Icon(Icons.Outlined.Link, null) },
+                        onClick = { addMenu = false; app.addUrl = "" })
+                    DropdownMenuItem(text = { Text("Wallpaper Engine") }, leadingIcon = { Icon(Icons.Outlined.Wallpaper, null) },
+                        onClick = { addMenu = false; importingEngine = true })
+                }
+            }
             OutlinedButton(onClick = { pickFolder(app.window)?.let { app.import(listOf(it)) } }) {
                 ButtonIcon(Icons.Outlined.CreateNewFolder); Text("Import folder")
             }
@@ -236,6 +248,7 @@ fun LibraryPage(app: AppState) {
     }
 
     if (addingWeb) AddWebDialog(app, onDismiss = { addingWeb = false })
+    if (importingEngine) wpm.ui.components.EngineImportDialog(app, onDismiss = { importingEngine = false })
     if (reviewingMissing) MissingFilesDialog(app, missing, onDismiss = { reviewingMissing = false })
     if (taggingSelection) {
         val ids = selected.toList()

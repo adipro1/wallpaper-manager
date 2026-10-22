@@ -60,6 +60,10 @@ data class WallpaperProperty(
     /** folderDropdown: the folder (inside the wallpaper) to choose a file from, and a filter like "*.jpg|*.png". */
     val folder: String? = null,
     val filter: String? = null,
+    /** From a Wallpaper Engine project.json: sent through wallpaperPropertyListener.applyUserProperties. */
+    val engine: Boolean = false,
+    /** Wallpaper Engine combos: the value each dropdown item stands for. */
+    val optionValues: List<JsonPrimitive> = emptyList(),
 ) {
     /** Sent to the page when it loads (buttons only when clicked, labels never). */
     val sentOnLoad: Boolean get() = type != PropertyType.BUTTON && type != PropertyType.LABEL && type != PropertyType.IMAGE
@@ -112,9 +116,12 @@ class WallpaperProperties(private val db: Database) {
     /** The settings a web wallpaper offers (empty if it has none or the file can't be read). */
     fun read(item: MediaItem): List<WallpaperProperty> {
         if (!item.isWeb) return emptyList()
-        val file = folderOf(item)?.resolve(LIVELY_FILE)?.takeIf { it.isRegularFile() } ?: return emptyList()
+        val folder = folderOf(item) ?: return emptyList()
+        val lively = folder.resolve(LIVELY_FILE).takeIf { it.isRegularFile() }
+        val engine = folder.resolve(ENGINE_FILE).takeIf { it.isRegularFile() }
+        val file = lively ?: engine ?: return emptyList()
         return try {
-            parseLively(file.readText())
+            if (file == lively) parseLively(file.readText()) else parseEngine(file.readText())
         } catch (e: Exception) {
             log.warning("Ignoring unreadable ${file}: $e")
             emptyList()
@@ -151,6 +158,58 @@ class WallpaperProperties(private val db: Database) {
 
     companion object {
         const val LIVELY_FILE = "LivelyProperties.json"
+        const val ENGINE_FILE = "project.json"
+
+        /** "0.5 0.25 1" (Wallpaper Engine) -> "#8040FF". */
+        fun engineColorToHex(text: String): String? {
+            val parts = text.trim().split(Regex("\\s+")).mapNotNull { it.toDoubleOrNull() }
+            if (parts.size < 3) return null
+            val (r, g, b) = parts.map { Math.round(it.coerceIn(0.0, 1.0) * 255).toInt() }
+            return WallpaperProperty.formatColor((r shl 16) or (g shl 8) or b)
+        }
+
+        /** "#8040FF" -> "0.50196 0.25098 1" (Wallpaper Engine's own format). */
+        fun hexToEngineColor(hex: String): String {
+            val rgb = WallpaperProperty.parseColor(hex) ?: 0
+            return listOf((rgb shr 16) and 0xFF, (rgb shr 8) and 0xFF, rgb and 0xFF)
+                .joinToString(" ") { "%.5f".format(java.util.Locale.ROOT, it / 255.0).trimEnd('0').trimEnd('.').ifEmpty { "0" } }
+        }
+
+        /** Labels in project.json may contain HTML or untranslated "ui_" keys. */
+        private fun engineLabel(text: String?, name: String): String {
+            val plain = text?.replace(Regex("<[^>]*>"), " ")?.replace(Regex("\\s+"), " ")?.trim().orEmpty()
+            return plain.takeIf { it.isNotEmpty() && !it.startsWith("ui_") } ?: name
+        }
+
+        /** The settings in a Wallpaper Engine project.json (general.properties), in their "order". */
+        fun parseEngine(text: String): List<WallpaperProperty> {
+            val root = json.parseToJsonElement(text).jsonObject
+            val props = ((root["general"] as? JsonObject)?.get("properties") as? JsonObject) ?: return emptyList()
+            return props.entries.mapNotNull { (name, element) ->
+                val o = element as? JsonObject ?: return@mapNotNull null
+                val raw = o["value"] as? JsonPrimitive ?: JsonPrimitive("")
+                val label = engineLabel((o["text"] as? JsonPrimitive)?.contentOrNull, name)
+                fun num(key: String) = (o[key] as? JsonPrimitive)?.doubleOrNull
+                val order = num("order") ?: 0.0
+                val property = when ((o["type"] as? JsonPrimitive)?.contentOrNull) {
+                    "slider" -> WallpaperProperty(name, PropertyType.SLIDER, label, JsonPrimitive(raw.doubleOrNull ?: 0.0),
+                        num("min") ?: 0.0, num("max") ?: 100.0, num("step") ?: if (o["fraction"]?.jsonPrimitive?.booleanOrNull == true) 0.01 else 1.0, engine = true)
+                    "bool" -> WallpaperProperty(name, PropertyType.CHECKBOX, label, JsonPrimitive(raw.booleanOrNull ?: false), engine = true)
+                    "color" -> WallpaperProperty(name, PropertyType.COLOR, label, JsonPrimitive(engineColorToHex(raw.content) ?: "#FFFFFF"), engine = true)
+                    "textinput" -> WallpaperProperty(name, PropertyType.TEXTBOX, label, JsonPrimitive(raw.content), engine = true)
+                    "text" -> WallpaperProperty(name, PropertyType.LABEL, label, JsonPrimitive(label), engine = true)
+                    "combo" -> {
+                        val options = (o["options"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                        val values = options.mapNotNull { it["value"] as? JsonPrimitive }
+                        WallpaperProperty(name, PropertyType.DROPDOWN, label, JsonPrimitive(values.indexOfFirst { it.content == raw.content }.coerceAtLeast(0)),
+                            items = options.map { engineLabel((it["label"] as? JsonPrimitive)?.contentOrNull, (it["value"] as? JsonPrimitive)?.content ?: "") },
+                            engine = true, optionValues = values)
+                    }
+                    else -> null // file / directory pickers aren't supported
+                } ?: return@mapNotNull null
+                order to property.copy(default = property.normalize(property.default))
+            }.sortedBy { it.first }.map { it.second }
+        }
 
         /** Parses LivelyProperties.json (unknown control types are skipped). */
         fun parseLively(text: String): List<WallpaperProperty> =
@@ -178,21 +237,35 @@ class WallpaperProperties(private val db: Database) {
             }
 
         /** The value as the page gets it (a folderDropdown sends "folder\\file", like Lively). */
-        fun pageValue(property: WallpaperProperty, value: JsonPrimitive): JsonPrimitive = when (property.type) {
+        fun pageValue(property: WallpaperProperty, value: JsonPrimitive): JsonPrimitive = when {
+            property.engine && property.type == PropertyType.COLOR -> JsonPrimitive(hexToEngineColor(value.content))
+            property.engine && property.type == PropertyType.DROPDOWN -> property.optionValues.getOrNull(value.intOrNull ?: 0) ?: value
+            else -> pageValueLively(property, value)
+        }
+
+        private fun pageValueLively(property: WallpaperProperty, value: JsonPrimitive): JsonPrimitive = when (property.type) {
             PropertyType.FOLDER_DROPDOWN -> property.folder?.takeIf { value.content.isNotEmpty() }
                 ?.let { JsonPrimitive(it.trimEnd('/', '\\') + "\\" + value.content) } ?: value
             else -> value
         }
 
-        /** JavaScript that calls the page's livelyPropertyListener (if it has one) once per value. */
-        fun script(calls: List<Pair<String, JsonPrimitive>>): String {
+        /**
+         * JavaScript that hands values to the page: Lively's livelyPropertyListener(name, value) once
+         * per value, or for Wallpaper Engine projects wallpaperPropertyListener.applyUserProperties({name: {value}}).
+         */
+        fun script(calls: List<Pair<String, JsonPrimitive>>, engine: Boolean = false): String {
             if (calls.isEmpty()) return ""
+            if (engine) {
+                val props = calls.joinToString(",") { (name, value) -> "${JsonPrimitive(name)}:{\"value\":$value}" }
+                return "(function(){var l=window.wallpaperPropertyListener;if(!l||typeof l.applyUserProperties!=='function')return;" +
+                    "try{l.applyUserProperties({$props})}catch(e){console.error(e)}})();"
+            }
             val body = calls.joinToString("") { (name, value) -> "try{f(${JsonPrimitive(name)},$value)}catch(e){console.error(e)}" }
             return "(function(){var f=window.livelyPropertyListener;if(typeof f!=='function')return;$body})();"
         }
 
         /** The script that sends every value when the page has loaded. */
         fun loadScript(properties: List<WallpaperProperty>, values: Map<String, JsonPrimitive>): String =
-            script(properties.filter { it.sentOnLoad }.map { it.name to pageValue(it, values[it.name] ?: it.default) })
+            script(properties.filter { it.sentOnLoad }.map { it.name to pageValue(it, values[it.name] ?: it.default) }, properties.any { it.engine })
     }
 }

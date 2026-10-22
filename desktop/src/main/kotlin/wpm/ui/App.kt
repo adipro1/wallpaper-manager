@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material.icons.outlined.Home
@@ -83,6 +84,7 @@ import wpm.ui.pages.CustomizePage
 import wpm.ui.pages.DesktopPage
 import wpm.ui.pages.HomePage
 import wpm.ui.pages.LibraryPage
+import wpm.ui.pages.DiscoverPage
 import wpm.ui.pages.LockScreenPage
 import wpm.ui.pages.PlaylistsPage
 import wpm.ui.pages.SchedulePage
@@ -93,6 +95,7 @@ private fun Page.icon(): ImageVector = when (this) {
     Page.Desktop -> Icons.Outlined.DesktopWindows
     Page.LockScreen -> Icons.Outlined.Lock
     Page.Library -> Icons.Outlined.PhotoLibrary
+    Page.Discover -> Icons.Outlined.TravelExplore
     Page.Playlists -> Icons.AutoMirrored.Outlined.PlaylistPlay
     Page.Schedule -> Icons.Outlined.CalendarMonth
     Page.Customize -> Icons.Outlined.AutoAwesome
@@ -104,6 +107,7 @@ private fun Page.eyebrow(): String = when (this) {
     Page.Desktop -> "Wallpaper"
     Page.LockScreen -> "Before sign-in"
     Page.Library -> "Collection"
+    Page.Discover -> "From wallhaven.cc"
     Page.Playlists -> "Rotation"
     Page.Schedule -> "Through the day"
     Page.Customize -> "Shader studio"
@@ -159,6 +163,7 @@ private fun PageHost(app: AppState) {
                     Page.Desktop -> DesktopPage(app)
                     Page.LockScreen -> LockScreenPage(app)
                     Page.Library -> LibraryPage(app)
+                    Page.Discover -> DiscoverPage(app)
                     Page.Playlists -> PlaylistsPage(app)
                     Page.Schedule -> SchedulePage(app)
                     Page.Customize -> CustomizePage(app)
