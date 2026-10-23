@@ -110,6 +110,8 @@ class AppState(
     weatherSource: wpm.services.WeatherSource = wpm.services.OpenMeteo(),
     /** Where "Now playing" learns what music plays. */
     mediaWatcher: wpm.services.MediaWatcher = wpm.services.PowerShellMediaWatcher(paths.cacheDir, paths.cacheDir.resolve("album-art")),
+    /** Draws a desktop widget (a see-through window behind the icons). */
+    widgetOverlay: (wpm.widgets.WidgetKind) -> wpm.win32.Overlay = { wpm.win32.DesktopOverlay(it.name.lowercase()) },
 ) {
     val settings = Settings(db)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -179,6 +181,9 @@ class AppState(
     /** The sun and weather where the user is (the Schedule's city, or a guess from the time zone), for shaders. */
     val world = wpm.services.World({ scheduler.place ?: wpm.services.guessCity() }, source = weatherSource)
     val updates = UpdateChecker(db)
+    private val usage by lazy { wpm.win32.ResourceMonitor() }
+    /** Clock, weather, music, system and calendar widgets on the desktop. */
+    val widgets = wpm.widgets.DesktopWidgets(settings, ::widgetData, newOverlay = widgetOverlay)
     /** Shows a tray notification (set by the window code). */
     var notify: (String) -> Unit = {}
     /** False when libmpv is missing: videos can't be imported or played. */
@@ -296,6 +301,19 @@ class AppState(
         webEngines().filter { it.source?.contains("/shader-") == true }.forEach { it.runScript(script) }
     }
 
+    /** What the widgets show now (only the parts [setup] needs: the weather may be looked up). */
+    fun widgetData(setup: wpm.widgets.WidgetSetup): wpm.widgets.WidgetData {
+        val kinds = setup.widgets.map { it.kind }.toSet()
+        if (wpm.widgets.WidgetKind.Weather in kinds && world.refreshWeather()) pushWorld()
+        return wpm.widgets.WidgetData(
+            weather = world.weather.takeIf { wpm.widgets.WidgetKind.Weather in kinds },
+            place = (scheduler.place ?: wpm.services.guessCity())?.name,
+            track = nowPlaying.track.takeIf { wpm.widgets.WidgetKind.Music in kinds },
+            system = if (wpm.widgets.WidgetKind.System in kinds) usage.systemSample() else null,
+            accent = shownThemeColor ?: 0xFF6B52,
+        )
+    }
+
     // -- now playing ------------------------------------------------------------------------------
 
     /** Pages that use the music, by address (a page doesn't change while it is shown). */
@@ -322,7 +340,7 @@ class AppState(
 
     /** Watches what is playing only while a visible wallpaper uses it or the music colors are on. */
     private fun updateMusic() {
-        val wanted = musicColorsOn || webEngines().any { it.active && !it.paused && it.source?.let(::usesMusic) == true }
+        val wanted = musicColorsOn || widgets.setup.shows(wpm.widgets.WidgetKind.Music) || webEngines().any { it.active && !it.paused && it.source?.let(::usesMusic) == true }
         nowPlaying.setWanted(wanted)
         if (musicColor == null) return
         // Colors go back 10 s after the music stops, so a short pause doesn't flash the desktop.
@@ -856,6 +874,12 @@ class AppState(
                 runCatching { updateMusic() }.onFailure { log.warning("Now playing: $it") }
             }
         }
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                runCatching { widgets.update() }.onFailure { log.warning("Widgets: $it") }
+                delay(1_000)
+            }
+        }
         Automation(
             scope, wallpapers, playlists, scheduler, updates, settings, systemProbe,
             exclusive = { block -> changeWallpaper(block) },
@@ -878,6 +902,7 @@ class AppState(
         watched.close()
         audio.stop()
         runCatching { nowPlaying.setWanted(false) }
+        runCatching { widgets.close() }
         runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
         wpm.engine.Chromium.shutdown()
     }

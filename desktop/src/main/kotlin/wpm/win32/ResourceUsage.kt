@@ -13,6 +13,9 @@ import wpm.logger
 
 private val log = logger("usage")
 
+/** How much the whole PC uses right now. */
+data class SystemUsage(val cpuPercent: Double, val memoryUsedGb: Double, val memoryTotalGb: Double, val gpuPercent: Double?)
+
 /** How much the app and its engines (Chromium's helper processes) use right now. */
 data class ResourceUsage(val cpuPercent: Double, val memoryMb: Long, val gpuPercent: Double?, val processes: Int)
 
@@ -86,8 +89,23 @@ class ResourceMonitor : AutoCloseable {
         }
     }
 
-    /** Like Task Manager: per engine type, the use of all our processes added up; the busiest type counts. */
-    private fun gpu(pids: Set<Long>): Double? {
+    /**
+     * The whole PC's use: CPU and GPU in percent (averaged since the previous call), memory in
+     * use and installed in GB. For the system widget.
+     */
+    fun systemSample(): SystemUsage {
+        val os = java.lang.management.ManagementFactory.getOperatingSystemMXBean() as com.sun.management.OperatingSystemMXBean
+        val gb = 1024.0 * 1024 * 1024
+        return SystemUsage(
+            (os.cpuLoad * 100).coerceIn(0.0, 100.0),
+            (os.totalMemorySize - os.freeMemorySize) / gb,
+            os.totalMemorySize / gb,
+            gpu(null),
+        )
+    }
+
+    /** Like Task Manager: per engine type, the use of [pids] (null: all processes) added up; the busiest type counts. */
+    private fun gpu(pids: Set<Long>?): Double? {
         val query = gpuQuery ?: return null
         val counter = gpuCounter ?: return null
         val pdh = PdhEx.INSTANCE
@@ -104,7 +122,7 @@ class ResourceMonitor : AutoCloseable {
             val base = i * 24L
             val name = buffer.getPointer(base)?.getWideString(0) ?: continue // e.g. pid_1234_luid_..._phys_0_eng_0_engtype_3D
             val pid = name.substringAfter("pid_", "").substringBefore('_').toLongOrNull() ?: continue
-            if (pid !in pids || buffer.getInt(base + 8) != 0) continue
+            if ((pids != null && pid !in pids) || buffer.getInt(base + 8) != 0) continue
             val type = name.substringAfter("engtype_", "other")
             byEngine[type] = (byEngine[type] ?: 0.0) + buffer.getDouble(base + 16)
         }

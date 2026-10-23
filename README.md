@@ -70,6 +70,10 @@ All changes are in the [release notes](https://github.com/adipro1/wallpaper-mana
   Nothing is recorded or sent.
 - **Several displays**: live wallpapers on every display or only the main one, or a
   different wallpaper per display.
+- **Desktop widgets** (Desktop > Widgets): a clock, the weather, the song that plays, CPU /
+  memory / GPU use and a calendar behind the icons, over any wallpaper (picture, video or
+  web page). Drag them into place on a picture of your screen; size and a dark card are
+  optional.
 
 ### Finding and organizing
 - **Library**: import files or folders, or drag them (or links) onto the window.

@@ -59,10 +59,12 @@ class WorldTest {
     @Test
     fun readsOpenMeteosAnswer() {
         val json = """{"latitude":52.52,"longitude":13.42,"current_units":{"weather_code":"wmo code"},
-            "current":{"time":"2026-10-23T09:00","interval":900,"weather_code":63,"cloud_cover":100,"precipitation":1.2}}"""
+            "current":{"time":"2026-10-23T09:00","interval":900,"weather_code":63,"cloud_cover":100,"precipitation":1.2,"temperature_2m":11.4}}"""
         val weather = OpenMeteo.parse(json)
         assertEquals(1.0, weather.clouds)
         assertTrue(weather.rain in 0.6..0.75, "$weather") // moderate rain
+        assertEquals(11.4, weather.temperature)
+        assertEquals(63, weather.code)
     }
 
     @Test

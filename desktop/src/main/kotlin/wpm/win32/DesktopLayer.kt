@@ -214,7 +214,7 @@ fun findChildWindows(parent: HWND, className: String): List<HWND> {
 }
 
 /** Converts a screen rectangle into [parent]'s client coordinates (the layer spans the virtual screen). */
-private fun toClient(parent: HWND, rect: ScreenRect): ScreenRect {
+internal fun toClient(parent: HWND, rect: ScreenRect): ScreenRect {
     val point = WinDef.POINT(rect.x, rect.y)
     User32Ex.INSTANCE.MapWindowPoints(null, parent, point, 1)
     return ScreenRect(point.x, point.y, rect.width, rect.height)

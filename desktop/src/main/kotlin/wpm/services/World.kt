@@ -22,6 +22,10 @@ data class Weather(
     val fog: Double = 0.0,
     val storm: Double = 0.0,
     val clouds: Double = 0.0,
+    /** Degrees Celsius, for the weather widget. */
+    val temperature: Double? = null,
+    /** The WMO weather code it was made from. */
+    val code: Int? = null,
 )
 
 /**
@@ -58,7 +62,7 @@ fun interface WeatherSource {
 class OpenMeteo(private val client: HttpClient = HttpClient.newHttpClient()) : WeatherSource {
     override fun current(place: Place): Weather {
         val url = String.format(Locale.ROOT, "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f" +
-            "&current=weather_code,cloud_cover,precipitation", place.latitude, place.longitude)
+            "&current=weather_code,cloud_cover,precipitation,temperature_2m", place.latitude, place.longitude)
         val request = HttpRequest.newBuilder(URI(url)).header("User-Agent", "WallpaperManager/$APP_VERSION")
             .timeout(Duration.ofSeconds(15)).build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
@@ -72,6 +76,7 @@ class OpenMeteo(private val client: HttpClient = HttpClient.newHttpClient()) : W
             fun number(key: String) = current[key]?.jsonPrimitive?.doubleOrNull ?: 0.0
             val code = current["weather_code"]?.jsonPrimitive?.intOrNull ?: throw IOException("No weather code")
             return weatherFromCode(code, number("cloud_cover"), number("precipitation"))
+                .copy(temperature = current["temperature_2m"]?.jsonPrimitive?.doubleOrNull, code = code)
         }
     }
 }

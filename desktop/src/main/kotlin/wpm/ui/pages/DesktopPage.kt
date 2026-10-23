@@ -161,6 +161,15 @@ fun DesktopPage(app: AppState) {
         if (!app.videoSupport) {
             Notice(tr("Video wallpapers need libmpv-2.dll in the app's bin folder."), Theme.colors.gold)
         }
+        wpm.ui.components.WidgetEditor(app) {
+            val item = current
+            if (state.kind == "video" && item != null) {
+                MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
+            } else {
+                val preview = rememberPreview(picture, 1000, app.wallpaperVersion)
+                if (preview != null) Image(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+        }
         if (displays.size > 1) {
             Card(Modifier.fillMaxWidth()) {
                 SectionTitle(tr("Displays"))
