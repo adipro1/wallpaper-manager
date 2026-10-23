@@ -118,8 +118,9 @@ private fun Page.eyebrow(): String = when (this) {
 private val NavItemHeight = 46.dp
 
 @Composable
-fun App(app: AppState) {
-    AppTheme(app.darkTheme) {
+fun App(app: AppState, window: java.awt.Window? = null) {
+    AppTheme(app.darkTheme, app.themeColor) {
+        if (window != null) TitleBarColors(window)
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val compact = maxWidth < 1000.dp
             Row(Modifier.fillMaxSize().background(Theme.colors.windowBg)) {
@@ -223,7 +224,7 @@ private fun Sidebar(app: AppState, compact: Boolean) {
     }
 }
 
-/** The highlight behind the chosen page: a folded vermilion ribbon. */
+/** The highlight behind the chosen page: a folded ribbon in the accent color. */
 @Composable
 private fun NavRibbon(modifier: Modifier) {
     val c = Theme.colors
@@ -251,7 +252,7 @@ private fun NavItem(page: Page, selected: Boolean, compact: Boolean, onClick: ()
     val hovered by interaction.collectIsHoveredAsState()
     val fg by animateColorAsState(
         when {
-            selected -> Color.White
+            selected -> c.accentText
             hovered -> c.sidebarText
             else -> c.sidebarTextMuted
         },

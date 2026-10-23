@@ -12,8 +12,14 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import kotlinx.coroutines.delay
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -90,6 +96,44 @@ val DarkColors = AppColors(
 
 val LocalAppColors = staticCompositionLocalOf { DarkColors }
 
+/** An accent color offered in Settings. [rgb] is null for the built-in vermilion. */
+data class AccentPreset(val name: String, val rgb: Int?)
+
+val AccentPresets = listOf(
+    AccentPreset("Vermilion", null),
+    AccentPreset("Amber", 0xE8862A),
+    AccentPreset("Gold", 0xD4A21C),
+    AccentPreset("Jade", 0x2E9E6B),
+    AccentPreset("Teal", 0x1F9AA3),
+    AccentPreset("Ocean", 0x2F7FD6),
+    AccentPreset("Indigo", 0x5A5FD8),
+    AccentPreset("Violet", 0x8E4FD1),
+    AccentPreset("Rose", 0xD6457A),
+)
+
+/** "#RRGGBB" -> 0xRRGGBB; null for an empty or invalid value (the built-in color). */
+fun parseAccent(hex: String): Int? =
+    hex.removePrefix("#").takeIf { it.length == 6 }?.toIntOrNull(16)
+
+fun formatAccent(rgb: Int?): String = rgb?.let { "#%06X".format(it and 0xFFFFFF) } ?: ""
+
+/** White text, unless it would be hard to read on [background] (contrast below 3:1); then ink. */
+fun readableOn(background: Color): Color =
+    if (1.05f / (background.luminance() + 0.05f) >= 3f) Color.White else Color(0xFF1D1B22)
+
+/** These colors with the accent replaced by [rgb] (unchanged for null). Dark themes get a lighter shade. */
+fun AppColors.withAccent(rgb: Int?): AppColors {
+    if (rgb == null) return this
+    val base = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
+    val accent = if (dark) lerp(base, Color.White, 0.15f) else base
+    return copy(
+        accent = accent,
+        accentDeep = lerp(accent, Color.Black, 0.2f),
+        accentText = readableOn(accent),
+        accentSoft = lerp(cardBg, accent, if (dark) 0.22f else 0.16f),
+    )
+}
+
 private fun AppColors.toMaterial(): ColorScheme {
     val base = if (dark) darkColorScheme() else lightColorScheme()
     return base.copy(
@@ -141,10 +185,23 @@ private val AppShapes = Shapes(
 )
 
 @Composable
-fun AppTheme(dark: Boolean, content: @Composable () -> Unit) {
-    val colors = if (dark) DarkColors else LightColors
+fun AppTheme(dark: Boolean, accent: Int? = null, content: @Composable () -> Unit) {
+    val colors = remember(dark, accent) { (if (dark) DarkColors else LightColors).withAccent(accent) }
     CompositionLocalProvider(LocalAppColors provides colors) {
         MaterialTheme(colorScheme = colors.toMaterial(), typography = AppTypography, shapes = AppShapes, content = content)
+    }
+}
+
+/** Gives [window]'s Windows title bar the sidebar's colors instead of plain white (Windows 11; dark mode only on 10). */
+@Composable
+fun TitleBarColors(window: java.awt.Window) {
+    val c = Theme.colors
+    LaunchedEffect(window, c) {
+        // The native window may not exist yet on the first frame.
+        repeat(20) {
+            if (wpm.win32.colorTitleBar(window, c.sidebarBg.toArgb(), c.sidebarText.toArgb(), dark = c.sidebarBg.luminance() < 0.5f)) return@LaunchedEffect
+            delay(100)
+        }
     }
 }
 

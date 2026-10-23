@@ -191,6 +191,9 @@ class AppState(
         private set
     var systemDark by mutableStateOf(systemUsesDarkTheme())
         private set
+    /** The app's accent color as 0xRRGGBB (Settings > Appearance); null for the built-in vermilion. */
+    var themeColor by mutableStateOf(wpm.ui.parseAccent(settings.string("theme_color", "")))
+        private set
     /** No page animations (Settings; follows Windows' "Animation effects" until changed). */
     var reduceMotion by mutableStateOf(settings.boolean("reduce_motion", !wpm.win32.systemAnimationsEnabled()))
     var toast by mutableStateOf<ToastMessage?>(null)
@@ -238,6 +241,11 @@ class AppState(
     fun updateReduceMotion(on: Boolean) {
         reduceMotion = on
         settings.set("reduce_motion", on)
+    }
+
+    fun updateThemeColor(rgb: Int?) {
+        themeColor = rgb
+        settings.set("theme_color", wpm.ui.formatAccent(rgb))
     }
 
     fun updateAppearance(mode: String) {

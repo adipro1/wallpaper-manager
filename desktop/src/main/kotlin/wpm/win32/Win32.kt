@@ -62,10 +62,35 @@ internal interface Gdi32Ex : StdCallLibrary {
 @Suppress("FunctionName")
 internal interface DwmApi : StdCallLibrary {
     fun DwmGetWindowAttribute(hwnd: WinDef.HWND, attribute: Int, value: IntByReference, size: Int): Int
+    fun DwmSetWindowAttribute(hwnd: WinDef.HWND, attribute: Int, value: IntByReference, size: Int): Int
 
     companion object {
         val INSTANCE: DwmApi = Native.load("dwmapi", DwmApi::class.java, W32APIOptions.DEFAULT_OPTIONS)
     }
+}
+
+private const val DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+private const val DWMWA_BORDER_COLOR = 34
+private const val DWMWA_CAPTION_COLOR = 35
+private const val DWMWA_TEXT_COLOR = 36
+
+/** ARGB -> COLORREF (0x00BBGGRR). */
+internal fun colorRef(argb: Int): Int = ((argb and 0xFF) shl 16) or (argb and 0xFF00) or ((argb shr 16) and 0xFF)
+
+/**
+ * Colors [window]'s title bar and border ([caption] and [text] are ARGB). Windows 10 ignores the
+ * colors and only gets the dark caption buttons. False while the window has no native handle yet.
+ */
+fun colorTitleBar(window: java.awt.Window, caption: Int, text: Int, dark: Boolean): Boolean {
+    if (!window.isDisplayable) return false
+    val pointer = Native.getComponentPointer(window) ?: return false
+    val hwnd = WinDef.HWND(pointer)
+    val dwm = DwmApi.INSTANCE
+    dwm.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, IntByReference(if (dark) 1 else 0), 4)
+    dwm.DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, IntByReference(colorRef(caption)), 4)
+    dwm.DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, IntByReference(colorRef(caption)), 4)
+    dwm.DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, IntByReference(colorRef(text)), 4)
+    return true
 }
 
 private val log = logger("win32")

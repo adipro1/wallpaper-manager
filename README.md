@@ -78,6 +78,8 @@ Python app; your library, playlists and schedule carry over.)
   Windows, one copy at a time, daily update check, a diagnostics zip for bug
   reports, dark / light / system theme, and "reduce motion" (follows Windows'
   animation setting).
+- **Your colors**: pick the accent color in Settings > Appearance (nine built-in
+  colors or any color you like); the window's title bar matches the app.
 - **Performance**: Settings shows the CPU, memory and GPU the app and its engines
   use right now; frame rate caps for shaders (15/30/60 fps) and web wallpapers (30 fps).
 - **One-click updates**: when a new version is out, "Install now" downloads it from

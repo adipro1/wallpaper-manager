@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isToggleable
@@ -26,6 +27,7 @@ import wpm.services.FakeProbe
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** Builds the real UI (with fake Windows APIs) and visits every page in both themes. */
@@ -99,6 +101,21 @@ class UiSmokeTest {
         // Segmented choices say which one is selected.
         onNode(hasText("Dark") and isSelectable()).performScrollTo().assertIsSelected()
         onNode(hasText("Light") and isSelectable()).assertIsNotSelected()
+    }
+
+    @Test
+    fun accentColorCanBeChanged() = runComposeUiTest {
+        app.page = Page.Settings
+        setContent { App(app) }
+        waitForIdle()
+        onNode(hasContentDescription("Vermilion") and isSelectable()).performScrollTo().assertIsSelected()
+        onNode(hasContentDescription("Teal") and isSelectable()).performClick()
+        waitUntil(timeoutMillis = 5_000) { app.themeColor == 0x1F9AA3 }
+        onNode(hasContentDescription("Teal") and isSelectable()).assertIsSelected()
+        onNode(hasContentDescription("Vermilion") and isSelectable()).assertIsNotSelected()
+        assertEquals("#1F9AA3", app.settings.string("theme_color", ""))
+        onNode(hasContentDescription("Vermilion") and isSelectable()).performClick()
+        waitUntil(timeoutMillis = 5_000) { app.themeColor == null }
     }
 
     @Test

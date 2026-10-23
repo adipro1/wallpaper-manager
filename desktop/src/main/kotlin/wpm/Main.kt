@@ -183,7 +183,7 @@ fun main(rawArgs: Array<String>) {
                         window.requestFocus()
                     }
                 }
-                App(app)
+                App(app, window)
             }
         }
     } catch (e: Throwable) {

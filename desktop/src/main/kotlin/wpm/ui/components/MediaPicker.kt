@@ -58,7 +58,8 @@ fun MediaPickerDialog(
         }
     }
     DialogWindow(onCloseRequest = onDismiss, title = title, state = rememberDialogState(width = 860.dp, height = 640.dp)) {
-        AppTheme(app.darkTheme) {
+        AppTheme(app.darkTheme, app.themeColor) {
+            wpm.ui.TitleBarColors(window)
             Column(Modifier.fillMaxSize().background(Theme.colors.windowBg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(search, { search = it }, singleLine = true, placeholder = { Text(tr("Search")) },

@@ -40,6 +40,7 @@ import wpm.ToastKind
 import wpm.logger
 import wpm.ui.Theme
 import wpm.ui.components.Card
+import wpm.ui.components.AccentColorSetting
 import wpm.ui.components.Notice
 import wpm.ui.components.ShortcutField
 import wpm.ui.components.AppPauseRules
@@ -82,6 +83,7 @@ fun SettingsPage(app: AppState) {
                 }
             }
             Spacer(Modifier.height(6.dp))
+            AccentColorSetting(app, Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp))
             LanguageSetting(app)
             SettingSwitch(tr("Reduce motion (no page animations)"), app.reduceMotion) { app.updateReduceMotion(it) }
             var accentOn by remember { mutableStateOf(app.accent.enabled) }
