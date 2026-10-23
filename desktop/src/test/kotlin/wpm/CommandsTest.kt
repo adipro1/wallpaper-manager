@@ -35,6 +35,16 @@ class CommandLineTest {
     }
 
     @Test
+    fun windowsScreensaverArguments() {
+        assertEquals(AppCommand.Screensaver, parseCommandLine(listOf("/s")).command)
+        assertEquals(AppCommand.Screensaver, parseCommandLine(listOf("/S")).command)
+        assertTrue(parseCommandLine(listOf("/p", "1234")).screensaverPreview)
+        assertEquals(AppCommand.Show, parseCommandLine(listOf("/c:5678")).command)
+        assertEquals(AppCommand.Show, parseCommandLine(listOf("/c")).command)
+        assertNotNull(parseCommandLine(listOf("/x")).error)
+    }
+
+    @Test
     fun reportsMistakes() {
         assertNotNull(parseCommandLine(listOf("--set")).error)
         assertNotNull(parseCommandLine(listOf("--playlist", "--next")).error)

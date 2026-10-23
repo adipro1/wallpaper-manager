@@ -49,6 +49,8 @@ fun main(rawArgs: Array<String>) {
         }
         exitProcess(if (commandLine.error != null) 2 else 0)
     }
+    // Windows' screensaver settings ask for a preview in a small window: we show none.
+    if (commandLine.screensaverPreview) exitProcess(0)
     val command = commandLine.command
     // Restarting (after a restore or an update): let the old copy finish exiting first.
     commandLine.afterPid?.let { pid ->
@@ -71,6 +73,10 @@ fun main(rawArgs: Array<String>) {
         val reply = runCatching { CommandPipe.send(instanceName, args) }
             .getOrElse { wpm.win32.CommandReply(false, it.message ?: "The running copy didn't answer") }
         parentConsole()?.println(reply.message)
+        // Windows counts the screensaver as running while its program runs (and only then locks the PC, if asked).
+        if (command == AppCommand.Screensaver && reply.ok) {
+            while (runCatching { CommandPipe.send(instanceName, listOf("--screensaver-status"), 5_000).ok }.getOrDefault(false)) Thread.sleep(1_000)
+        }
         exitProcess(if (reply.ok) 0 else 1)
     }
     val startMinimized = commandLine.minimized || (command != null && command != AppCommand.Show)
@@ -101,6 +107,7 @@ fun main(rawArgs: Array<String>) {
     log.info("Language: ${I18n.language}")
     val app = AppState(paths, db, startMinimized)
 
+    app.exitAfterScreensaver = command == AppCommand.Screensaver
     app.startAutomation()
     // A command given to the first launch runs once the saved wallpaper is back.
     if (command != null) app.scope.launch { app.ready.await(); app.runCommand(command) }

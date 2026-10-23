@@ -50,6 +50,8 @@ interface LivePlayer {
     /** Follows resolution changes. */
     fun fitToScreen()
     fun stop()
+    /** The window the wallpaper is drawn in (e.g. to lend it to the screensaver), or null. */
+    val window: com.sun.jna.platform.win32.WinDef.HWND? get() = null
 }
 
 /**
@@ -129,6 +131,7 @@ class MpvLivePlayer(
     override fun setFill(fill: Boolean) { mpv?.set("panscan", if (fill) "1.0" else "0.0") }
 
     override fun isHealthy(): Boolean = mpv == null || host?.isAlive() == true
+    override val window get() = host?.hwnd
 
     override fun competingApps(): List<String> =
         host?.foreignWindows()?.map(::windowProcessName)?.distinct()?.sorted() ?: emptyList()
@@ -195,6 +198,7 @@ class LiveRouter(private val video: LivePlayer, private val webFactory: () -> Li
     override fun isHealthy(): Boolean = current?.isHealthy() ?: true
     override fun competingApps(): List<String> = current?.competingApps() ?: emptyList()
     override fun fitToScreen() { current?.fitToScreen() }
+    override val window get() = current?.window
 
     @Synchronized
     override fun stop() {

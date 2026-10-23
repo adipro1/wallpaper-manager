@@ -41,6 +41,7 @@ class MultiLive(
     override val paused: Boolean get() = players.values.filter { it.active }.let { it.isNotEmpty() && it.all { p -> p.paused } }
     override val source: String? get() = primaryPlayer()?.source ?: players.values.firstNotNullOfOrNull { it.source }
     override val lastError: String? get() = players.values.firstNotNullOfOrNull { it.lastError }
+    override val window get() = primaryPlayer()?.window
 
     /** Shows [source] on every display that hasn't been given a wallpaper of its own. */
     @Synchronized

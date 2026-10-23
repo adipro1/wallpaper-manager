@@ -62,6 +62,10 @@ Filename: "{app}\{#AppExe}"; Flags: nowait skipifnotsilent
 ; Stop the app so the live wallpaper windows go away and files can be removed.
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM {#AppExe} /F"; Flags: runhidden; RunOnceId: "StopApp"
 
+[UninstallDelete]
+; The screensaver copy of the launcher, made by the app when the screensaver is switched on.
+Type: files; Name: "{app}\WallpaperManager.scr"
+
 [Registry]
 ; The app adds this value itself when "Start with Windows" is on; remove it on uninstall.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "WallpaperManager"; Flags: uninsdeletevalue dontcreatekey

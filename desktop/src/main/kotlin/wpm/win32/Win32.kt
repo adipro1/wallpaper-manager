@@ -111,6 +111,12 @@ fun systemAnimationsEnabled(): Boolean = runCatching {
 }.getOrDefault(true)
 
 /** Gives the process its own taskbar identity (icon and grouping). */
+/** When the mouse or keyboard was last used (milliseconds since Windows started, wrapping). */
+fun lastInputTick(): Int {
+    val info = com.sun.jna.platform.win32.WinUser.LASTINPUTINFO()
+    return if (com.sun.jna.platform.win32.User32.INSTANCE.GetLastInputInfo(info)) info.dwTime else 0
+}
+
 fun setAppUserModelId(appId: String) {
     runCatching { Shell32Ex.INSTANCE.SetCurrentProcessExplicitAppUserModelID(WString(appId)) }
         .onFailure { log.fine("SetCurrentProcessExplicitAppUserModelID unavailable") }

@@ -161,6 +161,8 @@ class AppState(
     val accent = wpm.services.AccentFromWallpaper(settings)
     /** Windows' "accent color on Start and taskbar", so the taskbar takes the wallpaper's color. */
     val taskbarTint = wpm.services.TaskbarTint(settings)
+    /** Wallpaper Manager as the Windows screensaver. */
+    val screensaverSetup = wpm.services.ScreensaverSetup(settings)
     /** What is playing: for wallpapers that show it, and for "colors follow the music". */
     val nowPlaying = wpm.services.NowPlaying(mediaWatcher) { track ->
         currentTrack = track
@@ -314,6 +316,60 @@ class AppState(
             system = if (wpm.widgets.WidgetKind.System in kinds) usage.systemSample() else null,
             accent = shownThemeColor ?: 0xFF6B52,
         )
+    }
+
+    // -- screensaver ------------------------------------------------------------------------------
+
+    /** What the screensaver shows while it is up. */
+    @Volatile var screensaver: wpm.ui.ScreensaverShow? = null
+        private set
+    private var screensaverHost: wpm.ui.ScreensaverHost? = null
+    private var lentLive: wpm.win32.LentWindow? = null
+    /** This copy was started only for the screensaver, so it exits when the screensaver closes. */
+    @Volatile var exitAfterScreensaver = false
+
+    /**
+     * Shows the screensaver until the mouse or keyboard is used: a playlist's pictures as a
+     * slideshow, or the desktop wallpaper (a live one keeps playing in it).
+     */
+    @Synchronized
+    fun startScreensaver(): String {
+        if (screensaver != null) return tr("The screensaver is already showing")
+        val playlist = screensaverSetup.source.removePrefix("playlist:").toLongOrNull()
+        val pictures = playlist?.let { id -> db.playlistItems(id).filter { it.isImage }.mapNotNull { it.localPath }.filter { java.nio.file.Files.exists(it) } }.orEmpty()
+        val liveWindow = livePlayer.window.takeIf { wallpapers.videoActive }
+        val show = when {
+            pictures.isNotEmpty() -> wpm.ui.ScreensaverShow(pictures, shownThemeColor ?: 0xFF6B52)
+            liveWindow != null -> wpm.ui.ScreensaverShow(emptyList(), shownThemeColor ?: 0xFF6B52)
+            else -> wpm.ui.ScreensaverShow(listOfNotNull(wallpapers.currentPicture()), shownThemeColor ?: 0xFF6B52)
+        }
+        val host = wpm.ui.ScreensaverHost(show)
+        screensaverHost = host
+        screensaver = show
+        if (show.pictures.isEmpty() && liveWindow != null) {
+            lentLive = runCatching { wpm.win32.lendWindow(liveWindow, host.primary) }.onFailure { log.warning("Screensaver: $it") }.getOrNull()
+        }
+        log.info("Screensaver started (${if (show.pictures.isEmpty()) "live wallpaper" else "${show.pictures.size} picture(s)"})")
+        scope.launch(Dispatchers.IO) {
+            // Any input ends it (after a moment, so the input that started it doesn't count).
+            delay(1_000)
+            val start = wpm.win32.lastInputTick()
+            while (screensaver === show && wpm.win32.lastInputTick() == start) delay(150)
+            stopScreensaver()
+        }
+        return tr("Screensaver started")
+    }
+
+    @Synchronized
+    fun stopScreensaver() {
+        if (screensaver == null) return
+        lentLive?.let { runCatching { it.giveBack() }.onFailure { e -> log.warning("Screensaver: $e") } }
+        lentLive = null
+        screensaverHost?.close()
+        screensaverHost = null
+        screensaver = null
+        log.info("Screensaver closed")
+        if (exitAfterScreensaver) exitApp()
     }
 
     // -- now playing ------------------------------------------------------------------------------
@@ -501,7 +557,7 @@ class AppState(
         scope.launch {
             try {
                 val message = perform(command)
-                if (command != AppCommand.Show) toast(message, ToastKind.Success)
+                if (command != AppCommand.Show && command != AppCommand.Screensaver) toast(message, ToastKind.Success)
             } catch (e: Exception) {
                 log.info("$command: ${e.message}")
                 toast(e.message ?: e.javaClass.simpleName, if (e is IllegalStateException) ToastKind.Info else ToastKind.Error)
@@ -563,6 +619,8 @@ class AppState(
             refreshWebThumbnail(item)
             tr("Showing {0}", item.filename)
         }
+        AppCommand.Screensaver -> withContext(Dispatchers.IO) { startScreensaver() }
+        AppCommand.ScreensaverStatus -> if (screensaver != null) tr("The screensaver is showing") else throw IllegalStateException(tr("The screensaver has closed"))
         AppCommand.Update -> {
             val version = withContext(Dispatchers.IO) { updates.checkIfDue(force = true) }
                 ?: throw IllegalStateException(tr("You have the latest version"))
@@ -889,8 +947,10 @@ class AppState(
             liveDisplays = { displays?.players()?.filterValues { it.active }?.keys ?: emptySet() },
             onStarted = { ready.complete(Unit) },
             lockSlideshow = lockSlideshow,
+            screensaverShowing = { screensaver != null },
         ).start()
         watched.start()
+        scope.launch(Dispatchers.IO) { screensaverSetup.refresh() }
         scope.launch(Dispatchers.IO) { runCatching { applyShortcuts() }.onFailure { log.warning("Shortcuts: $it") } }
     }
 

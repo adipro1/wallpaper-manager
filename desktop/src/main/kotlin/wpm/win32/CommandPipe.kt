@@ -72,7 +72,8 @@ class CommandPipe(private val name: String, private val handle: (List<String>) -
         if (!k32.ReadFile(pipe, buffer, BUFFER, read, null)) return
         val reply = try {
             val args = Json.decodeFromString(ListSerializer(String.serializer()), String(buffer, 0, read.value, Charsets.UTF_8))
-            log.info("Command from the command line: $args")
+            // The screensaver program asks every second whether it is still up; that isn't news.
+            if (args != listOf("--screensaver-status")) log.info("Command from the command line: $args")
             handle(args)
         } catch (e: Exception) {
             CommandReply(false, e.message ?: e.javaClass.simpleName)

@@ -126,6 +126,8 @@ class Automation(
     /** Called once the saved wallpaper has been restored (or that failed). */
     private val onStarted: () -> Unit = {},
     private val lockSlideshow: LockScreenSlideshow? = null,
+    /** The screensaver shows the live wallpaper: it is full screen, but must keep playing. */
+    private val screensaverShowing: () -> Boolean = { false },
 ) {
     fun start() {
         DisplayState.start()
@@ -165,7 +167,8 @@ class Automation(
         }
         every(2_000) {
             if (wallpapers.videoActive) {
-                val decision = runCatching { pauseDecision(settings, probe, liveDisplays()) }.getOrNull() ?: PauseDecision(null)
+                val decision = if (screensaverShowing()) PauseDecision(null)
+                else runCatching { pauseDecision(settings, probe, liveDisplays()) }.getOrNull() ?: PauseDecision(null)
                 wallpapers.hideDisplays(decision.hiddenDisplays)
                 if (wallpapers.updateAutoPause(decision.reason)) exclusive {}
             }

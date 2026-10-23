@@ -10,6 +10,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import wpm.ui.components.OrigamiMark
 import wpm.ui.components.ButtonIcon
+import wpm.ui.components.FilterChip
+import wpm.ui.components.NumberField
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Column
@@ -206,6 +210,8 @@ fun SettingsPage(app: AppState) {
             AppPauseRules(app, Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp))
         }
 
+        ScreensaverCard(app)
+
         Card(Modifier.fillMaxWidth()) {
             SectionTitle(tr("Storage"))
             Spacer(Modifier.height(6.dp))
@@ -377,6 +383,50 @@ private fun TransitionSetting(app: AppState) {
 }
 
 /** What the app and its engines use right now, refreshed every two seconds while visible. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ScreensaverCard(app: AppState) {
+    val setup = app.screensaverSetup
+    var on by remember { mutableStateOf(setup.enabled) }
+    var minutes by remember { mutableStateOf(setup.minutes.toString()) }
+    var source by remember { mutableStateOf(setup.source) }
+    val playlists = remember(app.libraryVersion) { app.db.listPlaylists() }
+    Card(Modifier.fillMaxWidth()) {
+        SectionTitle(tr("Screensaver"))
+        SettingSwitch(
+            tr("Use Wallpaper Manager as the Windows screensaver"), on,
+            hint = tr("Shows your wallpaper (live ones keep playing) or a playlist's pictures when the PC is idle. Switching it off puts your previous screensaver back."),
+        ) { value ->
+            app.runTask(failure = tr("Couldn't change the screensaver")) {
+                withContext(Dispatchers.IO) { setup.setEnabled(value) }
+                on = value
+            }
+        }
+        Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Start after this many minutes without input"), color = Theme.colors.text, modifier = Modifier.weight(1f))
+            NumberField(minutes, { text ->
+                minutes = text.filter(Char::isDigit).take(3)
+                minutes.toIntOrNull()?.let { m -> app.runTask { withContext(Dispatchers.IO) { setup.setMinutes(m) } } }
+            })
+        }
+        Column(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(tr("It shows"), color = Theme.colors.text)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val options = listOf("wallpaper" to tr("The desktop wallpaper")) + playlists.map { "playlist:${it.id}" to tr("Playlist: {0}", it.name) }
+                options.forEach { (value, label) ->
+                    FilterChip(source == value, {
+                        source = value
+                        setup.setSource(value)
+                    }, { Text(label) })
+                }
+            }
+        }
+        TextButton(contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp), onClick = {
+            app.runTask(failure = tr("Couldn't start the screensaver")) { withContext(Dispatchers.IO) { app.startScreensaver() } }
+        }) { Text(tr("Try it now (move the mouse to stop)")) }
+    }
+}
+
 @Composable
 private fun PerformanceCard(app: AppState) {
     var usage by remember { mutableStateOf<wpm.win32.ResourceUsage?>(null) }

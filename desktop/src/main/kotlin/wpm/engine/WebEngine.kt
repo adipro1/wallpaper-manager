@@ -116,6 +116,7 @@ class WebLivePlayer(
         private set
 
     override val active: Boolean get() = browser != null
+    override val window: HWND? get() = hwnd
 
     /** Runs JavaScript in the page (e.g. to deliver audio levels). Safe to call from any thread. */
     fun runScript(code: String) {

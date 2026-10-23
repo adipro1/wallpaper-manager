@@ -48,6 +48,7 @@ private const val SWP_NOSIZE = 0x0001
 private const val SWP_NOMOVE = 0x0002
 private const val SWP_NOZORDER = 0x0004
 private const val SWP_NOACTIVATE = 0x0010
+private const val GW_HWNDPREV = 3
 private const val LWA_ALPHA = 0x2
 private const val WM_DESTROY = 0x0002
 private const val WM_CLOSE = 0x0010
@@ -201,6 +202,34 @@ fun fitToParent(child: HWND, parent: HWND): Pair<Int, Int> {
 fun moveInWallpaperLayer(hwnd: HWND, parent: HWND, screenRect: ScreenRect) {
     val client = toClient(parent, screenRect)
     user32.SetWindowPos(hwnd, null, client.x, client.y, client.width, client.height, SWP_NOZORDER or SWP_NOACTIVATE)
+}
+
+/** A window moved somewhere else for a while (see [lendWindow]); [giveBack] puts it where it was. */
+class LentWindow internal constructor(
+    val hwnd: HWND,
+    private val parent: HWND,
+    /** The sibling just above it, so it goes back to the same place in the z-order. */
+    private val above: HWND?,
+    private val rect: ScreenRect,
+) {
+    fun giveBack() {
+        if (!user32.IsWindow(hwnd) || !user32.IsWindow(parent)) return
+        user32.SetParent(hwnd, parent)
+        val client = toClient(parent, rect)
+        val after = above?.takeIf { user32.IsWindow(it) && user32.GetParent(it) == parent } ?: HWND(com.sun.jna.Pointer.createConstant(0))
+        user32.SetWindowPos(hwnd, after, client.x, client.y, client.width, client.height, SWP_NOACTIVATE or SWP_SHOWWINDOW)
+    }
+}
+
+/** Moves a child window (e.g. the live wallpaper's) into [to], filling it, until [LentWindow.giveBack]. */
+fun lendWindow(hwnd: HWND, to: HWND): LentWindow? {
+    val parent = user32.GetParent(hwnd) ?: return null
+    val bounds = WinDef.RECT()
+    if (!user32.GetWindowRect(hwnd, bounds)) return null
+    val above = user32.GetWindow(hwnd, WinDef.DWORD(GW_HWNDPREV.toLong()))
+    user32.SetParent(hwnd, to)
+    fitToParent(hwnd, to)
+    return LentWindow(hwnd, parent, above, ScreenRect.of(bounds))
 }
 
 /** Child windows of [parent] (recursively) with this class name. */

@@ -18,6 +18,10 @@ sealed class AppCommand {
     /** A library item (by file name) or a file/folder on this PC (added to the library if needed). */
     data class Set(val target: String) : AppCommand()
     data class Playlist(val name: String) : AppCommand()
+    /** Windows starts the screensaver ("/s"). */
+    data object Screensaver : AppCommand()
+    /** Asked by the screensaver program every second: fails once the screensaver has closed. */
+    data object ScreensaverStatus : AppCommand()
 }
 
 /** What the command line asked for. */
@@ -30,6 +34,8 @@ data class CommandLine(
     val afterPid: Long? = null,
     /** Set when the arguments don't make sense; shown with the usage text. */
     val error: String? = null,
+    /** Windows wants a preview in its screensaver settings ("/p <window>"): nothing to do. */
+    val screensaverPreview: Boolean = false,
 )
 
 val COMMAND_LINE_HELP = """
@@ -47,6 +53,7 @@ val COMMAND_LINE_HELP = """
       --update            Install the newest version, if there is one
       --show              Open the window
       --minimized         Start hidden in the tray
+      --screensaver       Show the screensaver now (/s, /p and /c work as Windows uses them)
       --self-test         Check every engine and write the results to the log
       --help              Show this text
 
@@ -64,6 +71,8 @@ private val simpleCommands = mapOf(
     "--stop" to AppCommand.Stop,
     "--stop-playlist" to AppCommand.StopPlaylist,
     "--update" to AppCommand.Update,
+    "--screensaver" to AppCommand.Screensaver,
+    "--screensaver-status" to AppCommand.ScreensaverStatus,
 )
 
 /** Reads the command line. Options are case-insensitive; at most one command is allowed. */
@@ -81,6 +90,13 @@ fun parseCommandLine(args: List<String>): CommandLine {
     }
     while (i < args.size) {
         val arg = args[i]
+        // How Windows runs a screensaver: "/s" show, "/p <hwnd>" preview, "/c" or "/c:<hwnd>" settings.
+        val screensaverOption = arg.lowercase().takeIf { it.length >= 2 && it[0] == '/' && it[1] in "spc" && (it.length == 2 || it[2] == ':') }
+        when (screensaverOption?.get(1)) {
+            's' -> { if (!setCommand(AppCommand.Screensaver)) return result; i++; continue }
+            'p' -> return result.copy(screensaverPreview = true)
+            'c' -> { if (!setCommand(AppCommand.Show)) return result; i++; continue }
+        }
         when (val option = arg.lowercase()) {
             "--minimized" -> result = result.copy(minimized = true)
             "--self-test" -> result = result.copy(selfTest = true)
