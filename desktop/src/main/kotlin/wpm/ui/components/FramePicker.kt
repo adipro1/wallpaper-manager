@@ -41,7 +41,7 @@ fun FramePickerDialog(app: AppState, item: MediaItem, onClose: () -> Unit) {
         title = tr("Pick a frame – {0}", item.filename),
         state = rememberDialogState(width = 900.dp, height = 640.dp),
     ) {
-        AppTheme(app.darkTheme, app.themeColor) {
+        AppTheme(app.darkTheme, app.shownThemeColor) {
             wpm.ui.TitleBarColors(window)
             Column(Modifier.fillMaxSize().background(Theme.colors.windowBg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 VideoView(item.source, Modifier.fillMaxWidth().weight(1f), paused = true, loop = false, controller = controller)

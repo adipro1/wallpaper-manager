@@ -121,7 +121,12 @@ class AccentFromWallpaper(private val settings: Settings, private val api: Accen
     /** Applies the accent for a wallpaper picture (or a live wallpaper's thumbnail). */
     fun applyFrom(image: Image) {
         if (!enabled) return
-        val rgb = dominantColor(image) ?: return
+        applyColor(dominantColor(image) ?: return)
+    }
+
+    /** Applies [rgb] as the accent (saving the user's own the first time). */
+    fun applyColor(rgb: Int) {
+        if (!enabled) return
         if (settings.obj("original_accent", AccentBackup.serializer()) == null) {
             settings.set("original_accent", AccentBackup.serializer(), api.read())
         }

@@ -65,6 +65,7 @@ import wpm.win32.GlobalHotkeys
 import wpm.win32.Hotkey
 import wpm.win32.WindowsDesktop
 import java.awt.Window
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.extension
@@ -107,6 +108,8 @@ class AppState(
     val online: wpm.media.WallpaperSource = wpm.media.Wallhaven(),
     /** Where "Living weather" gets the weather outside. */
     weatherSource: wpm.services.WeatherSource = wpm.services.OpenMeteo(),
+    /** Where "Now playing" learns what music plays. */
+    mediaWatcher: wpm.services.MediaWatcher = wpm.services.PowerShellMediaWatcher(paths.cacheDir, paths.cacheDir.resolve("album-art")),
 ) {
     val settings = Settings(db)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -154,6 +157,14 @@ class AppState(
     val playlists: PlaylistPlayer = PlaylistPlayer(db, wallpapers, place = { scheduler.place ?: wpm.services.guessCity() })
     val lockSlideshow = wpm.services.LockScreenSlideshow(db, lockScreen)
     val accent = wpm.services.AccentFromWallpaper(settings)
+    /** What is playing: for wallpapers that show it, and for "colors follow the music". */
+    val nowPlaying = wpm.services.NowPlaying(mediaWatcher) { track ->
+        currentTrack = track
+        scope.launch { pushTrack() }
+    }
+    /** [nowPlaying]'s track, for the UI. */
+    var currentTrack by mutableStateOf<wpm.services.Track?>(null)
+        private set
     /** Watched folders; new and deleted files show up in the library by themselves. */
     val watched = wpm.services.WatchedFolders(db, library) { change ->
         libraryChanged()
@@ -285,6 +296,67 @@ class AppState(
         webEngines().filter { it.source?.contains("/shader-") == true }.forEach { it.runScript(script) }
     }
 
+    // -- now playing ------------------------------------------------------------------------------
+
+    /** Pages that use the music, by address (a page doesn't change while it is shown). */
+    private val musicPages = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /** A shader that uses iMusic, or a web wallpaper whose files mention livelyCurrentTrack. */
+    private fun usesMusic(source: String): Boolean = musicPages.getOrPut(source) {
+        runCatching {
+            Regex("""/shader-(\d+)\.html""").find(source)?.groupValues?.get(1)?.toLongOrNull()?.let { id ->
+                return@runCatching db.getMedia(id)?.let { "iMusic" in shaders.code(it) } ?: false
+            }
+            // Other shader pages (previews, transitions) never do; web pages are files in their own folder.
+            if ("/shader-pages/" in source || !source.startsWith("file:")) return@runCatching false
+            val page = Path.of(java.net.URI(source))
+            Files.walk(page.parent, 3).use { files ->
+                files.filter { Files.isRegularFile(it) && it.fileName.toString().substringAfterLast('.').lowercase() in setOf("html", "htm", "js") }
+                    .limit(200).anyMatch { Files.size(it) < 5_000_000 && "livelyCurrentTrack" in Files.readString(it, Charsets.ISO_8859_1) }
+            }
+        }.getOrDefault(false)
+    }
+
+    private val musicColorsOn: Boolean get() = settings.boolean("music_colors", false)
+    private var musicStoppedAt: Long? = null
+
+    /** Watches what is playing only while a visible wallpaper uses it or the music colors are on. */
+    private fun updateMusic() {
+        val wanted = musicColorsOn || webEngines().any { it.active && !it.paused && it.source?.let(::usesMusic) == true }
+        nowPlaying.setWanted(wanted)
+        if (musicColor == null) return
+        // Colors go back 10 s after the music stops, so a short pause doesn't flash the desktop.
+        val now = System.currentTimeMillis()
+        if (musicColorsOn) {
+            if (nowPlaying.track?.let { it.playing && it.color != null } == true) {
+                musicStoppedAt = null
+                return
+            }
+            if (now - (musicStoppedAt ?: now.also { musicStoppedAt = it }) < 10_000) return
+        }
+        musicColor = null
+        musicStoppedAt = null
+        updateAccent(force = true)
+    }
+
+    /** Hands the track to the pages on screen and, with music colors on, colors the app and Windows. */
+    private fun pushTrack() {
+        val script = nowPlaying.script()
+        webEngines().filter { it.active }.forEach { it.runScript(script) }
+        val color = nowPlaying.track?.takeIf { it.playing }?.color ?: return
+        if (!musicColorsOn || color == musicColor) return
+        musicColor = color
+        musicStoppedAt = null
+        if (accent.enabled) scope.launch(Dispatchers.IO) {
+            runCatching { accent.applyColor(color) }.onFailure { log.warning("Couldn't set the accent color: $it") }
+        }
+    }
+
+    fun setMusicColors(on: Boolean) {
+        settings.set("music_colors", on)
+        scope.launch(Dispatchers.IO) { runCatching { updateMusic(); pushTrack() }.onFailure { log.warning("Now playing: $it") } }
+    }
+
     /** Whether a shader uses the weather outside (and the weather may be looked up). */
     private fun usesWeather(item: MediaItem): Boolean =
         item.isShader && settings.boolean("live_weather", true) && shaders.code(item).let { "iWeather" in it || "iClouds" in it }
@@ -307,6 +379,12 @@ class AppState(
         reduceMotion = on
         settings.set("reduce_motion", on)
     }
+
+    /** The album art's color while music plays with "colors follow the music" on; it tints the app. */
+    var musicColor by mutableStateOf<Int?>(null)
+        private set
+    /** The accent the app shows right now: the music's, or the one chosen in Settings. */
+    val shownThemeColor: Int? get() = musicColor ?: themeColor
 
     fun updateThemeColor(rgb: Int?) {
         themeColor = rgb
@@ -669,6 +747,7 @@ class AppState(
                 settings.string("web_fps", "full").toIntOrNull()?.takeIf { !item.isShader }?.let(WebWallpapers::frameRateLimit),
                 propertyScript(item),
                 world.script().takeIf { item.isShader },
+                nowPlaying.script().takeIf { nowPlaying.running },
             ).joinToString("").ifEmpty { null },
         ).also {
             // A weather wallpaper gets the weather as soon as it is known.
@@ -735,7 +814,7 @@ class AppState(
         }
         val item = withContext(Dispatchers.IO) {
             val title = "${picture.filename.substringBeforeLast('.')} · $effect"
-            val id = shaders.create(title, sample.code, interactive = effect == "Parallax" || wpm.media.needsDepth(sample.code), preview = path)
+            val id = shaders.create(title, sample.code, interactive = effect == "Parallax" || wpm.media.needsDepth(sample.code), audio = "iChannel0" in sample.code, preview = path)
             properties.set(id, "photo", JsonPrimitive(path.toString()))
             db.getMedia(id)!!
         }
@@ -774,6 +853,7 @@ class AppState(
             while (true) {
                 delay(1_000)
                 runCatching { updateAudio() }
+                runCatching { updateMusic() }.onFailure { log.warning("Now playing: $it") }
             }
         }
         Automation(
@@ -797,6 +877,7 @@ class AppState(
         hotkeys?.close()
         watched.close()
         audio.stop()
+        runCatching { nowPlaying.setWanted(false) }
         runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
         wpm.engine.Chromium.shutdown()
     }

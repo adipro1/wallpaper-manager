@@ -97,6 +97,17 @@ fun SettingsPage(app: AppState) {
                     app.updateAccent(force = true)
                 }
             }
+            var musicOn by remember { mutableStateOf(app.settings.boolean("music_colors", false)) }
+            SettingSwitch(
+                tr("Colors follow the music"), musicOn,
+                hint = tr("While a song plays (Spotify, a browser, any player), the app takes the color of its album art, and so does Windows when the setting above is on."),
+            ) { on ->
+                musicOn = on
+                app.setMusicColors(on)
+            }
+            app.currentTrack?.takeIf { musicOn }?.let { track ->
+                MutedText(tr("Now playing: {0}", listOf(track.title, track.artist).filter { it.isNotBlank() }.joinToString(" · ")))
+            }
         }
 
         WatchedFoldersCard(app)

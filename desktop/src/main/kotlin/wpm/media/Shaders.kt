@@ -28,7 +28,7 @@ val SHADER_EXTENSIONS = setOf("glsl", "frag", "fs")
 data class SampleShader(val name: String, val code: String)
 
 /** The "make it alive" effects in resources/shader/effects. */
-val PICTURE_EFFECTS = listOf("3D photo", "Day and night", "Living weather", "Ken Burns", "Parallax", "Rain on glass", "Snowfall")
+val PICTURE_EFFECTS = listOf("3D photo", "Day and night", "Living weather", "Music colors", "Ken Burns", "Parallax", "Rain on glass", "Snowfall")
 
 /** Effects that need the AI depth model (they declare "// @depth"). */
 fun needsDepth(code: String): Boolean = parseDepthMaps(code).isNotEmpty()

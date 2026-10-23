@@ -58,7 +58,7 @@ fun MediaPickerDialog(
         }
     }
     DialogWindow(onCloseRequest = onDismiss, title = title, state = rememberDialogState(width = 860.dp, height = 640.dp)) {
-        AppTheme(app.darkTheme, app.themeColor) {
+        AppTheme(app.darkTheme, app.shownThemeColor) {
             wpm.ui.TitleBarColors(window)
             Column(Modifier.fillMaxSize().background(Theme.colors.windowBg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

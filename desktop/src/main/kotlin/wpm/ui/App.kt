@@ -119,7 +119,7 @@ private val NavItemHeight = 46.dp
 
 @Composable
 fun App(app: AppState, window: java.awt.Window? = null) {
-    AppTheme(app.darkTheme, app.themeColor) {
+    AppTheme(app.darkTheme, app.shownThemeColor) {
         if (window != null) TitleBarColors(window)
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val compact = maxWidth < 1000.dp
