@@ -44,6 +44,8 @@ Getting started
 - Desktop: click a picture or a live wallpaper to use it. With more than one
   display you can give each display its own wallpaper.
 - Lock Screen: click a picture, or a video to choose one of its frames.
+- Settings -> Appearance: light or dark mode and the app's color (nine colors
+  or any color you like).
 - Closing the window keeps the app running in the system tray (near the clock).
   Right-click the tray icon for Next / Random wallpaper, Pause / Stop and Exit.
 
@@ -62,6 +64,8 @@ Good to know
   runs, while windows cover the desktop, or while the PC is locked.
 - If another live wallpaper app (Wallpaper Engine, Lively, ...) is running, it
   may cover this app's wallpapers - pause or close it.
+- New versions: Settings tells you when one is out; "Install now" updates
+  the app and keeps your library and settings.
 - If YouTube links stop working, use Settings -> "Update yt-dlp".
 - Something wrong? Settings -> "Save diagnostics..." makes a zip with the logs
   to attach to a bug report.

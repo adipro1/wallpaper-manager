@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master, kotlin-rewrite]
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:  # "Run workflow" button: builds without publishing a release
