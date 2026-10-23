@@ -75,7 +75,11 @@ object Chromium {
     fun shutdown() {
         val running = app ?: return
         app = null
-        runCatching { SwingUtilities.invokeAndWait { running.dispose() } }.onFailure { log.warning("Chromium shutdown: $it") }
+        // The update and quit paths can call this from the UI thread, where invokeAndWait throws.
+        runCatching {
+            if (SwingUtilities.isEventDispatchThread()) running.dispose()
+            else SwingUtilities.invokeAndWait { running.dispose() }
+        }.onFailure { log.warning("Chromium shutdown: $it") }
     }
 }
 
