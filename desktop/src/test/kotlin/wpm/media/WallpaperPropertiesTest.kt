@@ -133,6 +133,26 @@ class WallpaperPropertiesTest {
     )
 
     @Test
+    fun makeAliveIn3DGetsTheModelAndADepthMap() {
+        assumeTrue(System.getenv("WPM_NETWORK_TEST") == "1", "network test not requested")
+        val live = FakeLivePlayer()
+        val app = app(live)
+        try {
+            // Reuse the model DepthTest downloaded, if it did (the app downloads it otherwise).
+            val tested = Path.of("build/depth-model-test").toAbsolutePath()
+            if (Files.isDirectory(tested)) tested.toFile().copyRecursively(paths.dataDir.resolve("models").toFile())
+            val picture = db.getMedia(app.library.importFiles(listOf(Samples.image(dir.resolve("Hall.png"), 640, 360))).added.single())!!
+            val alive = runBlocking { app.makeAlive(picture, "3D photo") }
+            assertTrue(app.depthMaps.installed && alive.interactive)
+            val page = Path.of(java.net.URI(live.source!!)).readText()
+            assertTrue(""""1":"data:image/jpeg;base64,""" in page && """"2":"data:image/png;base64,""" in page, "picture and depth map")
+            assertEquals(listOf("photo", "amount", "drift", "focus", "mouse"), app.propertiesOf(alive).map { it.name })
+        } finally {
+            app.close()
+        }
+    }
+
+    @Test
     fun makeAliveCreatesAShaderShowingThePicture() {
         val live = FakeLivePlayer()
         val app = app(live)

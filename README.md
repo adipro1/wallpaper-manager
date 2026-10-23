@@ -15,15 +15,15 @@ needed) or the zip. Once installed, the app updates itself with one click.
 | ![Settings with the accent color picker](docs/screenshots/settings-dark.png) | ![Schedule, light mode with the violet accent](docs/screenshots/schedule-light.png) |
 | ![Playlists, dark mode with the jade accent](docs/screenshots/playlists-dark.png) | ![Lock screen, light mode with the rose accent](docs/screenshots/lockscreen-light.png) |
 
-## What's new in 3.0 "Alive"
+## What's new in 3.1 "Depth & Music"
 
-- **Day and night**: any picture turns golden at sunset, blue at dusk and dark with lit windows
-  and stars at night, following the real sun for your city.
-- **Living weather**: when it rains, snows, gets foggy or storms outside, it does on your picture
-  too (weather from [open-meteo.com](https://open-meteo.com), no account needed).
-- **Picture transitions**: picture changes fold away like paper, fade, burn away or ripple.
-- **Dynamic themes**: import WinDynamicDesktop `.ddw` themes, or let any playlist follow the sun.
+- **3D photos**: AI works out what is near and far in a photo, so it moves like a real 3D scene
+  with the mouse.
+- **Layers**: 3D motion, fireflies, light rays, fog, real rain and snow and music bars on one picture.
+- **Now Playing**: wallpapers know what Spotify, your browser or any player is playing; the
+  picture and the app's colors can follow the album art.
 
+3.0 "Alive" brought day and night, Living weather, picture transitions and dynamic themes.
 All changes are in the [release notes](https://github.com/adipro1/wallpaper-manager/releases).
 
 ## Features
@@ -47,15 +47,22 @@ All changes are in the [release notes](https://github.com/adipro1/wallpaper-mana
   a live preview, compile errors with line numbers and samples to start from.
   `iMouse` follows the desktop mouse, `iChannel0` is the audio spectrum, and `iSun`,
   `iWeather` and `iClouds` are the real sky (the sun's height and direction, rain / snow /
-  fog / storm, cloud cover). Comments
+  fog / storm, cloud cover), `iMusic` the album art's color while music plays. Comments
   add settings: `// @slider speed 0 2 1 Speed`, `// @color tint #ff8800 Tint`,
-  `// @checkbox rain on Rain`, `// @image photo Picture` (`iChannel1`-`3`).
-- **Make a picture alive**: a 3D photo, day and night that follow the real sun, the real weather
-  (rain, snow, fog, storms), a slow Ken Burns zoom, parallax that follows the mouse,
-  rain on the glass or snowfall, for any picture.
+  `// @checkbox rain on Rain`, `// @image photo Picture` (`iChannel1`-`3`),
+  `// @depth depth photo` (the picture's AI depth map, white = near).
+- **Make a picture alive**: a 3D photo, layers of effects, day and night that follow the real
+  sun, the real weather (rain, snow, fog, storms), colors that follow the music, a slow Ken
+  Burns zoom, parallax that follows the mouse, rain on the glass or snowfall, for any picture.
 - **3D photos**: AI works out what is near and far in a photo, so it moves like a real 3D
   scene with the mouse and a slow camera drift. The model ([Depth Anything V2 Small](https://huggingface.co/depth-anything/Depth-Anything-V2-Small),
   Apache-2.0, 27 MB) is downloaded the first time and runs on your PC with ONNX Runtime.
+- **Layers**: stack effects on one picture and switch each on in its settings: 3D motion,
+  fireflies that fly behind nearer branches, light rays, fog in the distance, the real rain
+  and snow, music bars and a soft light at the mouse.
+- **Now Playing**: what Spotify, a browser or any player in Windows' media flyout plays reaches
+  web wallpapers (Lively's `livelyCurrentTrack`) and shaders (`iMusic`). "Colors follow the
+  music" gives the app (and, if you like, Windows) the album art's color while a song plays.
 - **Transitions**: when the picture changes it folds away like paper, fades, burns away or
   ripples (Settings > Live wallpapers > Picture changes).
 - **Audio-reactive**: what your PC plays (WASAPI loopback, 128 bands, about 30 times
