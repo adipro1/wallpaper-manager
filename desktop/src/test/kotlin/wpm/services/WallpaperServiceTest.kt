@@ -96,6 +96,43 @@ class WallpaperServiceTest {
     }
 
     @Test
+    fun picturesChangeThroughTheTransition() {
+        val (a, b, c) = import("a.png", "b.jpg", "c.png")
+        val played = mutableListOf<Pair<Path, Path>>()
+        var appliedInside = 0
+        service.transition = { from, to, apply ->
+            played += from to to
+            val before = fake.applied.size
+            apply()
+            appliedInside += fake.applied.size - before
+        }
+        // The first picture this app sets: no transition (the desktop showed something else).
+        service.setImage(a, "fill")
+        assertTrue(played.isEmpty())
+        // Picture to picture, both filled: a transition that applies the new one once.
+        service.setImage(b, "fill")
+        assertEquals(listOf(Path.of(a.path!!) to Path.of(b.path!!)), played)
+        assertEquals(1, appliedInside)
+        assertEquals(b.path to true, fake.applied.last())
+        // Other styles change at once.
+        service.setImage(c, "fit")
+        assertEquals(1, played.size)
+
+        // A transition that fails before applying still changes the picture, once.
+        service.setImage(a, "fill")
+        service.transition = { _, _, _ -> throw IllegalStateException("no web engine") }
+        val before = fake.applied.size
+        service.setImage(b, "fill")
+        assertEquals(before + 1, fake.applied.size)
+        assertEquals(b.id, service.state.mediaId)
+        assertEquals(b.path to true, fake.applied.last())
+        // One that forgets to apply too.
+        service.transition = { _, _, _ -> }
+        service.setImage(c, "fill")
+        assertEquals(c.path to true, fake.applied.last())
+    }
+
+    @Test
     fun convertsWebpToPng() {
         val (webp) = import("pic.webp")
         service.setImage(webp)

@@ -93,6 +93,35 @@ class DatabaseTest {
     }
 
     @Test
+    fun upgradesVersion5LibrarySoPlaylistsCanFollowTheSun() {
+        // A 2.x database: the playlists table is rebuilt for the new "sun" mode.
+        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { conn ->
+            conn.createStatement().use { st ->
+                st.execute("PRAGMA foreign_keys = ON")
+                MIGRATIONS.take(5).forEach { script -> splitStatements(script).forEach(st::execute) }
+                st.execute("PRAGMA user_version = 5")
+                st.execute("INSERT INTO media (id, path, filename, media_type) VALUES (7, 'C:/a.png', 'a.png', 'image')")
+                st.execute("INSERT INTO playlists (id, name, mode, interval_seconds) VALUES (3, 'Evenings', 'random', 600)")
+                st.execute("INSERT INTO playlist_items VALUES (3, 7, 0)")
+                st.execute("INSERT INTO schedule_rules (time, playlist_id) VALUES ('18:00', 3)")
+            }
+        }
+        Database(dbPath).use { db ->
+            assertEquals(MIGRATIONS.size, db.schemaVersion)
+            val evenings = db.getPlaylist(3)!!
+            assertEquals("random" to 600, evenings.mode to evenings.intervalSeconds)
+            assertEquals(listOf(7L), db.playlistItems(3).map { it.id })
+            assertEquals(3L, db.listRules().single().playlistId)
+            db.updatePlaylist(3, mode = "sun")
+            assertEquals("sun", db.getPlaylist(3)!!.mode)
+            // Cascades still work after the rebuild.
+            db.deletePlaylist(3)
+            assertTrue(db.listRules().isEmpty())
+        }
+        assertTrue(dir.resolve("test.v5.bak.db").toFile().exists())
+    }
+
+    @Test
     fun refusesNewerDatabase() {
         DriverManager.getConnection("jdbc:sqlite:$dbPath").use { conn ->
             conn.createStatement().use { it.execute("PRAGMA user_version = 99") }

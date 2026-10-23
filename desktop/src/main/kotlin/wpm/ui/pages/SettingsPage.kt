@@ -149,6 +149,7 @@ fun SettingsPage(app: AppState) {
                     }
                 }, enabled = !updating) { Text(if (updating) tr("Updating yt-dlp…") else tr("Update yt-dlp (if YouTube links stop working)")) }
             }
+            TransitionSetting(app)
             BooleanSetting(app, "resume_live_wallpaper", true, tr("Start the live wallpaper again when the app starts"))
             var allDisplays by remember { mutableStateOf(app.settings.boolean("live_all_displays", true)) }
             SettingSwitch(tr("Show live wallpapers on every display (otherwise only the main one)"), allDisplays) { on ->
@@ -322,6 +323,25 @@ private fun FrameRateSetting(app: AppState, key: String, default: String, label:
                     app.settings.set(key, option)
                     app.runTask { app.changeWallpaper { if (app.wallpapers.state.kind == restartKind) app.wallpapers.restartLive() } }
                 }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(if (option == "full") tr("Full") else "$option fps") }
+            }
+        }
+    }
+}
+
+/** How one picture changes to the next on the desktop. */
+@Composable
+private fun TransitionSetting(app: AppState) {
+    val options = listOf("off" to tr("Off"), "Fold" to tr("Fold"), "Fade" to tr("Fade"), "Dissolve" to tr("Dissolve"),
+        "Ripple" to tr("Ripple"), "random" to tr("Random"))
+    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(tr("Picture changes"), color = Theme.colors.text)
+            MutedText(tr("How the desktop goes from one picture to the next (needs the web engine; off with \"reduce motion\")."))
+        }
+        SingleChoiceSegmentedButtonRow {
+            options.forEachIndexed { i, (key, label) ->
+                SegmentedButton(app.transitionStyle == key, { app.updateTransitionStyle(key) },
+                    SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label) }
             }
         }
     }

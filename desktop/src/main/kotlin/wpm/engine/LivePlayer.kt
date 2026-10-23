@@ -24,6 +24,8 @@ data class LiveSource(
     val audio: Boolean = false,
     /** Web pages: JavaScript run each time the page has loaded (e.g. the wallpaper's settings). */
     val onLoadScript: String? = null,
+    /** Web pages: keep the window hidden (still drawing) until resume() shows it. */
+    val startHidden: Boolean = false,
 )
 
 /** One live wallpaper behind the desktop icons. An interface so tests can use a fake. */

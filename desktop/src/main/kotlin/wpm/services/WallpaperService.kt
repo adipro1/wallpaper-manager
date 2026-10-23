@@ -110,6 +110,12 @@ class WallpaperService(
 
     // -- static images ------------------------------------------------------------
 
+    /**
+     * Plays a transition from the picture on the desktop to a new one, calling `apply` (which sets
+     * the new picture) exactly once. Null: pictures change at once.
+     */
+    var transition: ((from: Path, to: Path, apply: () -> Unit) -> Unit)? = null
+
     /** Makes an image the desktop wallpaper (stops a live wallpaper). */
     fun setImage(item: MediaItem, style: String? = null) {
         require(item.isImage) { tr("Use setVideo for videos") }
@@ -117,7 +123,22 @@ class WallpaperService(
         if (!local.exists()) throw FileNotFoundException(tr("File not found: {0}", local))
         val chosen = style ?: settings.string("image_style", "fill")
         backupOriginal()
-        apply(prepareImage(item, local), chosen, item.id)
+        val file = prepareImage(item, local)
+        // Transitions go from one filled picture to the next on the whole desktop (not over a live wallpaper).
+        val from = currentPicture().takeIf { state.kind == "image" && chosen == "fill" && state.style == "fill" && !live.active && displayChoices().isEmpty() }
+        val play = transition
+        if (play != null && from != null && from != Path(file)) {
+            var applied = false
+            try {
+                play(from, Path(file)) { apply(file, chosen, item.id); applied = true }
+            } catch (e: Exception) {
+                log.warning("Transition failed: $e")
+            } finally {
+                if (!applied) apply(file, chosen, item.id)
+            }
+        } else {
+            apply(file, chosen, item.id)
+        }
         live.stop() // after applying the image, so the old picture never flashes up
         clearDisplayChoices()
         autoPauseReason = null

@@ -15,14 +15,14 @@ needed) or the zip. Once installed, the app updates itself with one click.
 | ![Settings with the accent color picker](docs/screenshots/settings-dark.png) | ![Schedule, light mode with the violet accent](docs/screenshots/schedule-light.png) |
 | ![Playlists, dark mode with the jade accent](docs/screenshots/playlists-dark.png) | ![Lock screen, light mode with the rose accent](docs/screenshots/lockscreen-light.png) |
 
-## What's new in 2.2
+## What's new in 3.0 "Alive"
 
-- **Your own color**: Settings > Appearance > Accent color offers nine colors
-  (vermilion, amber, gold, jade, teal, ocean, indigo, violet, rose) or any color you
-  pick. Buttons, switches, highlights, the page ribbon and the logo follow it, in
-  light and dark mode, and text on the color stays readable.
-- **Title bar**: the window's title bar takes the sidebar's dark indigo instead of
-  plain white (Windows 11).
+- **Day and night**: any picture turns golden at sunset, blue at dusk and dark with lit windows
+  and stars at night, following the real sun for your city.
+- **Living weather**: when it rains, snows, gets foggy or storms outside, it does on your picture
+  too (weather from [open-meteo.com](https://open-meteo.com), no account needed).
+- **Picture transitions**: picture changes fold away like paper, fade, burn away or ripple.
+- **Dynamic themes**: import WinDynamicDesktop `.ddw` themes, or let any playlist follow the sun.
 
 All changes are in the [release notes](https://github.com/adipro1/wallpaper-manager/releases).
 
@@ -45,11 +45,16 @@ All changes are in the [release notes](https://github.com/adipro1/wallpaper-mana
   running wallpaper straight away.
 - **Shader wallpapers** (Shadertoy-style GLSL) made in the **Customize** editor, with
   a live preview, compile errors with line numbers and samples to start from.
-  `iMouse` follows the desktop mouse and `iChannel0` is the audio spectrum. Comments
+  `iMouse` follows the desktop mouse, `iChannel0` is the audio spectrum, and `iSun`,
+  `iWeather` and `iClouds` are the real sky (the sun's height and direction, rain / snow /
+  fog / storm, cloud cover). Comments
   add settings: `// @slider speed 0 2 1 Speed`, `// @color tint #ff8800 Tint`,
   `// @checkbox rain on Rain`, `// @image photo Picture` (`iChannel1`-`3`).
-- **Make a picture alive**: a slow Ken Burns zoom, parallax that follows the mouse,
+- **Make a picture alive**: day and night that follow the real sun, the real weather
+  (rain, snow, fog, storms), a slow Ken Burns zoom, parallax that follows the mouse,
   rain on the glass or snowfall, for any picture.
+- **Transitions**: when the picture changes it folds away like paper, fades, burns away or
+  ripples (Settings > Live wallpapers > Picture changes).
 - **Audio-reactive**: what your PC plays (WASAPI loopback, 128 bands, about 30 times
   a second) reaches web pages through Lively's `livelyAudioListener` and shaders.
   Nothing is recorded or sent.
@@ -70,7 +75,9 @@ All changes are in the [release notes](https://github.com/adipro1/wallpaper-mana
 
 ### Changing by itself
 - **Playlists**: in order or shuffled (everything once before repeating), every few
-  minutes or hours, kept across restarts.
+  minutes or hours, or **following the sun** (some pictures for the day, the others for
+  the night), kept across restarts. **Dynamic themes**: WinDynamicDesktop `.ddw` themes
+  import as such a playlist.
 - **Schedule**: daily rules such as 07:00 → morning.jpg, 22:00 → a playlist, or
   following the sun: `sunrise`, `sunset - 30`. Sunrise and sunset are worked out on
   the PC for a city you pick; nothing is looked up online. Daylight-saving safe.

@@ -30,6 +30,9 @@ data class SampleShader(val name: String, val code: String)
 /** The "make it alive" effects in resources/shader/effects. */
 val PICTURE_EFFECTS = listOf("Day and night", "Living weather", "Ken Burns", "Parallax", "Rain on glass", "Snowfall")
 
+/** How picture changes can look (resources/shader/transitions); "off" switches them off. */
+val TRANSITIONS = listOf("Fold", "Fade", "Dissolve", "Ripple")
+
 /** Pictures for iChannel1-3 are scaled down to at most this size before they go into the page. */
 private const val MAX_PICTURE = 2560
 
@@ -149,13 +152,17 @@ class Shaders(
         return writePage("preview-${System.nanoTime()}.html", code, fps, chosen)
     }
 
-    private fun writePage(name: String, code: String, fps: Int, chosen: Map<String, JsonPrimitive>): String {
+    private fun writePage(
+        name: String, code: String, fps: Int, chosen: Map<String, JsonPrimitive>,
+        transition: Double? = null, maxPicture: Int = MAX_PICTURE,
+    ): String {
         Files.createDirectories(pagesDir)
         val properties = parseShaderProperties(code)
         var channel = 0
         val channels = properties.filter { it.type == PropertyType.IMAGE }.associate { it.name to ++channel }
         val config = buildJsonObject {
             put("fps", fps)
+            transition?.let { putJsonObject("transition") { put("duration", it) } }
             put("code", JsonPrimitive(code))
             putJsonArray("properties") {
                 properties.forEach { p ->
@@ -170,7 +177,7 @@ class Shaders(
             putJsonObject("images") {
                 for ((propertyName, number) in channels) {
                     val file = chosen[propertyName]?.content?.takeIf { it.isNotEmpty() }?.let(::Path) ?: continue
-                    pictureData(file)?.let { put(number.toString(), it) }
+                    pictureData(file, maxPicture)?.let { put(number.toString(), it) }
                 }
             }
         }
@@ -182,13 +189,13 @@ class Shaders(
     }
 
     /** A picture as a data: URL, scaled down and cached (the page can't load file:// pictures into WebGL). */
-    private fun pictureData(file: Path): String? = runCatching {
+    private fun pictureData(file: Path, max: Int = MAX_PICTURE): String? = runCatching {
         if (!file.isRegularFile()) return null
-        val key = Integer.toHexString("$file|${file.getLastModifiedTime().toMillis()}".hashCode())
+        val key = Integer.toHexString("$file|${file.getLastModifiedTime().toMillis()}|$max".hashCode())
         val cached = pagesDir.resolve("picture-$key.jpg")
         if (!cached.exists()) {
             Imaging.load(file).use { image ->
-                val scale = minOf(1.0, MAX_PICTURE.toDouble() / maxOf(image.width, image.height))
+                val scale = minOf(1.0, max.toDouble() / maxOf(image.width, image.height))
                 if (scale < 1.0) {
                     Imaging.cover(image, (image.width * scale).toInt(), (image.height * scale).toInt()).use { Imaging.saveJpeg(it, cached, 90) }
                 } else {
@@ -198,6 +205,17 @@ class Shaders(
         }
         "data:image/jpeg;base64," + java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(cached))
     }.onFailure { wpm.logger("shaders").warning("Couldn't use $file in a shader: $it") }.getOrNull()
+
+    /**
+     * A page that plays the transition [style] from picture [from] to [to] in [seconds] (see the
+     * runner's transition mode). Pictures keep up to [maxSize] pixels, so they look as sharp as on the desktop.
+     */
+    fun transitionPage(style: String, from: Path, to: Path, seconds: Double, maxSize: Int = MAX_PICTURE): String {
+        require(style in TRANSITIONS) { "Unknown transition: $style" }
+        val code = javaClass.getResourceAsStream("/shader/transitions/$style.glsl")!!.use { it.readBytes().decodeToString() }
+        val chosen = mapOf("from" to JsonPrimitive(from.toString()), "to" to JsonPrimitive(to.toString()))
+        return writePage("transition.html", code, 60, chosen, seconds, maxOf(MAX_PICTURE, maxSize))
+    }
 
     /** Removes old preview pages (they are only needed while the editor is open). */
     fun cleanPreviews() {

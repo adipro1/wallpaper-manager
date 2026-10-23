@@ -139,7 +139,7 @@ class WebLivePlayer(
         if (browser == null || !isHealthy()) {
             stopLocked()
             loadScript = source.onLoadScript // before loading: small pages finish loading right away
-            create(app, source.target)
+            create(app, source.target, visible = !source.startHidden)
         } else {
             loadScript = source.onLoadScript
             onEdt { browser?.loadURL(source.target) }
@@ -148,11 +148,11 @@ class WebLivePlayer(
         interactive = source.interactive
         wantsAudio = source.audio
         forwarder?.enabled = interactive
-        resume()
+        if (source.startHidden) paused = false else resume()
         log.info("Web wallpaper showing ${source.target}")
     }
 
-    private fun create(app: CefApp, url: String) {
+    private fun create(app: CefApp, url: String, visible: Boolean = true) {
         val monitor = area()
         val opened = openBrowserWindow(app, url,
             onTitle = { pageTitle = it },
@@ -164,7 +164,7 @@ class WebLivePlayer(
         client = opened.client
         browser = opened.browser
         hwnd = opened.hwnd
-        parent = onEdt { attachToWallpaperLayer(opened.hwnd, monitor) }
+        parent = onEdt { attachToWallpaperLayer(opened.hwnd, monitor, visible) }
         fillChildren(opened.hwnd, monitor.width, monitor.height)
         rect = monitor
         forwarder = InputForwarder(monitor) { renderWidget() }.also {

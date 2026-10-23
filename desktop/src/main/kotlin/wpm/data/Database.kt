@@ -111,10 +111,25 @@ val MIGRATIONS = listOf(
     );
     CREATE INDEX idx_media_tags_tag ON media_tags(tag_id);
     """,
+    // 6 (3.0): playlists that follow the sun. The CHECK constraint can't change, so the playlists
+    // table is rebuilt; ids are kept, so playlist items and schedule rules stay valid.
+    """
+    CREATE TABLE playlists_new (
+        id                INTEGER PRIMARY KEY,
+        name              TEXT NOT NULL,
+        mode              TEXT NOT NULL DEFAULT 'sequential' CHECK (mode IN ('sequential', 'random', 'sun')),
+        interval_seconds  INTEGER NOT NULL DEFAULT 1800,
+        created           TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    INSERT INTO playlists_new (id, name, mode, interval_seconds, created)
+        SELECT id, name, mode, interval_seconds, created FROM playlists;
+    DROP TABLE playlists;
+    ALTER TABLE playlists_new RENAME TO playlists;
+    """,
 )
 
 /** Migrations that rebuild a table: foreign keys must be off while they run, or the old table's rows cascade away. */
-private val TABLE_REBUILDS = setOf(4)
+private val TABLE_REBUILDS = setOf(4, 6)
 
 private val DEFAULT_SETTINGS: Map<String, JsonElement> = mapOf(
     "appearance_mode" to JsonPrimitive("dark"),

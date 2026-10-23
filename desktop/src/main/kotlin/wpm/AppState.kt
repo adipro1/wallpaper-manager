@@ -147,7 +147,7 @@ class AppState(
     val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
     val ytDlp = YtDlp(NativeBin.dir.resolve("yt-dlp.exe"))
     val urls = UrlImporter(db, library, ytDlp, downloadFolder())
-    val playlists = PlaylistPlayer(db, wallpapers)
+    val playlists: PlaylistPlayer = PlaylistPlayer(db, wallpapers, place = { scheduler.place ?: wpm.services.guessCity() })
     val lockSlideshow = wpm.services.LockScreenSlideshow(db, lockScreen)
     val accent = wpm.services.AccentFromWallpaper(settings)
     /** Watched folders; new and deleted files show up in the library by themselves. */
@@ -160,7 +160,7 @@ class AppState(
         }
         toast(tr("Watched folders: {0}", parts.joinToString(", ")))
     }
-    val scheduler = Scheduler(db, wallpapers, playlists)
+    val scheduler: Scheduler = Scheduler(db, wallpapers, playlists)
     /** The sun and weather where the user is (the Schedule's city, or a guess from the time zone), for shaders. */
     val world = wpm.services.World({ scheduler.place ?: wpm.services.guessCity() }, source = weatherSource)
     val updates = UpdateChecker(db)
@@ -235,6 +235,8 @@ class AppState(
                 systemDark = systemUsesDarkTheme()
             }
         }
+        // Picture changes fold, fade, dissolve or ripple (with the real desktop layer only).
+        if (displays != null) wallpapers.transition = ::playTransition
         // Shaders showing right now follow the sun (and the weather).
         scope.launch {
             while (true) {
@@ -243,6 +245,27 @@ class AppState(
                 pushWorld()
             }
         }
+    }
+
+    private val transitions = wpm.engine.PictureTransitions(chromiumDir, Monitors::all)
+
+    /** The transition chosen in Settings ("off", "random" or one of [wpm.media.TRANSITIONS]). */
+    var transitionStyle by mutableStateOf(settings.string("transition", "Fold"))
+        private set
+
+    fun updateTransitionStyle(style: String) {
+        transitionStyle = style
+        settings.set("transition", style)
+    }
+
+    /** Plays the chosen transition from [from] to [to]; [apply] sets the new picture. */
+    private fun playTransition(from: Path, to: Path, apply: () -> Unit) {
+        val style = transitionStyle.let { if (it == "random") wpm.media.TRANSITIONS.random() else it }
+        // Not without the web engine (no 150 MB download for this) and not with "reduce motion".
+        if (style !in wpm.media.TRANSITIONS || reduceMotion || !wpm.engine.Chromium.installed(chromiumDir)) return apply()
+        val seconds = 1.4
+        val largest = Monitors.all().maxOfOrNull { maxOf(it.bounds.width, it.bounds.height) } ?: 0
+        transitions.play(shaders.transitionPage(style, from, to, seconds, largest), seconds, apply)
     }
 
     /** Sends the current sky to every shader on screen. */
@@ -673,6 +696,13 @@ class AppState(
         if (property.type != wpm.media.PropertyType.BUTTON) properties.set(item.id, property.name, normalized)
         if (property.type == wpm.media.PropertyType.IMAGE) restartIfShowing(item)
         else sendToPage(item, WallpaperProperties.script(listOf(property.name to WallpaperProperties.pageValue(property, normalized)), property.engine))
+    }
+
+    /** Imports a WinDynamicDesktop theme (.ddw) as a playlist that follows the sun. Returns its id. */
+    suspend fun importDynamicTheme(file: Path): Long {
+        val id = withContext(Dispatchers.IO) { wpm.services.DynamicThemes.import(file, paths.dataDir.resolve("dynamic"), db, library) }
+        libraryChanged()
+        return id
     }
 
     /**

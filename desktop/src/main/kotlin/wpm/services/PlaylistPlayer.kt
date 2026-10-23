@@ -34,6 +34,9 @@ data class PlaylistState(
 class PlaylistPlayer(
     private val db: Database,
     private val wallpapers: WallpaperService,
+    /** Where the user is, for playlists that follow the sun (null: a 07:00-19:00 day). */
+    private val place: () -> Place? = { null },
+    private val zone: () -> java.time.ZoneId = java.time.ZoneId::systemDefault,
     private val clock: () -> Double = { System.currentTimeMillis() / 1000.0 },
 ) {
     private val settings = Settings(db)
@@ -76,6 +79,12 @@ class PlaylistPlayer(
 
     fun isDue(): Boolean = state?.let { clock() >= it.nextChange } ?: false
 
+    /** How many of a "follow the sun" playlist's pictures are for the day (by default the first half). */
+    fun dayCount(playlistId: Long, size: Int): Int =
+        settings.string(sunDayCountKey(playlistId), "").toIntOrNull()?.coerceIn(0, size) ?: ((size + 1) / 2)
+
+    fun setDayCount(playlistId: Long, count: Int) = settings.set(sunDayCountKey(playlistId), count.coerceAtLeast(0).toString())
+
     /** Shows the next wallpaper of the running playlist and restarts the timer. */
     fun advance(): MediaItem = synchronized(lock) {
         var s = state ?: throw IllegalStateException(tr("No playlist is running"))
@@ -85,6 +94,7 @@ class PlaylistPlayer(
             save(null)
             throw IllegalStateException(tr("“{0}” is empty", playlist.name))
         }
+        if (playlist.mode == "sun") return followSun(playlist, items, s)
         val interval = maxOf(playlist.intervalSeconds, MIN_INTERVAL_SECONDS)
 
         // Try each item at most once, skipping files that have gone missing.
@@ -110,6 +120,27 @@ class PlaylistPlayer(
         // Nothing could be shown; don't keep retrying every few seconds.
         saveIfStillRunning(playlist.id, s.copy(nextChange = clock() + interval))
         throw lastError ?: FileNotFoundException(tr("None of the files in “{0}” can be found", playlist.name))
+    }
+
+    /** Shows the picture for this time of day; the next change comes when the sun moves on. */
+    private fun followSun(playlist: Playlist, items: List<MediaItem>, s: PlaylistState): MediaItem {
+        val now = java.time.Instant.ofEpochMilli((clock() * 1000).toLong())
+        val slot = sunSlot(now, place(), zone(), items.size, dayCount(playlist.id, items.size))
+        val item = items[slot.index]
+        val next = s.copy(index = slot.index, mediaId = item.id, nextChange = slot.until.toEpochMilli() / 1000.0)
+        if (item.id != wallpapers.currentItem()?.id || wallpapers.state.kind == null) {
+            try {
+                if (!item.available()) throw FileNotFoundException(tr("File not found: {0}", item.path))
+                wallpapers.set(item)
+            } catch (e: Exception) {
+                // Try again at the next change rather than every few seconds.
+                saveIfStillRunning(playlist.id, next)
+                throw e
+            }
+            log.info("Playlist ${playlist.name}: showing ${item.filename} until ${slot.until}")
+        }
+        saveIfStillRunning(playlist.id, next)
+        return item
     }
 
     /** Chooses the next item and returns the updated state (index / shuffle bag). */

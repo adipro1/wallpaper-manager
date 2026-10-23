@@ -155,24 +155,26 @@ private const val WS_THICKFRAME = 0x00040000
 private const val WS_EX_APPWINDOW = 0x00040000
 private const val SWP_FRAMECHANGED = 0x0020
 private const val SWP_SHOWWINDOW = 0x0040
+private const val SWP_HIDEWINDOW = 0x0080
 
 /**
  * Moves another window (e.g. Chromium's) into the wallpaper layer as a child window covering
  * [screenRect]. On 24H2+ it goes inside the wallpaper WorkerW, which needs no layered style
  * (GPU-drawn children don't show in layered windows). Returns the new parent.
  */
-fun attachToWallpaperLayer(hwnd: HWND, screenRect: ScreenRect): HWND {
+fun attachToWallpaperLayer(hwnd: HWND, screenRect: ScreenRect, visible: Boolean = true): HWND {
     val layer = findWallpaperLayer()
     val parent = layer.workerW ?: layer.parent
     val style = user32.GetWindowLong(hwnd, GWL_STYLE)
     user32.SetWindowLong(hwnd, GWL_STYLE,
-        (style and (WS_POPUP or WS_CAPTION or WS_THICKFRAME).inv()) or WS_CHILD or WS_VISIBLE or WS_CLIPCHILDREN or WS_CLIPSIBLINGS)
+        (style and (WS_POPUP or WS_CAPTION or WS_THICKFRAME or WS_VISIBLE).inv()) or WS_CHILD or WS_CLIPCHILDREN or WS_CLIPSIBLINGS or
+            (if (visible) WS_VISIBLE else 0))
     val exStyle = user32.GetWindowLong(hwnd, GWL_EXSTYLE)
     user32.SetWindowLong(hwnd, GWL_EXSTYLE, (exStyle and WS_EX_APPWINDOW.inv()) or WS_EX_NOACTIVATE)
     user32.SetParent(hwnd, parent)
     val client = toClient(parent, screenRect)
     user32.SetWindowPos(hwnd, HWND(com.sun.jna.Pointer.createConstant(0)), client.x, client.y, client.width, client.height,
-        SWP_NOACTIVATE or SWP_FRAMECHANGED or SWP_SHOWWINDOW)
+        SWP_NOACTIVATE or SWP_FRAMECHANGED or (if (visible) SWP_SHOWWINDOW else SWP_HIDEWINDOW))
     log.info("Window attached to the wallpaper layer at $screenRect (${if (layer.workerW != null) "24H2" else "classic"} layout)")
     return parent
 }

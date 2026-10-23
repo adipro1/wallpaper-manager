@@ -35,6 +35,9 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material.icons.outlined.WbTwilight
 import wpm.ui.components.Button
 import androidx.compose.material3.Icon
 import wpm.ui.components.IconButton
@@ -109,6 +112,18 @@ fun PlaylistsPage(app: AppState) {
     }
 
     PageScaffold(tr("Playlists"), tr("Change the wallpaper automatically at an interval."), scroll = false, actions = {
+        OutlinedButton(onClick = {
+            val dialog = java.awt.FileDialog(app.window as? java.awt.Frame, tr("Choose a dynamic theme"), java.awt.FileDialog.LOAD).apply {
+                file = "*.ddw"
+                setFilenameFilter { _, name -> name.endsWith(".ddw", ignoreCase = true) }
+            }
+            dialog.isVisible = true
+            val chosen = dialog.file?.let { java.nio.file.Path.of(dialog.directory, it) } ?: return@OutlinedButton
+            app.runTask(failure = tr("Couldn't import the theme")) {
+                selectedId = app.importDynamicTheme(chosen)
+                app.toast(tr("Imported. Press Play: the pictures follow the sun through the day."), wpm.ToastKind.Success)
+            }
+        }) { ButtonIcon(Icons.Outlined.WbTwilight); Text(tr("Import dynamic theme…")) }
         Button(onClick = { creating = true }) { ButtonIcon(Icons.Outlined.Add); Text(tr("New playlist")) }
     }) {
         if (playlists.isEmpty()) {
@@ -129,7 +144,8 @@ fun PlaylistsPage(app: AppState) {
                             Column(Modifier.weight(1f)) {
                                 Text(p.name, color = Theme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (p.id == selectedId) FontWeight.SemiBold else FontWeight.Normal)
-                                Text(tr("{0} wallpapers · {1}", p.itemCount, p.intervalText), color = Theme.colors.textMuted, fontSize = 12.sp)
+                                Text(tr("{0} wallpapers · {1}", p.itemCount, if (p.mode == "sun") tr("follows the sun") else p.intervalText),
+                                    color = Theme.colors.textMuted, fontSize = 12.sp)
                             }
                             if (p.id == activeId) Tag(tr("Playing"), Theme.colors.teal)
                         }
@@ -163,8 +179,12 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
     val hours = playlist.intervalSeconds % 3600 == 0 && playlist.intervalSeconds >= 3600
     var unitHours by remember(playlist.id) { mutableStateOf(hours) }
     var amount by remember(playlist.id) { mutableStateOf((playlist.intervalSeconds / if (hours) 3600 else 60).toString()) }
+    var dayCount by remember(playlist.id) { mutableStateOf(0) }
+    var dayText by remember(playlist.id) { mutableStateOf("") }
     LaunchedEffect(playlist.id, app.libraryVersion) {
         items = withContext(Dispatchers.IO) { app.db.playlistItems(playlist.id) }
+        dayCount = withContext(Dispatchers.IO) { app.playlists.dayCount(playlist.id, items.size) }
+        if (dayText.toIntOrNull() != dayCount) dayText = dayCount.toString()
     }
 
     fun saveInterval(text: String = amount, inHours: Boolean = unitHours) {
@@ -193,7 +213,7 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
         Spacer(Modifier.height(16.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(tr("ORDER"), color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
-            val modes = listOf("sequential" to tr("In order"), "random" to tr("Shuffle"))
+            val modes = listOf("sequential" to tr("In order"), "random" to tr("Shuffle"), "sun" to tr("Follow the sun"))
             SingleChoiceSegmentedButtonRow {
                 modes.forEachIndexed { i, (key, label) ->
                     SegmentedButton(playlist.mode == key, {
@@ -202,14 +222,26 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Text(tr("CHANGE EVERY"), color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
-            NumberField(amount, { amount = it.filter(Char::isDigit).take(4); saveInterval(amount) })
-            SingleChoiceSegmentedButtonRow {
-                listOf(false to "min", true to "h").forEachIndexed { i, (inHours, label) ->
-                    SegmentedButton(unitHours == inHours, { unitHours = inHours; saveInterval(inHours = inHours) },
-                        SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+            if (playlist.mode == "sun") {
+                Text(tr("DAY PICTURES"), color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
+                NumberField(dayText, { text ->
+                    dayText = text.filter(Char::isDigit).take(3)
+                    dayText.toIntOrNull()?.let { n -> app.runTask { app.playlists.setDayCount(playlist.id, n.coerceAtMost(items.size)); app.libraryChanged() } }
+                })
+            } else {
+                Text(tr("CHANGE EVERY"), color = Theme.colors.textMuted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
+                NumberField(amount, { amount = it.filter(Char::isDigit).take(4); saveInterval(amount) })
+                SingleChoiceSegmentedButtonRow {
+                    listOf(false to "min", true to "h").forEachIndexed { i, (inHours, label) ->
+                        SegmentedButton(unitHours == inHours, { unitHours = inHours; saveInterval(inHours = inHours) },
+                            SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+                    }
                 }
             }
+        }
+        if (playlist.mode == "sun") {
+            Spacer(Modifier.height(6.dp))
+            MutedText(tr("The first {0} pictures are spread from sunrise to sunset, the others over the night (for the city on the Schedule page).", dayCount))
         }
         if (playing) {
             Spacer(Modifier.height(8.dp))
@@ -237,6 +269,11 @@ private fun PlaylistEditor(app: AppState, playlist: Playlist, playing: Boolean, 
                 ) {
                     Text("%02d".format(index + 1), color = Theme.colors.accent, fontFamily = wpm.ui.DisplayFont, fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.width(26.dp))
+                    if (playlist.mode == "sun") {
+                        val day = index < dayCount
+                        Icon(if (day) Icons.Outlined.WbSunny else Icons.Outlined.DarkMode, if (day) tr("Day") else tr("Night"),
+                            tint = if (day) Theme.colors.gold else Theme.colors.indigo, modifier = Modifier.size(18.dp))
+                    }
                     Box(Modifier.width(96.dp).height(54.dp).clip(FoldShape(10.dp, 3.dp)).background(Theme.colors.previewBg)) {
                         MediaThumbnail(item, app.thumbs, Modifier.fillMaxSize())
                     }

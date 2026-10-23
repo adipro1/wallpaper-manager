@@ -8,6 +8,8 @@
   without a button) and one uniform per "// @slider / @color / @checkbox" setting.
   The real sky: iSun (the sun's elevation and compass direction in degrees, for the user's city),
   iWeather (rain, snow, fog, storm, each 0..1) and iClouds (cloud cover 0..1), sent by the app.
+  Transitions (config.transition = {duration}): DURATION is defined, the clock stays at 0 until
+  wpm.go(), the title is "ready" once the pictures are drawn and "done" when the time is up.
 -->
 <html>
 <head>
@@ -69,6 +71,7 @@ uniform vec2 iSun;
 uniform vec4 iWeather;
 uniform float iClouds;
 out vec4 wpmFragColor;
+${config.transition ? `#define DURATION ${Number(config.transition.duration).toFixed(3)}` : ""}
 ${declarations}
 `;
 const footer = `
@@ -92,7 +95,7 @@ function compile(type, source) {
   return shader;
 }
 
-let program, uniforms = {}, audioTexture;
+let program, uniforms = {}, audioTexture, picturesPending = 0;
 const channelSize = [[512, 2], [1, 1], [1, 1], [1, 1]];
 const audio = new Uint8Array(512 * 2);
 
@@ -141,8 +144,10 @@ function setupPicture(channel) {
   gl.uniform1i(uniforms["iChannel" + channel], channel);
   const source = (config.images || {})[channel];
   if (!source) return;
+  picturesPending++;
   const image = new Image();
   image.onload = () => {
+    picturesPending--;
     gl.activeTexture(gl.TEXTURE0 + channel);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -226,8 +231,13 @@ const pointer = [0.5, 0.5];
 addEventListener("mousemove", e => { pointer[0] = e.clientX / innerWidth; pointer[1] = 1 - e.clientY / innerHeight; });
 
 let start = performance.now(), last = start, frame = 0, lastDrawn = 0;
+// Transitions wait at the first frame until the app says go.
+let held = !!config.transition;
+window.wpm.go = () => { held = false; start = performance.now(); };
 function draw(now) {
   requestAnimationFrame(draw);
+  if (config.transition && picturesPending > 0) return;
+  if (held) start = now;
   if (now - lastDrawn < 1000 / config.fps - 1) return;
   lastDrawn = now;
   const w = Math.max(1, Math.floor(innerWidth * devicePixelRatio * config.scale));
@@ -251,6 +261,10 @@ function draw(now) {
     d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   last = now;
+  if (config.transition) {
+    if (held) document.title = "ready";
+    else if ((now - start) / 1000 > config.transition.duration) document.title = "done";
+  }
 }
 
 try {
