@@ -457,7 +457,7 @@ private fun DetailsPanel(
     }
 }
 
-/** Turns the picture into a live wallpaper with an effect (zoom, parallax, rain, snow). */
+/** Turns the picture into a live wallpaper with an effect (day and night, weather, zoom, parallax, rain, snow). */
 @Composable
 private fun MakeAliveButton(app: AppState, item: MediaItem, enabled: Boolean) {
     var open by remember { mutableStateOf(false) }
@@ -468,6 +468,8 @@ private fun MakeAliveButton(app: AppState, item: MediaItem, enabled: Boolean) {
         }
         DropdownMenu(open, { open = false }) {
             listOf(
+                "Day and night" to tr("Follows the real sun: golden at sunset, starry at night"),
+                "Living weather" to tr("Rains, snows and storms when it does outside"),
                 "Ken Burns" to tr("Slow zoom and pan"),
                 "Parallax" to tr("Leans towards the mouse"),
                 "Rain on glass" to tr("Drops run down the window"),

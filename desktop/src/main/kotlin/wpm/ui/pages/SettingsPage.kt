@@ -158,6 +158,7 @@ fun SettingsPage(app: AppState) {
             BooleanSetting(app, "web_interaction", true, tr("Web wallpapers react to the mouse on the empty desktop"))
             BooleanSetting(app, "web_muted", true, tr("Mute web wallpapers (applies after restarting the app)"))
             BooleanSetting(app, "audio_reactive", true, tr("Audio-reactive wallpapers may listen to what your PC plays (analysed live, never recorded)"))
+            BooleanSetting(app, "live_weather", true, tr("Living weather wallpapers may look up the weather for your city (at open-meteo.com, every 15 minutes)"))
             FrameRateSetting(app, "shader_fps", "60", tr("Shader frame rate (lower saves power)"), listOf("15", "30", "60"), restartKind = "shader")
             FrameRateSetting(app, "web_fps", "full", tr("Web wallpaper frame rate"), listOf("30", "full"), restartKind = "web")
             MutedText(

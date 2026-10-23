@@ -105,6 +105,8 @@ class AppState(
     private val systemProbe: SystemProbe = WindowsSystemProbe,
     /** Where the Discover page finds wallpapers online. */
     val online: wpm.media.WallpaperSource = wpm.media.Wallhaven(),
+    /** Where "Living weather" gets the weather outside. */
+    weatherSource: wpm.services.WeatherSource = wpm.services.OpenMeteo(),
 ) {
     val settings = Settings(db)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -159,6 +161,8 @@ class AppState(
         toast(tr("Watched folders: {0}", parts.joinToString(", ")))
     }
     val scheduler = Scheduler(db, wallpapers, playlists)
+    /** The sun and weather where the user is (the Schedule's city, or a guess from the time zone), for shaders. */
+    val world = wpm.services.World({ scheduler.place ?: wpm.services.guessCity() }, source = weatherSource)
     val updates = UpdateChecker(db)
     /** Shows a tray notification (set by the window code). */
     var notify: (String) -> Unit = {}
@@ -231,6 +235,33 @@ class AppState(
                 systemDark = systemUsesDarkTheme()
             }
         }
+        // Shaders showing right now follow the sun (and the weather).
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                refreshWeather()
+                pushWorld()
+            }
+        }
+    }
+
+    /** Sends the current sky to every shader on screen. */
+    fun pushWorld() {
+        val script = world.script()
+        webEngines().filter { it.source?.contains("/shader-") == true }.forEach { it.runScript(script) }
+    }
+
+    /** Whether a shader uses the weather outside (and the weather may be looked up). */
+    private fun usesWeather(item: MediaItem): Boolean =
+        item.isShader && settings.boolean("live_weather", true) && shaders.code(item).let { "iWeather" in it || "iClouds" in it }
+
+    /** Looks the weather up (every 15 minutes at most) while a wallpaper on screen uses it. */
+    private suspend fun refreshWeather() {
+        val showing = webEngines().mapNotNull { engine ->
+            Regex("""/shader-(\d+)\.html""").find(engine.source ?: "")?.groupValues?.get(1)?.toLongOrNull()
+        }.mapNotNull { db.getMedia(it) }
+        if (showing.none(::usesWeather)) return
+        if (withContext(Dispatchers.IO) { world.refreshWeather() }) pushWorld()
     }
 
     fun showWindow() {
@@ -603,8 +634,12 @@ class AppState(
             onLoadScript = listOfNotNull(
                 settings.string("web_fps", "full").toIntOrNull()?.takeIf { !item.isShader }?.let(WebWallpapers::frameRateLimit),
                 propertyScript(item),
+                world.script().takeIf { item.isShader },
             ).joinToString("").ifEmpty { null },
-        )
+        ).also {
+            // A weather wallpaper gets the weather as soon as it is known.
+            if (usesWeather(item)) scope.launch(Dispatchers.IO) { if (world.refreshWeather()) pushWorld() }
+        }
     }
 
     // -- wallpaper settings (LivelyProperties.json, shader sliders) ------------------------------

@@ -28,7 +28,7 @@ val SHADER_EXTENSIONS = setOf("glsl", "frag", "fs")
 data class SampleShader(val name: String, val code: String)
 
 /** The "make it alive" effects in resources/shader/effects. */
-val PICTURE_EFFECTS = listOf("Ken Burns", "Parallax", "Rain on glass", "Snowfall")
+val PICTURE_EFFECTS = listOf("Day and night", "Living weather", "Ken Burns", "Parallax", "Rain on glass", "Snowfall")
 
 /** Pictures for iChannel1-3 are scaled down to at most this size before they go into the page. */
 private const val MAX_PICTURE = 2560

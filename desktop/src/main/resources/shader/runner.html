@@ -6,6 +6,8 @@
   Uniforms: iResolution, iTime, iTimeDelta, iFrame, iMouse, iDate, iChannel0 (audio, 512x2),
   iChannel1-3 (pictures chosen with "// @image"), iChannelResolution, iPointer (mouse 0..1, also
   without a button) and one uniform per "// @slider / @color / @checkbox" setting.
+  The real sky: iSun (the sun's elevation and compass direction in degrees, for the user's city),
+  iWeather (rain, snow, fog, storm, each 0..1) and iClouds (cloud cover 0..1), sent by the app.
 -->
 <html>
 <head>
@@ -63,6 +65,9 @@ uniform sampler2D iChannel1;
 uniform sampler2D iChannel2;
 uniform sampler2D iChannel3;
 uniform vec3 iChannelResolution[4];
+uniform vec2 iSun;
+uniform vec4 iWeather;
+uniform float iClouds;
 out vec4 wpmFragColor;
 ${declarations}
 `;
@@ -110,7 +115,7 @@ function setup() {
   gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
 
   for (const name of ["iResolution", "iTime", "iTimeDelta", "iFrame", "iMouse", "iDate", "iPointer", "iChannel0",
-                      "iChannel1", "iChannel2", "iChannel3", "iChannelResolution"]) {
+                      "iChannel1", "iChannel2", "iChannel3", "iChannelResolution", "iSun", "iWeather", "iClouds"]) {
     uniforms[name] = gl.getUniformLocation(program, name);
   }
   for (const p of properties) uniforms["p:" + p.name] = gl.getUniformLocation(program, p.name);
@@ -192,6 +197,22 @@ function onAudio(bands) {
 window.livelyAudioListener = onAudio;
 window.wpm = Object.assign(window.wpm || {}, { onAudio });
 
+// The real sky, from the app: wpm.setWorld({sun: [elevation, azimuth] or null, weather: [rain, snow, fog, storm], clouds}).
+const world = { sun: null, weather: [0, 0, 0, 0], clouds: 0 };
+function setWorld(w) {
+  if (!w) return;
+  if ("sun" in w) world.sun = w.sun;
+  if (w.weather) world.weather = w.weather;
+  if (typeof w.clouds === "number") world.clouds = w.clouds;
+}
+window.wpm.setWorld = setWorld;
+
+// Without a city: a sun that rises at 6, is 45° high at noon and sets at 18.
+function clockSun(d) {
+  const hours = d.getHours() + d.getMinutes() / 60;
+  return [Math.asin(0.7071 * Math.cos((hours - 12) / 24 * 2 * Math.PI)) * 180 / Math.PI, (180 + (hours - 12) * 15 + 360) % 360];
+}
+
 // Mouse, Shadertoy style: xy = position while a button is down, zw = where it was pressed (negative when released).
 const mouse = [0, 0, 0, 0];
 function toPixels(e) {
@@ -222,6 +243,10 @@ function draw(now) {
   gl.uniform2f(uniforms.iPointer, pointer[0], pointer[1]);
   gl.uniform3fv(uniforms.iChannelResolution, channelSize.flatMap(([cw, ch]) => [cw, ch, 1]));
   setProperties();
+  const sun = world.sun || clockSun(d);
+  gl.uniform2f(uniforms.iSun, sun[0], sun[1]);
+  gl.uniform4f(uniforms.iWeather, world.weather[0], world.weather[1], world.weather[2], world.weather[3]);
+  gl.uniform1f(uniforms.iClouds, world.clouds);
   gl.uniform4f(uniforms.iDate, d.getFullYear(), d.getMonth(), d.getDate(),
     d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000);
   gl.drawArrays(gl.TRIANGLES, 0, 3);

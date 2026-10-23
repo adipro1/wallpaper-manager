@@ -144,6 +144,10 @@ class WallpaperPropertiesTest {
         assertTrue("data:image/jpeg;base64," in page, "the picture is inside the page")
         assertEquals(listOf("photo", "speed", "zoom"), app.propertiesOf(alive).map { it.name })
         assertEquals(PICTURE_EFFECTS.size, app.shaders.effects().size)
+        // Day and night gets the sky as soon as the page loads.
+        val dayNight = runBlocking { app.makeAlive(picture, "Day and night") }
+        assertEquals(listOf("photo", "real", "hour", "strength", "stars"), app.propertiesOf(dayNight).map { it.name })
+        assertTrue("wpm.setWorld({sun:[" in live.loadScript!!, live.loadScript)
         app.close()
     }
 

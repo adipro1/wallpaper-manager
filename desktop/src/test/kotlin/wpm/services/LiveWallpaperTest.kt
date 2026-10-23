@@ -28,9 +28,11 @@ class FakeLivePlayer : LivePlayer {
 
     var kind: wpm.engine.LiveKind? = null
     var interactiveOn = false
+    var loadScript: String? = null
 
     override fun play(source: wpm.engine.LiveSource) {
         this.source = source.target
+        loadScript = source.onLoadScript
         fillOn = source.fill
         mutedOn = source.muted
         kind = source.kind
