@@ -55,6 +55,8 @@ data class AppColors(
     val accentDeep: Color,
     val accentText: Color,
     val accentSoft: Color,
+    /** The accent's warmer neighbor, for the logo's second facet (gold next to the built-in vermilion). */
+    val accentPair: Color,
     val indigo: Color,
     val gold: Color,
     val teal: Color,
@@ -74,7 +76,7 @@ val LightColors = AppColors(
     cardBg = Color(0xFFFFFCF7), cardLit = Color(0xFFFFFFFF), cardBorder = Color(0xFFE6DDCF),
     flap = Color(0xFFE8DFD0), inset = Color(0xFFEDE6DA),
     text = Color(0xFF1D1B22), textMuted = Color(0xFF6A6470), textSubtle = Color(0xFF9B95A0),
-    accent = Color(0xFFE0533D), accentDeep = Color(0xFFB83A2A), accentText = Color(0xFFFFFFFF), accentSoft = Color(0xFFFBE3DD),
+    accent = Color(0xFFE0533D), accentDeep = Color(0xFFB83A2A), accentText = Color(0xFFFFFFFF), accentSoft = Color(0xFFFBE3DD), accentPair = Color(0xFFC9932E),
     indigo = Color(0xFF3F4A8C), gold = Color(0xFFC9932E), teal = Color(0xFF2E8C83),
     navHover = Color(0x14FFFFFF), navSelected = Color(0xFFE9E1D4), danger = Color(0xFFC0392B),
     shadow = Color(0xFF5A4630),
@@ -88,7 +90,7 @@ val DarkColors = AppColors(
     cardBg = Color(0xFF1F2333), cardLit = Color(0xFF262B3E), cardBorder = Color(0xFF2E3348),
     flap = Color(0xFF353B55), inset = Color(0xFF181B28),
     text = Color(0xFFF1EEF6), textMuted = Color(0xFFA19FB4), textSubtle = Color(0xFF6E6C82),
-    accent = Color(0xFFFF6B52), accentDeep = Color(0xFFD9472F), accentText = Color(0xFFFFFFFF), accentSoft = Color(0xFF3A2430),
+    accent = Color(0xFFFF6B52), accentDeep = Color(0xFFD9472F), accentText = Color(0xFFFFFFFF), accentSoft = Color(0xFF3A2430), accentPair = Color(0xFFE8B550),
     indigo = Color(0xFF8C9BFF), gold = Color(0xFFE8B550), teal = Color(0xFF4FC1B5),
     navHover = Color(0x12FFFFFF), navSelected = Color(0xFF2A2F44), danger = Color(0xFFFF6B5E),
     shadow = Color(0xFF000000),
@@ -131,7 +133,15 @@ fun AppColors.withAccent(rgb: Int?): AppColors {
         accentDeep = lerp(accent, Color.Black, 0.2f),
         accentText = readableOn(accent),
         accentSoft = lerp(cardBg, accent, if (dark) 0.22f else 0.16f),
+        accentPair = shiftHue(accent, 31f, 0.9f),
     )
+}
+
+/** [color] turned [degrees] around the color wheel, its brightness scaled by [brightness]. */
+internal fun shiftHue(color: Color, degrees: Float, brightness: Float): Color {
+    val hsb = java.awt.Color.RGBtoHSB((color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt(), null)
+    val rgb = java.awt.Color.HSBtoRGB((hsb[0] + degrees / 360f) % 1f, hsb[1], (hsb[2] * brightness).coerceIn(0f, 1f))
+    return Color(rgb or (0xFF shl 24))
 }
 
 private fun AppColors.toMaterial(): ColorScheme {

@@ -47,6 +47,20 @@ class ThemeTest {
         assertTrue(dark.luminance() > light.luminance())
     }
 
+    /** The logo's second facet follows the accent (it used to stay gold). */
+    @Test
+    fun logoPairFollowsTheAccent() {
+        assertEquals(Color(0xFFC9932E), LightColors.accentPair)
+        for (preset in AccentPresets.drop(1)) {
+            val colors = LightColors.withAccent(preset.rgb)
+            assertNotEquals(LightColors.accentPair, colors.accentPair, preset.name)
+            assertNotEquals(colors.accent, colors.accentPair, preset.name)
+        }
+        // A blue accent gets a blue-violet neighbor, not gold.
+        val pair = LightColors.withAccent(0x2F7FD6).accentPair
+        assertTrue(pair.blue > pair.red && pair.blue > pair.green, pair.toString())
+    }
+
     @Test
     fun colorRefSwapsRedAndBlue() {
         assertEquals(0x00CCBBAA, colorRef(0xFFAABBCC.toInt()))

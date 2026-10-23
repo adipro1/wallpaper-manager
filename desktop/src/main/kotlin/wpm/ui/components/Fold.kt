@@ -142,7 +142,7 @@ fun OrigamiMark(size: Dp, modifier: Modifier = Modifier) {
         tri(left, top, mid, c.accent)
         tri(top, right, mid, lerpColor(c.accent, Color.White, 0.28f))
         tri(right, bottom, mid, c.accentDeep)
-        tri(bottom, left, mid, c.gold)
+        tri(bottom, left, mid, c.accentPair)
     }
 }
 
