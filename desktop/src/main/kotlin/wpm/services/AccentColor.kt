@@ -145,6 +145,62 @@ class AccentFromWallpaper(private val settings: Settings, private val api: Accen
     }
 }
 
+/** Windows' "Show accent color on Start and taskbar". An interface so tests don't change the real one. */
+interface TaskbarColorApi {
+    /** Personalize\ColorPrevalence: 1 = on, 0 = off, null = never set. */
+    fun read(): Int?
+    fun write(value: Int?)
+    /** Windows uses dark mode for the taskbar; only then does it show the accent there. */
+    fun darkTaskbar(): Boolean
+}
+
+class WindowsTaskbarColor : TaskbarColorApi {
+    private val key = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+    private val hkcu = WinReg.HKEY_CURRENT_USER
+
+    override fun read(): Int? = runCatching {
+        if (Advapi32Util.registryValueExists(hkcu, key, "ColorPrevalence")) Advapi32Util.registryGetIntValue(hkcu, key, "ColorPrevalence") else null
+    }.getOrNull()
+
+    override fun write(value: Int?) {
+        if (value != null) Advapi32Util.registrySetIntValue(hkcu, key, "ColorPrevalence", value)
+        else if (Advapi32Util.registryValueExists(hkcu, key, "ColorPrevalence")) Advapi32Util.registryDeleteValue(hkcu, key, "ColorPrevalence")
+        wpm.win32.broadcastSettingChange("ImmersiveColorSet")
+    }
+
+    override fun darkTaskbar(): Boolean = runCatching {
+        Advapi32Util.registryGetIntValue(hkcu, key, "SystemUsesLightTheme") == 0
+    }.getOrDefault(true)
+}
+
+/**
+ * Tints the taskbar and Start with the accent color (which [AccentFromWallpaper] takes from
+ * the wallpaper). The user's own choice is saved first and put back when it is switched off.
+ */
+class TaskbarTint(private val settings: Settings, val api: TaskbarColorApi = WindowsTaskbarColor()) {
+    val enabled: Boolean get() = settings.boolean("taskbar_tint", false)
+
+    fun setEnabled(on: Boolean) {
+        if (on == enabled) return
+        settings.set("taskbar_tint", on)
+        if (on) {
+            // "none" = the value didn't exist, so it is removed again later.
+            settings.set(ORIGINAL, api.read()?.toString() ?: "none")
+            api.write(1)
+            log.info("Taskbar tinted with the accent color")
+        } else {
+            val original = settings.string(ORIGINAL, "none")
+            api.write(original.toIntOrNull())
+            settings.remove(ORIGINAL)
+            log.info("Taskbar color put back")
+        }
+    }
+
+    private companion object {
+        const val ORIGINAL = "original_taskbar_tint"
+    }
+}
+
 // -- picking a color -------------------------------------------------------------------------
 
 internal fun rgbToHsv(rgb: Int): Triple<Double, Double, Double> {

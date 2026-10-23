@@ -87,6 +87,7 @@ fun SettingsPage(app: AppState) {
             LanguageSetting(app)
             SettingSwitch(tr("Reduce motion (no page animations)"), app.reduceMotion) { app.updateReduceMotion(it) }
             var accentOn by remember { mutableStateOf(app.accent.enabled) }
+            var taskbarOn by remember { mutableStateOf(app.taskbarTint.enabled) }
             SettingSwitch(
                 tr("Match the Windows accent color to the wallpaper"), accentOn,
                 hint = tr("Taskbar, Start and window borders take the wallpaper's most striking color. Switching it off puts your own color back."),
@@ -95,6 +96,23 @@ fun SettingsPage(app: AppState) {
                 app.runTask {
                     app.accent.setEnabled(on)
                     app.updateAccent(force = true)
+                    if (!on) app.taskbarTint.setEnabled(false)
+                }
+                if (!on) taskbarOn = false
+            }
+            SettingSwitch(
+                tr("Tint the taskbar and Start with the wallpaper's color"), taskbarOn,
+                hint = if (app.taskbarTint.api.darkTaskbar()) tr("Switches on the setting above too. Switching it off puts your own taskbar back.")
+                else tr("Windows shows the color only when its mode is dark (Settings > Personalization > Colors > Choose your mode)."),
+            ) { on ->
+                taskbarOn = on
+                if (on) accentOn = true
+                app.runTask {
+                    app.taskbarTint.setEnabled(on)
+                    if (on && !app.accent.enabled) {
+                        app.accent.setEnabled(true)
+                        app.updateAccent(force = true)
+                    }
                 }
             }
             var musicOn by remember { mutableStateOf(app.settings.boolean("music_colors", false)) }

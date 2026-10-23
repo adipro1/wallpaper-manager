@@ -159,6 +159,8 @@ class AppState(
     val playlists: PlaylistPlayer = PlaylistPlayer(db, wallpapers, place = { scheduler.place ?: wpm.services.guessCity() })
     val lockSlideshow = wpm.services.LockScreenSlideshow(db, lockScreen)
     val accent = wpm.services.AccentFromWallpaper(settings)
+    /** Windows' "accent color on Start and taskbar", so the taskbar takes the wallpaper's color. */
+    val taskbarTint = wpm.services.TaskbarTint(settings)
     /** What is playing: for wallpapers that show it, and for "colors follow the music". */
     val nowPlaying = wpm.services.NowPlaying(mediaWatcher) { track ->
         currentTrack = track

@@ -135,4 +135,24 @@ class SlideshowFoldersAccentTest {
         accent.setEnabled(false)
         assertEquals(AccentBackup(accentColor = 0x11223344, autoColorization = "1"), api.current) // the user's own color
     }
+
+    @Test
+    fun taskbarTintIsPutBackAsItWas() {
+        val api = object : TaskbarColorApi {
+            var value: Int? = null
+            override fun read() = value
+            override fun write(value: Int?) { this.value = value }
+            override fun darkTaskbar() = true
+        }
+        val tint = TaskbarTint(Settings(db), api)
+        tint.setEnabled(true)
+        assertEquals(1, api.value)
+        tint.setEnabled(true) // already on: the saved original stays the user's
+        tint.setEnabled(false)
+        assertEquals(null, api.value, "the value didn't exist before")
+        api.value = 0
+        tint.setEnabled(true)
+        tint.setEnabled(false)
+        assertEquals(0, api.value)
+    }
 }

@@ -74,6 +74,8 @@ All changes are in the [release notes](https://github.com/adipro1/wallpaper-mana
   memory / GPU use and a calendar behind the icons, over any wallpaper (picture, video or
   web page). Drag them into place on a picture of your screen; size and a dark card are
   optional.
+- **Taskbar in the wallpaper's color** (Settings > Appearance): Windows' own "accent color on
+  Start and taskbar", fed with the wallpaper's color. Switching it off puts yours back.
 
 ### Finding and organizing
 - **Library**: import files or folders, or drag them (or links) onto the window.
