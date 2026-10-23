@@ -457,7 +457,7 @@ private fun DetailsPanel(
     }
 }
 
-/** Turns the picture into a live wallpaper with an effect (3D, day and night, weather, music, zoom, parallax, rain, snow). */
+/** Turns the picture into a live wallpaper with an effect (3D, layers, day and night, weather, music, zoom, parallax, rain, snow). */
 @Composable
 private fun MakeAliveButton(app: AppState, item: MediaItem, enabled: Boolean) {
     var open by remember { mutableStateOf(false) }
@@ -469,6 +469,7 @@ private fun MakeAliveButton(app: AppState, item: MediaItem, enabled: Boolean) {
         DropdownMenu(open, { open = false }) {
             listOf(
                 "3D photo" to tr("AI finds what is near and far, so it moves like a real 3D scene"),
+                "Layers" to tr("3D with fireflies, light rays, fog, real rain and snow, music bars: switch each on in its settings"),
                 "Day and night" to tr("Follows the real sun: golden at sunset, starry at night"),
                 "Living weather" to tr("Rains, snows and storms when it does outside"),
                 "Music colors" to tr("Takes on the colors of the song's album art and glows with the bass"),
