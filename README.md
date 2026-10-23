@@ -15,15 +15,15 @@ needed) or the zip. Once installed, the app updates itself with one click.
 | ![Settings with the accent color picker](docs/screenshots/settings-dark.png) | ![Schedule, light mode with the violet accent](docs/screenshots/schedule-light.png) |
 | ![Playlists, dark mode with the jade accent](docs/screenshots/playlists-dark.png) | ![Lock screen, light mode with the rose accent](docs/screenshots/lockscreen-light.png) |
 
-## What's new in 3.1 "Depth & Music"
+## What's new in 3.2 "Desktop"
 
-- **3D photos**: AI works out what is near and far in a photo, so it moves like a real 3D scene
-  with the mouse.
-- **Layers**: 3D motion, fireflies, light rays, fog, real rain and snow and music bars on one picture.
-- **Now Playing**: wallpapers know what Spotify, your browser or any player is playing; the
-  picture and the app's colors can follow the album art.
+- **Widgets** behind the icons: a clock, the weather, the song that plays, system use and a
+  calendar, over any wallpaper. Drag them into place.
+- **Taskbar in the wallpaper's color**.
+- **Screensaver**: your wallpaper (live ones keep playing) or a playlist as the Windows screensaver.
 
-3.0 "Alive" brought day and night, Living weather, picture transitions and dynamic themes.
+3.1 "Depth & Music" brought 3D photos, Layers and Now Playing; 3.0 "Alive" day and night,
+Living weather, picture transitions and dynamic themes.
 All changes are in the [release notes](https://github.com/adipro1/wallpaper-manager/releases).
 
 ## Features
