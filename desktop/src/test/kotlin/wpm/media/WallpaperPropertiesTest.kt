@@ -136,19 +136,23 @@ class WallpaperPropertiesTest {
     fun makeAliveCreatesAShaderShowingThePicture() {
         val live = FakeLivePlayer()
         val app = app(live)
-        val picture = db.getMedia(app.library.importFiles(listOf(Samples.image(dir.resolve("Sunset.png"), 400, 200))).added.single())!!
-        val alive = runBlocking { app.makeAlive(picture, "Ken Burns") }
-        assertEquals("Sunset · Ken Burns", alive.filename)
-        assertTrue(alive.isShader && live.active)
-        val page = Path.of(java.net.URI(live.source!!)).readText()
-        assertTrue("data:image/jpeg;base64," in page, "the picture is inside the page")
-        assertEquals(listOf("photo", "speed", "zoom"), app.propertiesOf(alive).map { it.name })
-        assertEquals(PICTURE_EFFECTS.size, app.shaders.effects().size)
-        // Day and night gets the sky as soon as the page loads.
-        val dayNight = runBlocking { app.makeAlive(picture, "Day and night") }
-        assertEquals(listOf("photo", "real", "hour", "strength", "stars"), app.propertiesOf(dayNight).map { it.name })
-        assertTrue("wpm.setWorld({sun:[" in live.loadScript!!, live.loadScript)
-        app.close()
+        try {
+            val picture = db.getMedia(app.library.importFiles(listOf(Samples.image(dir.resolve("Sunset.png"), 400, 200))).added.single())!!
+            val alive = runBlocking { app.makeAlive(picture, "Ken Burns") }
+            assertEquals("Sunset · Ken Burns", alive.filename)
+            assertTrue(alive.isShader && live.active)
+            val page = Path.of(java.net.URI(live.source!!)).readText()
+            assertTrue("data:image/jpeg;base64," in page, "the picture is inside the page")
+            assertEquals(listOf("photo", "speed", "zoom"), app.propertiesOf(alive).map { it.name })
+            assertEquals(PICTURE_EFFECTS.size, app.shaders.effects().size)
+            // Day and night gets the sky as soon as the page loads.
+            val dayNight = runBlocking { app.makeAlive(picture, "Day and night") }
+            assertEquals(listOf("photo", "real", "hour", "strength", "stars"), app.propertiesOf(dayNight).map { it.name })
+            // (the sun's position, or null where no city is known, e.g. on a build server in UTC)
+            assertTrue("wpm.setWorld({sun:" in live.loadScript!!, live.loadScript)
+        } finally {
+            app.close()
+        }
     }
 
     /** Effects compile and a page gets its settings through livelyPropertyListener. Opt-in: WPM_DESKTOP_TEST=1. */

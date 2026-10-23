@@ -241,8 +241,15 @@ class AppState(
         scope.launch {
             while (true) {
                 delay(60_000)
-                refreshWeather()
-                pushWorld()
+                // A failure (e.g. the database closing as the app exits) must not end the loop or crash the app.
+                try {
+                    refreshWeather()
+                    pushWorld()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warning("Couldn't update the sky for shaders: $e")
+                }
             }
         }
     }
