@@ -17,7 +17,20 @@ kotlin {
     jvmToolchain(21)
 }
 
+// ONNX Runtime (AI depth maps) ships native code for every OS (~50 MB); keep only Windows x64.
+val onnxRuntime by configurations.creating { isTransitive = false }
+val onnxRuntimeWindows by tasks.registering(Jar::class) {
+    from({ onnxRuntime.map { zipTree(it) } }) {
+        exclude("ai/onnxruntime/native/linux-*/**", "ai/onnxruntime/native/osx-*/**", "ai/onnxruntime/native/win-aarch64/**")
+        exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
+    }
+    archiveFileName.set("onnxruntime-win-x64.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("onnxruntime"))
+}
+
 dependencies {
+    onnxRuntime(libs.onnxruntime)
+    implementation(files(onnxRuntimeWindows))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)

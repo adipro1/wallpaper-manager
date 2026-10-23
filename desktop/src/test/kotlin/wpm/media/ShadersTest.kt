@@ -55,6 +55,31 @@ class ShadersTest {
     }
 
     @Test
+    fun depthMapsTakeTheNextChannel() {
+        val code = "// @image photo Picture\n// @depth depth photo\n// @depth ignored nothing\nvoid mainImage(out vec4 c, in vec2 p) { c = texture(depth, p); }"
+        assertEquals(listOf("depth" to "photo", "ignored" to "nothing"), parseDepthMaps(code))
+        assertTrue(needsDepth(code) && !needsDepth("// @image photo Picture"))
+        // The depth map isn't a setting.
+        assertEquals(listOf("photo"), parseShaderProperties(code).map { it.name })
+
+        val picture = wpm.Samples.image(dir.resolve("pic.png"))
+        val map = wpm.Samples.image(dir.resolve("map.png"), color = org.jetbrains.skia.Color.WHITE)
+        val asked = mutableListOf<Path>()
+        val withDepth = Shaders(db, web, paths.dataDir.resolve("shaders"), paths.cacheDir.resolve("pages")) { asked.add(it); map }
+        val item = db.getMedia(withDepth.create("3D", code))!!
+        WallpaperProperties(db).set(item.id, "photo", kotlinx.serialization.json.JsonPrimitive(picture.toString()))
+        val html = Path.of(java.net.URI(withDepth.pageFor(item, 30))).readText()
+        assertEquals(listOf(picture), asked)
+        assertTrue("""{"name":"depth","type":"image","value":"","channel":2}""" in html)
+        assertTrue(""""2":"data:image/png;base64,""" in html)
+        assertTrue("ignored" !in html.substringAfter("\"properties\"").substringBefore("\"images\""))
+
+        // No model yet: the page still works, just without the map (the runner shows a flat grey).
+        val noModel = Path.of(java.net.URI(shaders.pageFor(item, 30))).readText()
+        assertTrue(""""2":""" !in noModel && """"1":"data:image/jpeg""" in noModel)
+    }
+
+    @Test
     fun importsGlslFiles() {
         val file = dir.resolve("waves.frag").also { it.writeText("uniform float x; void mainImage(out vec4 c, in vec2 p) { c = texture(iChannel0, p); vec4 m = iMouse; }") }
         val item = db.getMedia(shaders.import(file))!!

@@ -28,13 +28,25 @@ val SHADER_EXTENSIONS = setOf("glsl", "frag", "fs")
 data class SampleShader(val name: String, val code: String)
 
 /** The "make it alive" effects in resources/shader/effects. */
-val PICTURE_EFFECTS = listOf("Day and night", "Living weather", "Ken Burns", "Parallax", "Rain on glass", "Snowfall")
+val PICTURE_EFFECTS = listOf("3D photo", "Day and night", "Living weather", "Ken Burns", "Parallax", "Rain on glass", "Snowfall")
+
+/** Effects that need the AI depth model (they declare "// @depth"). */
+fun needsDepth(code: String): Boolean = parseDepthMaps(code).isNotEmpty()
 
 /** How picture changes can look (resources/shader/transitions); "off" switches them off. */
 val TRANSITIONS = listOf("Fold", "Fade", "Dissolve", "Ripple")
 
 /** Pictures for iChannel1-3 are scaled down to at most this size before they go into the page. */
 private const val MAX_PICTURE = 2560
+
+private val DEPTH = Regex("""^\s*//\s*@depth\s+([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*$""")
+
+/**
+ * AI depth maps a shader asks for, as (sampler name, picture name): "// @depth depth photo" makes
+ * `depth` the depth map of the "@image photo" picture (white = near). It takes the next free iChannel.
+ */
+fun parseDepthMaps(code: String): List<Pair<String, String>> =
+    code.lineSequence().mapNotNull { DEPTH.matchEntire(it)?.destructured?.let { (name, picture) -> name to picture } }.distinctBy { it.first }.toList()
 
 private val ANNOTATION = Regex("""^\s*//\s*@(slider|color|checkbox|image)\s+([A-Za-z_]\w*)\s*(.*)$""")
 
@@ -96,6 +108,8 @@ class Shaders(
     private val folder: Path,
     private val pagesDir: Path,
     private val values: WallpaperProperties = WallpaperProperties(db),
+    /** The depth map of a picture, or null when there is none (no model yet). */
+    private val depthMap: (Path) -> Path? = { null },
 ) {
     private val runner: String by lazy {
         javaClass.getResourceAsStream("/shader/runner.html")!!.use { it.readBytes().decodeToString() }
@@ -160,6 +174,9 @@ class Shaders(
         val properties = parseShaderProperties(code)
         var channel = 0
         val channels = properties.filter { it.type == PropertyType.IMAGE }.associate { it.name to ++channel }
+        val depths = parseDepthMaps(code).filter { (name, picture) -> picture in channels && properties.none { it.name == name } }
+            .take(3 - channel).associate { (name, picture) -> name to (picture to ++channel) }
+        fun picture(name: String) = chosen[name]?.content?.takeIf { it.isNotEmpty() }?.let(::Path)
         val config = buildJsonObject {
             put("fps", fps)
             transition?.let { putJsonObject("transition") { put("duration", it) } }
@@ -173,11 +190,24 @@ class Shaders(
                         channels[p.name]?.let { put("channel", it) }
                     }
                 }
+                depths.forEach { (name, source) ->
+                    addJsonObject {
+                        put("name", name)
+                        put("type", PropertyType.IMAGE)
+                        put("value", "")
+                        put("channel", source.second)
+                    }
+                }
             }
             putJsonObject("images") {
                 for ((propertyName, number) in channels) {
-                    val file = chosen[propertyName]?.content?.takeIf { it.isNotEmpty() }?.let(::Path) ?: continue
+                    val file = picture(propertyName) ?: continue
                     pictureData(file, maxPicture)?.let { put(number.toString(), it) }
+                }
+                for ((pictureName, number) in depths.values) {
+                    val file = picture(pictureName)?.takeIf { it.isRegularFile() } ?: continue
+                    val map = runCatching { depthMap(file) }.onFailure { wpm.logger("shaders").warning("No depth map for $file: $it") }.getOrNull() ?: continue
+                    put(number.toString(), "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(map)))
                 }
             }
         }

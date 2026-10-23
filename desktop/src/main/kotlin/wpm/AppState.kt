@@ -143,7 +143,11 @@ class AppState(
     val web = WebWallpapers(db, library, paths.dataDir.resolve("web"))
     val properties = WallpaperProperties(db)
     val missing = wpm.media.MissingFiles(db)
-    val shaders = Shaders(db, web, paths.dataDir.resolve("shaders"), paths.cacheDir.resolve("shader-pages"), properties).also { it.cleanPreviews() }
+    /** AI depth maps for 3D photos (the model is downloaded the first time one is made). */
+    val depthMaps = wpm.media.DepthMaps(paths.dataDir.resolve("models"), paths.cacheDir.resolve("depth"))
+    val shaders = Shaders(db, web, paths.dataDir.resolve("shaders"), paths.cacheDir.resolve("shader-pages"), properties) { picture ->
+        if (depthMaps.installed) depthMaps.of(picture) else null
+    }.also { it.cleanPreviews() }
     val lockScreen = LockScreenService(db, paths, lockScreenApi, videoReader)
     val ytDlp = YtDlp(NativeBin.dir.resolve("yt-dlp.exe"))
     val urls = UrlImporter(db, library, ytDlp, downloadFolder())
@@ -719,9 +723,19 @@ class AppState(
     suspend fun makeAlive(picture: MediaItem, effect: String): MediaItem {
         val path = picture.localPath ?: throw IllegalArgumentException(tr("Only pictures on this PC can be used"))
         val sample = shaders.effects().firstOrNull { it.name == effect } ?: throw IllegalArgumentException(tr("Unknown effect: {0}", effect))
+        if (wpm.media.needsDepth(sample.code)) withContext(Dispatchers.IO) {
+            if (!depthMaps.installed) {
+                toast(tr("Downloading the 3D model once ({0} MB)…", wpm.media.DEPTH_MODEL_MB))
+                depthMaps.install()
+            }
+            if (depthMaps.cached(path) == null) {
+                toast(tr("Finding what is near and far…"))
+                depthMaps.of(path)
+            }
+        }
         val item = withContext(Dispatchers.IO) {
             val title = "${picture.filename.substringBeforeLast('.')} · $effect"
-            val id = shaders.create(title, sample.code, interactive = effect == "Parallax", preview = path)
+            val id = shaders.create(title, sample.code, interactive = effect == "Parallax" || wpm.media.needsDepth(sample.code), preview = path)
             properties.set(id, "photo", JsonPrimitive(path.toString()))
             db.getMedia(id)!!
         }

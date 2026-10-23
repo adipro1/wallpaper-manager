@@ -50,9 +50,12 @@ All changes are in the [release notes](https://github.com/adipro1/wallpaper-mana
   fog / storm, cloud cover). Comments
   add settings: `// @slider speed 0 2 1 Speed`, `// @color tint #ff8800 Tint`,
   `// @checkbox rain on Rain`, `// @image photo Picture` (`iChannel1`-`3`).
-- **Make a picture alive**: day and night that follow the real sun, the real weather
+- **Make a picture alive**: a 3D photo, day and night that follow the real sun, the real weather
   (rain, snow, fog, storms), a slow Ken Burns zoom, parallax that follows the mouse,
   rain on the glass or snowfall, for any picture.
+- **3D photos**: AI works out what is near and far in a photo, so it moves like a real 3D
+  scene with the mouse and a slow camera drift. The model ([Depth Anything V2 Small](https://huggingface.co/depth-anything/Depth-Anything-V2-Small),
+  Apache-2.0, 27 MB) is downloaded the first time and runs on your PC with ONNX Runtime.
 - **Transitions**: when the picture changes it folds away like paper, fades, burns away or
   ripples (Settings > Live wallpapers > Picture changes).
 - **Audio-reactive**: what your PC plays (WASAPI loopback, 128 bands, about 30 times
@@ -175,7 +178,7 @@ tests use the real system and are opt-in (run them with `./gradlew test --rerun`
 | Variable | What it enables |
 | --- | --- |
 | `WPM_DESKTOP_TEST=1` | Plays a video, a web page and a shader behind your desktop icons for a few seconds, compiles the sample shaders, captures system audio, reads the display list, colors a real window's title bar |
-| `WPM_NETWORK_TEST=1` | Streams a YouTube video through yt-dlp and mpv, downloads a real release for the updater |
+| `WPM_NETWORK_TEST=1` | Streams a YouTube video through yt-dlp and mpv, downloads a real release for the updater, downloads the depth model and makes a depth map |
 
 ### Developing next to an installed copy
 
