@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  Wallpaper Manager scene: the real sky over the user's city, right now.
+  The stars turn with the Earth (worked out here from the clock); the app sends the place,
+  the sun, the moon and the planets (worked out on the PC) and the weather through
+  wpm.setSky({...}) about once a minute. Settings arrive through livelyPropertyListener.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Night sky</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #01030a; }
+  canvas { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="text"></canvas>
+<script src="stars.js"></script>
+<script src="sky.js"></script>
+</body>
+</html>

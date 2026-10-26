@@ -146,6 +146,8 @@ fun main(rawArgs: Array<String>) {
                         Item(tr("Stop live wallpaper"), onClick = { app.runCommand(AppCommand.Stop) })
                     }
                     Separator()
+                    Item(if (app.ambientOn) tr("Ambient sound: on") else tr("Ambient sound: off"), onClick = { app.setAmbient(!app.ambientOn) })
+                    Separator()
                     Item(tr("Exit"), onClick = ::exit)
                 },
             )

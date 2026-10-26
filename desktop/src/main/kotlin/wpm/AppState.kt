@@ -146,6 +146,21 @@ class AppState(
         it.sourceFor = ::liveSourceFor
     }
     val web = WebWallpapers(db, library, paths.dataDir.resolve("web"))
+    /** Built-in live wallpapers of the real world (the night sky). */
+    val scenes = wpm.media.Scenes(db, settings, web, paths.dataDir.resolve("scenes"))
+    /** Yesterday's satellite pictures for Live Earth (downloaded when it is first shown, then daily). */
+    val earth = wpm.services.EarthImagery(scenes.folderOf(wpm.media.Scenes.EARTH).resolve("textures"))
+    private val iss = wpm.services.IssTracker()
+    /** A soft sound in the background that follows the weather (Settings > Ambient sound). */
+    val ambience = wpm.services.Ambience(settings, paths.cacheDir.resolve("ambient"))
+    /** [ambience] is on, for the UI and the tray. */
+    var ambientOn by mutableStateOf(ambience.enabled)
+        private set
+
+    fun setAmbient(on: Boolean) {
+        ambientOn = on
+        scope.launch(Dispatchers.IO) { runCatching { ambience.setEnabled(on) } }
+    }
     val properties = WallpaperProperties(db)
     val missing = wpm.media.MissingFiles(db)
     /** AI depth maps for 3D photos (the model is downloaded the first time one is made). */
@@ -268,6 +283,7 @@ class AppState(
                 // A failure (e.g. the database closing as the app exits) must not end the loop or crash the app.
                 try {
                     refreshWeather()
+                    withContext(Dispatchers.IO) { refreshEarth() }
                     pushWorld()
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
@@ -299,10 +315,28 @@ class AppState(
         transitions.play(shaders.transitionPage(style, from, to, seconds, largest), seconds, apply)
     }
 
-    /** Sends the current sky to every shader on screen. */
+    /** Sends the current sky to every shader and scene on screen. */
     fun pushWorld() {
         val script = world.script()
-        webEngines().filter { it.source?.contains("/shader-") == true }.forEach { it.runScript(script) }
+        val engines = webEngines()
+        engines.filter { it.source?.contains("/shader-") == true }.forEach { it.runScript(script) }
+        engines.filter { scenes.isScene(it.source) }.takeIf { it.isNotEmpty() }?.let { shown ->
+            val sky = sceneScript()
+            shown.forEach { it.runScript(sky + if (scenes.sceneOf(it.source) == wpm.media.Scenes.EARTH) texturesScript() else "") }
+        }
+    }
+
+    private fun sceneScript() = world.sceneScript(settings.boolean("live_weather", true), wpm.I18n.language,
+        status = tr("Getting pictures of the Earth from NASA…").takeIf { !earth.ready }) { tr(it) }
+
+    private fun texturesScript() = earth.version().takeIf { earth.ready }
+        ?.let { "window.wpm&&window.wpm.setTextures&&window.wpm.setTextures(${kotlinx.serialization.json.JsonPrimitive(it)});" } ?: ""
+
+    private fun earthShown() = webEngines().any { scenes.sceneOf(it.source) == wpm.media.Scenes.EARTH }
+
+    /** Gets the day's pictures of the Earth while Live Earth is on screen (once a day). */
+    private fun refreshEarth() {
+        if (earthShown() && earth.refresh()) pushWorld()
     }
 
     /** What the widgets show now (only the parts [setup] needs: the weather may be looked up). */
@@ -398,7 +432,7 @@ class AppState(
 
     /** Watches what is playing only while a visible wallpaper uses it or the music colors are on. */
     private fun updateMusic() {
-        val wanted = musicColorsOn || widgets.setup.shows(wpm.widgets.WidgetKind.Music) || webEngines().any { it.active && !it.paused && it.source?.let(::usesMusic) == true }
+        val wanted = musicColorsOn || ambience.enabled || widgets.setup.shows(wpm.widgets.WidgetKind.Music) || webEngines().any { it.active && !it.paused && it.source?.let(::usesMusic) == true }
         nowPlaying.setWanted(wanted)
         if (musicColor == null) return
         // Colors go back 10 s after the music stops, so a short pause doesn't flash the desktop.
@@ -433,16 +467,32 @@ class AppState(
         scope.launch(Dispatchers.IO) { runCatching { updateMusic(); pushTrack() }.onFailure { log.warning("Now playing: $it") } }
     }
 
-    /** Whether a shader uses the weather outside (and the weather may be looked up). */
-    private fun usesWeather(item: MediaItem): Boolean =
-        item.isShader && settings.boolean("live_weather", true) && shaders.code(item).let { "iWeather" in it || "iClouds" in it }
+    /** Tells the ambient sound about the weather, the music and whether anyone is listening. */
+    private fun updateAmbience() {
+        if (!ambience.enabled) return ambience.update(wpm.services.AmbientState())
+        val weatherOn = settings.boolean("live_weather", true)
+        if (weatherOn && ambience.choice == wpm.services.Ambience.WEATHER && world.refreshWeather()) pushWorld()
+        val quiet = screensaver != null || runCatching {
+            systemProbe.sessionLocked() || systemProbe.screenOff() ||
+                settings.boolean("pause_on_fullscreen", true) && systemProbe.fullscreenDisplay() != null
+        }.getOrDefault(false)
+        ambience.update(wpm.services.AmbientState(
+            weather = world.weather.takeIf { weatherOn }, sunElevation = world.sun()?.elevation,
+            musicPlaying = nowPlaying.track?.playing == true, quiet = quiet,
+        ))
+    }
+
+    /** Whether a shader or scene uses the weather outside (and the weather may be looked up). */
+    private fun usesWeather(item: MediaItem): Boolean = settings.boolean("live_weather", true) &&
+        (item.isShader && shaders.code(item).let { "iWeather" in it || "iClouds" in it } || item.isWeb && scenes.isScene(WebWallpapers.pageUrl(item)))
 
     /** Looks the weather up (every 15 minutes at most) while a wallpaper on screen uses it. */
     private suspend fun refreshWeather() {
         val showing = webEngines().mapNotNull { engine ->
             Regex("""/shader-(\d+)\.html""").find(engine.source ?: "")?.groupValues?.get(1)?.toLongOrNull()
         }.mapNotNull { db.getMedia(it) }
-        if (showing.none(::usesWeather)) return
+        val sceneShown = settings.boolean("live_weather", true) && webEngines().any { scenes.isScene(it.source) }
+        if (!sceneShown && showing.none(::usesWeather)) return
         if (withContext(Dispatchers.IO) { world.refreshWeather() }) pushWorld()
     }
 
@@ -825,11 +875,17 @@ class AppState(
                 settings.string("web_fps", "full").toIntOrNull()?.takeIf { !item.isShader }?.let(WebWallpapers::frameRateLimit),
                 propertyScript(item),
                 world.script().takeIf { item.isShader },
+                sceneScript().takeIf { !item.isShader && scenes.isScene(WebWallpapers.pageUrl(item)) },
+                texturesScript().takeIf { !item.isShader && scenes.sceneOf(WebWallpapers.pageUrl(item)) == wpm.media.Scenes.EARTH },
                 nowPlaying.script().takeIf { nowPlaying.running },
             ).joinToString("").ifEmpty { null },
         ).also {
             // A weather wallpaper gets the weather as soon as it is known.
             if (usesWeather(item)) scope.launch(Dispatchers.IO) { if (world.refreshWeather()) pushWorld() }
+            if (!item.isShader && scenes.sceneOf(WebWallpapers.pageUrl(item)) == wpm.media.Scenes.EARTH) scope.launch(Dispatchers.IO) {
+                delay(3_000) // until the page is on screen
+                refreshEarth()
+            }
         }
     }
 
@@ -932,6 +988,7 @@ class AppState(
                 delay(1_000)
                 runCatching { updateAudio() }
                 runCatching { updateMusic() }.onFailure { log.warning("Now playing: $it") }
+                runCatching { updateAmbience() }.onFailure { log.warning("Ambient sound: $it") }
             }
         }
         scope.launch(Dispatchers.IO) {
@@ -951,6 +1008,24 @@ class AppState(
         ).start()
         watched.start()
         scope.launch(Dispatchers.IO) { screensaverSetup.refresh() }
+        scope.launch(Dispatchers.IO) { if (scenes.install().isNotEmpty()) libraryChanged() }
+        // The ambient sound fades in small steps.
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(100)
+                ambience.step(0.1)
+            }
+        }
+        // The space station moves 7.7 km a second: Live Earth gets its position every 10 seconds.
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                val shown = webEngines().filter { scenes.sceneOf(it.source) == wpm.media.Scenes.EARTH && !it.paused }
+                if (shown.isNotEmpty()) runCatching { wpm.services.IssTracker.script(iss.update()) }
+                    .onSuccess { script -> shown.forEach { it.runScript(script) } }
+                    .onFailure { log.info("No space station position: $it") }
+                delay(10_000)
+            }
+        }
         scope.launch(Dispatchers.IO) { runCatching { applyShortcuts() }.onFailure { log.warning("Shortcuts: $it") } }
     }
 
@@ -965,6 +1040,7 @@ class AppState(
         audio.stop()
         runCatching { nowPlaying.setWanted(false) }
         runCatching { widgets.close() }
+        runCatching { ambience.close() }
         runCatching { wallpapers.shutdown() }.onFailure { log.warning("Shutdown: $it") }
         wpm.engine.Chromium.shutdown()
     }

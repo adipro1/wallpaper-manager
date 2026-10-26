@@ -1,0 +1,4 @@
+Pictures of the Earth: NASA Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and
+Information System (ESDIS): VIIRS corrected reflectance (Suomi NPP and NOAA-20), Blue Marble Next
+Generation and VIIRS City Lights 2012 (NASA Earth Observatory). Downloaded by the app on first use.
+Space station positions: wheretheiss.at.

@@ -122,5 +122,28 @@ class World(
             "weather:[${n(w.rain)},${n(w.snow)},${n(w.fog)},${n(w.storm)}],clouds:${n(w.clouds)}});"
     }
 
+    /**
+     * JavaScript that hands the sky to a built-in scene (`wpm.setSky`): the place, the moon and
+     * the planets now, and the clouds and fog when [weatherOn]. Only scenes get the place.
+     */
+    fun sceneScript(weatherOn: Boolean, language: String, status: String? = null, name: (String) -> String = { it }): String {
+        val sky = Sky.bodies(clock())
+        val w = weather.takeIf { weatherOn } ?: Weather()
+        val parts = buildList {
+            place()?.let { add("lat:${n(it.latitude)},lon:${n(it.longitude)},name:${quote(it.name)}") }
+            add("moon:{ra:${n(sky.moon.ra)},dec:${n(sky.moon.dec)},dist:${n(sky.moon.distance)},lit:${n(sky.moonLit)}}")
+            add("planets:[" + sky.planets.joinToString(",") { p ->
+                "{name:\"${p.name}\",label:${quote(name(p.name))}," +
+                    "ra:${n(p.ra)},dec:${n(p.dec)},mag:${n(p.magnitude)}}"
+            } + "]")
+            add("clouds:${n(w.clouds)},fog:${n(w.fog)}")
+            add("lang:\"${language.filter(Char::isLetter)}\"")
+            status?.let { add("status:${quote(it)}") }
+        }
+        return "window.wpm&&window.wpm.setSky&&window.wpm.setSky({${parts.joinToString(",")}});"
+    }
+
     private fun n(value: Double) = String.format(Locale.ROOT, "%.3f", value)
+
+    private fun quote(text: String) = Json.encodeToString(kotlinx.serialization.json.JsonPrimitive.serializer(), kotlinx.serialization.json.JsonPrimitive(text))
 }

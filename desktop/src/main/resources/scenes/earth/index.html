@@ -1,0 +1,22 @@
+<!doctype html>
+<!--
+  Wallpaper Manager scene: the Earth right now. Day and night follow the real sun (worked out
+  here from the clock); the app sends yesterday's satellite pictures (textures/*.js, through
+  wpm.setTextures), the user's place (wpm.setSky) and the space station (wpm.setIss).
+  Settings arrive through livelyPropertyListener.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Live Earth</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="text"></canvas>
+<script src="earth.js"></script>
+</body>
+</html>

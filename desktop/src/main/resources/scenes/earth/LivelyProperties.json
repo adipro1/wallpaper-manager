@@ -1,0 +1,9 @@
+{
+  "mode": { "type": "dropdown", "text": "Show", "value": 0, "items": ["Globe", "Map"] },
+  "center": { "type": "dropdown", "text": "Centered on", "value": 0, "items": ["My place", "The sunlit side", "Turning slowly"] },
+  "size": { "type": "slider", "text": "Globe size", "value": 0.8, "min": 0.4, "max": 1.2, "step": 0.05 },
+  "lights": { "type": "checkbox", "text": "City lights at night", "value": true },
+  "glint": { "type": "checkbox", "text": "Sun glint on the sea", "value": true },
+  "iss": { "type": "checkbox", "text": "Space station (ISS)", "value": true },
+  "place": { "type": "checkbox", "text": "Mark my place", "value": true }
+}

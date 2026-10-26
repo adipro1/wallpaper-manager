@@ -211,6 +211,7 @@ fun SettingsPage(app: AppState) {
         }
 
         ScreensaverCard(app)
+        AmbientCard(app)
 
         Card(Modifier.fillMaxWidth()) {
             SectionTitle(tr("Storage"))
@@ -424,6 +425,40 @@ private fun ScreensaverCard(app: AppState) {
         TextButton(contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp), onClick = {
             app.runTask(failure = tr("Couldn't start the screensaver")) { withContext(Dispatchers.IO) { app.startScreensaver() } }
         }) { Text(tr("Try it now (move the mouse to stop)")) }
+    }
+}
+
+@Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private fun AmbientCard(app: AppState) {
+    val ambience = app.ambience
+    var volume by remember { mutableStateOf(ambience.volume.toFloat()) }
+    var choice by remember { mutableStateOf(ambience.choice) }
+    Card(Modifier.fillMaxWidth()) {
+        SectionTitle(tr("Ambient sound"))
+        SettingSwitch(
+            tr("Play a soft sound in the background"), app.ambientOn,
+            hint = tr("Rain when it rains outside, crickets on warm nights and so on, or one sound of your choice. It gets quiet under music and stops while the PC is locked or a full-screen game or film plays."),
+        ) { app.setAmbient(it) }
+        Column(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(tr("Sound"), color = Theme.colors.text)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val options = listOf(wpm.services.Ambience.WEATHER to tr("Follow the weather")) + wpm.services.AmbientSound.entries.map { it.name to tr(it.label) }
+                options.forEach { (value, label) ->
+                    FilterChip(choice == value, {
+                        choice = value
+                        ambience.setChoice(value)
+                    }, { Text(label) })
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().settingDivider().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(tr("Volume"), color = Theme.colors.text)
+            androidx.compose.material3.Slider(volume, { volume = it }, Modifier.weight(1f), valueRange = 0f..100f,
+                onValueChangeFinished = { ambience.setVolume(volume.toInt()) })
+            Text("${volume.toInt()}%", color = Theme.colors.textMuted, modifier = Modifier.width(40.dp))
+        }
     }
 }
 
