@@ -55,3 +55,7 @@ bin/
 .gradle/
 .kotlin/
 desktop/build/
+
+# Images that belong to the app and the README
+!docs/screenshots/*.jpg
+!desktop/src/main/resources/scenes/**/*.jpg
