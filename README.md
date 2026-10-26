@@ -2,8 +2,9 @@
 
 A Windows 10/11 app for your desktop and lock screen: a wallpaper library, live
 wallpapers behind the desktop icons (videos, online videos, interactive web pages
-and shaders that react to the mouse and to music), lock screen pictures and
-slideshows, playlists and a schedule that follows the clock or the sun.
+and shaders that react to the mouse and to music), the real night sky and the real
+Earth as live wallpapers, ambient sound that follows the weather, lock screen pictures
+and slideshows, playlists and a schedule that follows the clock or the sun.
 
 **[Download the latest version](https://github.com/adipro1/wallpaper-manager/releases/latest)**:
 the installer (`WallpaperManager-<version>-setup.exe`, no administrator rights
@@ -14,16 +15,23 @@ needed) or the zip. Once installed, the app updates itself with one click.
 | ![Home, dark mode with the vermilion accent](docs/screenshots/home-dark.png) | ![Library, light mode with the ocean accent](docs/screenshots/library-light.png) |
 | ![Settings with the accent color picker](docs/screenshots/settings-dark.png) | ![Schedule, light mode with the violet accent](docs/screenshots/schedule-light.png) |
 | ![Playlists, dark mode with the jade accent](docs/screenshots/playlists-dark.png) | ![Lock screen, light mode with the rose accent](docs/screenshots/lockscreen-light.png) |
+| ![The Night sky wallpaper: the summer Milky Way over Berlin](docs/screenshots/night-sky.jpg) | ![The Live Earth wallpaper: yesterday's clouds, city lights and the space station](docs/screenshots/live-earth.jpg) |
 
-## What's new in 3.2 "Desktop"
+## What's new in 3.3 "Sky & Earth"
 
-- **Widgets** behind the icons: a clock, the weather, the song that plays, system use and a
-  calendar, over any wallpaper. Drag them into place.
-- **Taskbar in the wallpaper's color**.
-- **Screensaver**: your wallpaper (live ones keep playing) or a playlist as the Windows screensaver.
+- **Night sky**: a live wallpaper of the sky over your city right now: the real stars and
+  constellations, the Milky Way, the moon in its phase, the planets and shooting stars. It
+  turns with the Earth, follows dusk and dawn and shows the real clouds.
+- **Live Earth**: the Earth as a globe or a map with yesterday's real satellite picture from
+  NASA, the day and night line as it is now, city lights at night, the sun's glint on the sea
+  and the International Space Station passing over.
+- **Ambient sound**: rain when it rains outside, crickets on warm nights, a fire on cold ones,
+  or one sound you choose (wind, ocean waves, a stream, brown noise...). Quiet under music,
+  silent while the PC is locked or a game or film runs full screen.
 
-3.1 "Depth & Music" brought 3D photos, Layers and Now Playing; 3.0 "Alive" day and night,
-Living weather, picture transitions and dynamic themes.
+3.2 "Desktop" brought widgets, a taskbar in the wallpaper's color and the screensaver; 3.1
+"Depth & Music" 3D photos, Layers and Now Playing; 3.0 "Alive" day and night, Living weather,
+picture transitions and dynamic themes.
 All changes are in the [release notes](https://github.com/adipro1/wallpaper-manager/releases).
 
 ## Features
@@ -51,6 +59,23 @@ All changes are in the [release notes](https://github.com/adipro1/wallpaper-mana
   add settings: `// @slider speed 0 2 1 Speed`, `// @color tint #ff8800 Tint`,
   `// @checkbox rain on Rain`, `// @image photo Picture` (`iChannel1`-`3`),
   `// @depth depth photo` (the picture's AI depth map, white = near).
+- **Night sky** (in the Library): the real sky over your city, worked out on your PC: about
+  5,000 stars with their colors and twinkle, constellation lines and names, the Milky Way,
+  the moon in its true phase (bigger than life if you like) and Mercury, Venus, Mars, Jupiter
+  and Saturn where they really are. It turns with the Earth, goes through dusk and dawn with
+  the real sun, follows the moon across the sky and shows the real clouds and fog. Settings:
+  the direction to look, constellations, names, Milky Way, shooting stars, hills, moon size.
+- **Live Earth** (in the Library): a globe or a map of the Earth with yesterday's real
+  satellite picture (NASA GIBS, VIIRS; clouds and all), the line between day and night as it
+  is right now, city lights on the night side, the sun's glint on the sea, the atmosphere's
+  glow, your place, and the space station (ISS) with its track. Centered on your place, on the
+  sunlit side, or turning slowly. The pictures (about 10 MB) are fetched once a day while it shows.
+- **Ambient sound** (Settings > Ambient sound, or the tray): a soft sound in the background.
+  "Follow the weather" plays a storm, rain, wind in snow or fog, crickets on warm clear nights,
+  a fire on cold ones and a breeze by day; or pick rain, a thunderstorm, wind, a breeze, ocean
+  waves, a stream, a fireplace, crickets or brown noise. The sounds are made on your PC (nothing
+  to download), fade in and out, get quiet under music and stop while the PC is locked, the
+  screen is off, the screensaver shows or a game or film runs full screen.
 - **Make a picture alive**: a 3D photo, layers of effects, day and night that follow the real
   sun, the real weather (rain, snow, fog, storms), colors that follow the music, a slow Ken
   Burns zoom, parallax that follows the mouse, rain on the glass or snowfall, for any picture.
@@ -233,6 +258,8 @@ Everything the app generates lives in `%LOCALAPPDATA%\WallpaperManager` (or
 | `cache\` | Converted pictures, shader pages, video frames, downloaded updates |
 | `lockscreen\` | Lock screen pictures and frames |
 | `web\`, `shaders\` | Unpacked web wallpapers (.zip) and shader code |
+| `scenes\` | The Night sky and Live Earth wallpapers, and Live Earth's daily pictures |
+| `models\` | The AI depth model, downloaded on first use |
 | `chromium\` | The web engine, downloaded on first use |
 | `logs\` | Log files (rotating) |
 
@@ -248,16 +275,18 @@ desktop/                        Kotlin + Compose app (Gradle)
     Commands.kt, I18n.kt        Command line, translations
     SelfTest.kt                 --self-test
     data/                       SQLite database, migrations, settings
-    media/                      Imaging, import, thumbnails, yt-dlp, web wallpapers, shaders,
-                                wallhaven, Wallpaper Engine, wallpaper settings
+    media/                      Imaging, import, thumbnails, yt-dlp, web wallpapers, shaders, scenes,
+                                wallhaven, Wallpaper Engine, wallpaper settings, AI depth
     mpv/                        libmpv binding, video probing and frames
     engine/                     Live wallpaper engines: video, web, routing, displays, mouse, audio
-    services/                   Wallpapers, lock screen, playlists, schedule, sun, automation,
+    services/                   Wallpapers, lock screen, playlists, schedule, sun and sky, weather,
+                                Earth pictures, space station, ambient sound, automation,
                                 watched folders, accent color, backup, updates
     win32/                      Windows APIs (JNA): desktop layer, displays, system state,
                                 hotkeys, command pipe, title bar, COM
     ui/                         Theme, components and one file per page
-  src/main/resources/           Icon, translations, lock screen script, shader runner, effects and samples
+  src/main/resources/           Icon, translations, lock screen script, shader runner, effects and samples,
+                                scenes (Night sky, Live Earth)
   src/test/kotlin/              Tests
 packaging/                      Inno Setup script and the end-user readme
 docs/                           Release notes and screenshots

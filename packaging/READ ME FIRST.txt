@@ -1,10 +1,11 @@
-Wallpaper Manager 2
+Wallpaper Manager 3
 ===================
 
 A Windows 10/11 app for your desktop and lock screen: a library of pictures and
 videos, live wallpapers behind the desktop icons (videos, videos from YouTube
 and other sites, interactive web pages and shaders, also reacting to music),
-lock screen pictures, playlists and a daily schedule.
+the real night sky and the real Earth as live wallpapers, widgets, ambient
+sound, lock screen pictures, playlists and a daily schedule.
 
 
 Starting it
@@ -19,9 +20,9 @@ double-click WallpaperManager.exe.
 Windows may show "Windows protected your PC" (SmartScreen), because the app
 isn't signed by a publisher. Click "More info" and then "Run anyway".
 
-Coming from version 1? Your library, playlists and schedule are kept. The
-library is upgraded the first time version 2 starts; a copy of the old one is
-saved next to it as library.v3.bak.db.
+Coming from an older version? Your library, playlists and schedule are kept.
+The library is upgraded the first time the new version starts; a copy of the
+old one is saved next to it.
 
 
 Getting started
@@ -37,15 +38,25 @@ Getting started
 - Library -> "Add from..." -> "Wallpaper Engine": video and web wallpapers from
   your Steam workshop subscriptions.
 - Discover: search wallhaven.cc and add pictures with one click.
-- Library: pick a picture -> "Make it alive..." for a zoom, parallax, rain or
-  snow effect.
+- Library: pick a picture -> "Make it alive..." for a 3D photo, day and night
+  with the real sun, the real weather (rain, snow, fog), layers of effects,
+  colors that follow the music, a zoom, parallax, rain or snow.
+- Library: "Night sky" is the sky over your city right now (stars, the moon,
+  the planets, the Milky Way); "Live Earth" is the Earth with yesterday's
+  satellite picture, day and night as they are now, and the space station.
+  Both use the city picked in Schedule (or a guess from your time zone).
+- Desktop -> Widgets: a clock, the weather, the song that plays, system use and
+  a calendar behind your icons.
 - Customize: make animated shader wallpapers (Shadertoy-style GLSL) with a live
   preview, or start from one of the samples.
 - Desktop: click a picture or a live wallpaper to use it. With more than one
   display you can give each display its own wallpaper.
 - Lock Screen: click a picture, or a video to choose one of its frames.
 - Settings -> Appearance: light or dark mode and the app's color (nine colors
-  or any color you like).
+  or any color you like); optionally the taskbar in the wallpaper's color.
+- Settings -> Ambient sound: rain when it rains outside, crickets on warm
+  nights, or a sound you choose. Also in the tray menu.
+- Settings -> Screensaver: your wallpaper or a playlist as the screensaver.
 - Closing the window keeps the app running in the system tray (near the clock).
   Right-click the tray icon for Next / Random wallpaper, Pause / Stop and Exit.
 
@@ -54,8 +65,9 @@ Good to know
 ------------
 - Before changing anything, the app saves your current wallpaper and lock
   screen. "Restore original" on the Desktop and Lock Screen pages puts them back.
-- The first web or shader wallpaper downloads the web engine (Chromium,
-  about 150 MB) into the app's data folder.
+- The first web, shader, Night sky or Live Earth wallpaper downloads the web
+  engine (Chromium, about 150 MB) into the app's data folder. 3D photos
+  download a small AI model (27 MB) the first time.
 - Interactive wallpapers react to the mouse on the empty desktop; your icons,
   menus and selections keep working as usual.
 - Audio-reactive wallpapers listen to what your PC plays. The sound is only
@@ -73,7 +85,8 @@ Good to know
 
 Removing it
 -----------
-1. If you turned on "Start with Windows" in Settings, turn it off first.
+1. If you turned on "Start with Windows", the screensaver or the taskbar
+   color in Settings, turn them off first (this puts your own back).
 2. Use "Restore original" on the Desktop and Lock Screen pages if you want
    your old wallpaper and lock screen back.
 3. Right-click the tray icon -> Exit.
