@@ -47,6 +47,10 @@ class Scenes(private val db: Database, private val settings: Settings, private v
                 marker.writeText(APP_VERSION)
             }
             val offered = settings.string("scenes_offered", "").split(',').filter { it.isNotEmpty() }
+            // 3.3.0 added the scenes before the drawing library was loaded, so without a thumbnail.
+            db.mediaByPath(target.toString())?.takeIf { it.thumbnail == null }?.let { item ->
+                web.thumbnail(target.resolve("preview.jpg"), item.filename, "WEB")?.let { db.setThumbnail(item.id, it) }
+            }
             if (scene.id in offered) return@runCatching null
             settings.set("scenes_offered", (offered + scene.id).joinToString(","))
             if (db.hasMedia(target.toString())) null else web.import(target)?.also { db.rename(it, tr(scene.title)) }

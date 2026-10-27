@@ -10,7 +10,7 @@ plugins {
 }
 
 // Single source of the app version (CI checks that a vX.Y.Z tag matches it).
-val appVersion = "3.3.0"
+val appVersion = "3.3.1"
 version = appVersion
 
 kotlin {

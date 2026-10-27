@@ -47,7 +47,12 @@ class ScenesTest {
         // Its settings come from LivelyProperties.json, like any web wallpaper's.
         assertTrue(WallpaperProperties(db).read(item).any { it.name == "moonSize" })
 
+        assertTrue(item.thumbnail != null && paths.thumbDir.resolve(item.thumbnail!!).exists(), "${item.thumbnail}")
         assertEquals(emptyList(), scenes.install(), "added once")
+        // 3.3.0 added them without a thumbnail: the next start makes one.
+        db.setThumbnail(item.id, null)
+        scenes.install()
+        assertTrue(db.getMedia(item.id)!!.thumbnail != null, "the missing thumbnail is made")
         ids.forEach(db::removeMedia)
         assertEquals(emptyList(), scenes.install(), "a deleted scene stays deleted")
     }

@@ -105,6 +105,8 @@ fun main(rawArgs: Array<String>) {
     setAppUserModelId(APP_ID)
     I18n.use(wpm.data.Settings(db).string("language", "system"))
     log.info("Language: ${I18n.language}")
+    // Skia loads with the first window; the startup work in the background (thumbnails) may need it sooner.
+    runCatching { org.jetbrains.skiko.Library.load() }.onFailure { log.warning("Couldn't load Skia: $it") }
     val app = AppState(paths, db, startMinimized)
 
     app.exitAfterScreensaver = command == AppCommand.Screensaver
