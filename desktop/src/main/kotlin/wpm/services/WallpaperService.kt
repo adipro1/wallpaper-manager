@@ -231,8 +231,38 @@ class WallpaperService(
 
     /** Pause requested by the user: stays paused until the user resumes. */
     fun pauseVideo() {
-        live.pause()
+        pauseLive()
         autoPauseReason = null
+    }
+
+    /**
+     * Pauses the live wallpaper. A paused video keeps its frame, but a web page hides its window,
+     * and Windows doesn't repaint the area under it (it stays dark grey). So Windows is given
+     * the page's last frame to show instead (just for now, not saved), or the usual picture.
+     */
+    private fun pauseLive() {
+        val web = state.kind == "web" || state.kind == "shader"
+        val frame = live.window?.takeIf { web && !live.paused && displayChoices().isEmpty() && wpm.win32.Monitors.all().size == 1 }
+            ?.let { runCatching { wpm.win32.WindowCapture.capture(it) }.getOrNull() }
+            ?.takeIf { !looksBlank(it) }
+        live.pause()
+        if (!web) return
+        val shown = frame != null && runCatching {
+            // Two names in turn: Windows may keep showing a file it has already read.
+            pausedFrame = (pausedFrame + 1) % 2
+            val file = paths.cacheDir.resolve("paused-frame-$pausedFrame.png")
+            javax.imageio.ImageIO.write(frame, "png", file.toFile())
+            windows.setWallpaper(file.toString(), persist = false)
+        }.onFailure { log.warning("Couldn't show the paused frame: $it") }.isSuccess
+        if (!shown) repaintStatic()
+    }
+
+    private var pausedFrame = 0
+
+    /** A capture of a window that drew nothing (one color all over). */
+    private fun looksBlank(image: java.awt.image.BufferedImage): Boolean {
+        val first = image.getRGB(0, 0)
+        return (1..8).all { i -> (1..8).all { j -> image.getRGB(image.width * i / 9, image.height * j / 9) == first } }
     }
 
     /** Resume requested by the user, even if an automatic reason still applies. */
@@ -263,7 +293,7 @@ class WallpaperService(
         if (autoPauseReason == null && !live.paused && reason != overriddenReason) {
             log.info("Pausing live wallpaper automatically (${reason.text})")
             autoPauseReason = reason
-            live.pause()
+            pauseLive()
             return true
         }
         return false
@@ -318,7 +348,7 @@ class WallpaperService(
             live.stop()
             if (item != null && item.isLive) {
                 live.play(sourceFor(item, state.style))
-                if (wasPaused) live.pause()
+                if (wasPaused) pauseLive()
             }
         } else {
             live.fitToScreen()

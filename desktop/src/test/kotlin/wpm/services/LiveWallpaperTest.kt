@@ -159,6 +159,26 @@ class LiveWallpaperTest {
     }
 
     @Test
+    fun aPausedWebPageShowsThePictureUnderneath() {
+        val picture = image()
+        service.setImage(picture)
+        val page = dir.resolve("page").also { Files.createDirectories(it); it.resolve("index.html").writeText("<html></html>") }
+        service.setLive(db.getMedia(db.addMedia(page.toString(), "web", null, null, null, 1, null)!!)!!)
+        val before = fake.applied.size
+        // Its window hides, and Windows wouldn't repaint the area under it (dark grey) unless asked.
+        assertTrue(service.updateAutoPause(PauseReason.Battery))
+        assertTrue(live.paused)
+        assertEquals(listOf(picture.path to false), fake.applied.drop(before))
+
+        // A paused video keeps its frame: nothing to repaint.
+        service.setVideo(video())
+        service.updateAutoPause(null)
+        val afterVideo = fake.applied.size
+        service.updateAutoPause(PauseReason.Battery)
+        assertEquals(afterVideo, fake.applied.size)
+    }
+
+    @Test
     fun shutdownKeepsChoiceAndStartupRestoresIt() {
         val clip = video()
         service.setVideo(clip, "fit")
